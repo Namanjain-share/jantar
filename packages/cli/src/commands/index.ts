@@ -6,7 +6,7 @@
  * accounts, v0.5's Meetings, v0.5.3's Ask, v0.6's Fleet (fleet, node), then
  * setup. v0.7's post sits right after life: Posts are a Life module.
  * v0.10's place (read cafés) follows post, and v0.13's work (Work's switch)
- * follows place.
+ * follows place. v0.15's messages (WhatsApp, Mac only) follows meetings.
  */
 import type { Command } from '../command.js';
 import accounts from './accounts.js';
@@ -27,6 +27,7 @@ import launch from './launch.js';
 import life from './life.js';
 import mcp from './mcp.js';
 import meetings from './meetings.js';
+import messages from './messages.js';
 import newSession from './new.js';
 import notify from './notify.js';
 import node from './node.js';
@@ -74,6 +75,8 @@ export const COMMANDS: readonly Command[] = [
   accounts,
   // v0.5
   meetings,
+  // v0.15
+  messages,
   // v0.5.3
   chat,
   ask,

@@ -22,6 +22,10 @@
  * with no credentials: Cloudflare Access should answer it, not Jantar.
  * v0.10: the same for the Siri door (`/v1/capture/chat`) once Chat is on and
  * a chat key is made (`jantar chat shortcut list`).
+ *
+ * v0.15: with Messages on, the reader (jantar-messages-reader): what the
+ * daemon's Messages status says of it, or with the daemon down whether it
+ * is built and its LaunchAgent written. Never a chat, a name or a number.
  */
 import { open, readFile, readdir, realpath, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
@@ -30,8 +34,9 @@ import { CSWAP_SCRUB_ENV, isPipePath, scrubEnv, socketPathOk, type DaemonRole, t
 import { MIN_CLAUDE_WINDOWS } from '@jantar/daemon/hooks/installer';
 import { NODE_CLOSE, NODE_LINK_PATH } from '@jantar/protocol/node-link';
 import { CAPTURE_PREFIX, NODE_PREFIX, ROUTES, type CaptureKeyList, type HealthResponse, type Settings } from '@jantar/protocol';
+import { MESSAGES_ROUTES, type MessagesStatus } from '@jantar/protocol/messages';
 import { CtlUnavailableError, callDaemon, isErrorBody, type CtlClient } from '../ctl.js';
-import { daemonLogPaths, legacyAgentProblem, plistExists, plistPath } from './launchd.js';
+import { READER_LABEL, daemonLogPaths, legacyAgentProblem, plistExists, plistPath } from './launchd.js';
 import { LOGINCTL, lingerOn, unitPath } from './systemd.js';
 import { probeTailscale } from './remote.js';
 import type { SettingsRead } from './settings.js';
@@ -678,6 +683,7 @@ export async function runDoctor(i: DoctorInput): Promise<DoctorReport> {
     ...(node ? await fleetNodeChecks(i, probe) : await fleetHubChecks(i, probe)),
     ...(node ? [] : one(await captureDoorCheck(i, probe))),
     ...(node ? [] : one(await captureDoorCheck(i, probe, 'chat'))),
+    ...(mac && !node ? one(await messagesReaderCheck(i, probe)) : []),
   ];
   const counts: Record<CheckStatus, number> = { ok: 0, warn: 0, fail: 0, info: 0 };
   for (const c of checks) counts[c.status] += 1;
@@ -1031,6 +1037,42 @@ async function captureDoorCheck(i: DoctorInput, probe: DaemonProbe, kind: 'save'
   }
   if (r.status === 403) return { ...base, status: 'ok', detail: `${count}; Cloudflare Access refuses ${door.host}/v1/capture/* without a service token (403), as it should` };
   return { ...base, status: 'warn', detail: `${url} answered ${r.status} without a service token`, fix };
+}
+
+// ---------------------------------------------------------------------------
+// v0.15: Messages' reader
+
+const SETUP_FIX = 'jantar messages setup';
+
+/**
+ * jantar-messages-reader, once Messages is on: the daemon's word on it (ok,
+ * or what's wrong and its fix), or with the daemon down whether it is built
+ * and its LaunchAgent written. Full Disk Access is only the iPhone call
+ * log's, so its absence is said, never warned.
+ */
+async function messagesReaderCheck(i: DoctorInput, probe: DaemonProbe): Promise<DoctorCheck | null> {
+  if (!i.settings.settings.messages.enabled) return null;
+  const base = { id: 'messages-reader', title: 'Messages reader' } as const;
+  if (!probe.running) {
+    const built = await exists(i.paths.messagesReaderBin);
+    const agent = await plistExists(plistPath(i.paths, READER_LABEL));
+    const detail = `${built ? 'built' : 'not built'}, LaunchAgent ${agent ? 'installed' : 'not installed'} (the daemon is down, so it can't say more)`;
+    return built && agent ? { ...base, status: 'info', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX };
+  }
+  let st: MessagesStatus;
+  try {
+    st = await callDaemon<MessagesStatus>(i.ctl, 'GET', MESSAGES_ROUTES.messagesStatus.path, undefined, { timeoutMs: 15_000 });
+  } catch (e) {
+    return { ...base, status: 'warn', detail: `the daemon didn't say: ${(e as Error).message}` };
+  }
+  const r = st.reader;
+  if (r.state === 'ok') {
+    const phone = st.phone.readable ? 'the iPhone call log reads too' : 'the iPhone call log needs Full Disk Access on the reader (optional)';
+    return { ...base, status: 'ok', detail: `answers${r.detail ? ` (${r.detail})` : ''}; ${phone}` };
+  }
+  const detail = `${r.state.replace('_', ' ')}${r.detail ? `: ${r.detail}` : ''}`;
+  // A WhatsApp that stores chats differently needs a Jantar update, not setup.
+  return r.state === 'unsupported' ? { ...base, status: 'warn', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX };
 }
 
 async function sleepCheck(i: DoctorInput): Promise<DoctorCheck> {

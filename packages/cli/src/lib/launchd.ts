@@ -9,6 +9,9 @@
  *   never touch the real launchd.
  * - It never reads, writes or unloads any other agent (ccw's own bot keeps
  *   running side by side).
+ * - v0.15: Messages' reader has its own agent (READER_LABEL, written and
+ *   loaded by `jantar messages setup`): the same keys, running one program
+ *   (the reader, never node) with its own arguments and logs.
  */
 import { mkdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -17,6 +20,8 @@ import { HOME_ENV, LAUNCHD_LABEL, LEGACY_LAUNCHD_LABEL } from '@jantar/protocol'
 import { guardRealPath } from './guard.js';
 
 export const LAUNCHCTL = '/bin/launchctl';
+/** v0.15: jantar-messages-reader's LaunchAgent. */
+export const READER_LABEL = 'com.jantar.messages-reader';
 
 export interface PlistOptions {
   label?: string;
@@ -44,13 +49,18 @@ function assertAbsolute(name: string, p: string): void {
   if (!p.startsWith('/')) throw new Error(`${name} must be an absolute path, got "${p}"`);
 }
 
-/** Render the LaunchAgent plist (XML). Pure. */
-export function renderPlist(o: PlistOptions): string {
-  const label = o.label ?? LAUNCHD_LABEL;
-  if (!/^[A-Za-z0-9.-]+$/.test(label)) throw new Error(`bad launchd label "${label}"`);
-  assertAbsolute('node path', o.nodePath);
-  assertAbsolute('daemon path', o.daemonBin);
-  assertAbsolute('working directory', o.workingDirectory);
+/** One agent's keys: the program and its arguments, KeepAlive and RunAtLoad, in the GUI session. */
+interface AgentXml {
+  label: string;
+  argv: readonly string[];
+  workingDirectory?: string;
+  stdoutPath: string;
+  stderrPath: string;
+  env?: Record<string, string>;
+}
+
+function agentXml(o: AgentXml): string {
+  if (!/^[A-Za-z0-9.-]+$/.test(o.label)) throw new Error(`bad launchd label "${o.label}"`);
   const str = (v: string) => `<string>${xmlEscape(v)}</string>`;
   const env = Object.entries(o.env ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const lines = [
@@ -59,15 +69,12 @@ export function renderPlist(o: PlistOptions): string {
     '<plist version="1.0">',
     '<dict>',
     '  <key>Label</key>',
-    `  ${str(label)}`,
+    `  ${str(o.label)}`,
     '  <key>ProgramArguments</key>',
     '  <array>',
-    `    ${str(o.nodePath)}`,
-    `    ${str(o.daemonBin)}`,
-    ...(o.readOnly ? [`    ${str('--read-only')}`] : []),
+    ...o.argv.map((a) => `    ${str(a)}`),
     '  </array>',
-    '  <key>WorkingDirectory</key>',
-    `  ${str(o.workingDirectory)}`,
+    ...(o.workingDirectory === undefined ? [] : ['  <key>WorkingDirectory</key>', `  ${str(o.workingDirectory)}`]),
     '  <key>RunAtLoad</key>',
     '  <true/>',
     '  <key>KeepAlive</key>',
@@ -93,6 +100,21 @@ export function renderPlist(o: PlistOptions): string {
   return lines.join('\n');
 }
 
+/** Render the LaunchAgent plist (XML). Pure. */
+export function renderPlist(o: PlistOptions): string {
+  assertAbsolute('node path', o.nodePath);
+  assertAbsolute('daemon path', o.daemonBin);
+  assertAbsolute('working directory', o.workingDirectory);
+  return agentXml({
+    label: o.label ?? LAUNCHD_LABEL,
+    argv: [o.nodePath, o.daemonBin, ...(o.readOnly ? ['--read-only'] : [])],
+    workingDirectory: o.workingDirectory,
+    stdoutPath: o.stdoutPath,
+    stderrPath: o.stderrPath,
+    ...(o.env ? { env: o.env } : {}),
+  });
+}
+
 /** ~/Library/LaunchAgents/com.jantar.daemon.plist (under the possibly synthetic user home). */
 export function plistPath(paths: Pick<Paths, 'userHome'>, label = LAUNCHD_LABEL): string {
   return join(paths.userHome, 'Library', 'LaunchAgents', `${label}.plist`);
@@ -102,18 +124,51 @@ export function daemonLogPaths(paths: Pick<Paths, 'logsDir'>): { stdout: string;
   return { stdout: join(paths.logsDir, 'daemon.out.log'), stderr: join(paths.logsDir, 'daemon.err.log') };
 }
 
+/** v0.15: the reader's logs, ~/.jantar/logs/messages-reader.{out,err}.log. */
+export function readerLogPaths(paths: Pick<Paths, 'logsDir'>): { stdout: string; stderr: string } {
+  return { stdout: join(paths.logsDir, 'messages-reader.out.log'), stderr: join(paths.logsDir, 'messages-reader.err.log') };
+}
+
 export const guiDomain = (uid: number) => `gui/${uid}`;
 export const serviceTarget = (uid: number, label = LAUNCHD_LABEL) => `gui/${uid}/${label}`;
 
-/** The plist for this install: node + daemon by absolute path, logs under ~/.jantar/logs. */
-export function plistFor(input: {
+/** The daemon's plist: node + daemon by absolute path, logs under ~/.jantar/logs. */
+export interface DaemonPlistInput {
   paths: Paths;
   nodePath: string;
   daemonBin: string;
   env: Readonly<Record<string, string | undefined>>;
   /** v0.6: --read-only in the program arguments. */
   readOnly?: boolean;
-}): string {
+}
+
+/** v0.15: another agent (the messages reader): one program by absolute path, its arguments and its logs. */
+export interface AgentPlistInput {
+  label: string;
+  program: string;
+  args: readonly string[];
+  logs: { stdout: string; stderr: string };
+  /** Default: none (launchd's "/"). */
+  workingDirectory?: string;
+}
+
+/** The plist for this install (the daemon's), or v0.15 for another agent (`{label, program, args, logs}`). */
+export function plistFor(input: DaemonPlistInput): string;
+export function plistFor(input: AgentPlistInput): string;
+export function plistFor(input: DaemonPlistInput | AgentPlistInput): string {
+  if ('program' in input) {
+    assertAbsolute('program path', input.program);
+    assertAbsolute('stdout log', input.logs.stdout);
+    assertAbsolute('stderr log', input.logs.stderr);
+    if (input.workingDirectory !== undefined) assertAbsolute('working directory', input.workingDirectory);
+    return agentXml({
+      label: input.label,
+      argv: [input.program, ...input.args],
+      stdoutPath: input.logs.stdout,
+      stderrPath: input.logs.stderr,
+      ...(input.workingDirectory !== undefined ? { workingDirectory: input.workingDirectory } : {}),
+    });
+  }
   const logs = daemonLogPaths(input.paths);
   const env: Record<string, string> = {
     PATH: [dirname(input.nodePath), '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(':'),
