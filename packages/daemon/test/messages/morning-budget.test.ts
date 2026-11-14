@@ -1,0 +1,431 @@
+/**
+ * The morning run's batch and budget (0.15 Messages):
+ * - collect() takes the reader's lines since the last run (every page of a
+ *   long one, a first or reset run keeping its firstRunHours window), the
+ *   missed WhatsApp and iPhone calls since then (an iPhone log it may not
+ *   read is left out quietly) and when the owner last wrote, and marks the
+ *   1:1s waiting on him, each chat's tier and the calls he returned;
+ * - budget() keeps what fits the token estimate (UTF-8 bytes / 3), filled
+ *   in tier order: waiting 1:1s and the windows around lines that mention
+ *   or answer the owner, other 1:1s, then groups, then busy groups' counts;
+ *   system, reaction, deleted and skipped lines go; each line is cut at
+ *   perMessageChars, never inside a surrogate pair.
+ * The fixture's 5,000-line group runs on the real reader (skipped where
+ * Swift can't build it); the rest on synthetic batches and the fake reader.
+ */
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { MESSAGES_LIMITS } from '@jantar/protocol';
+import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
+import { budget, estimateTokens, lineBody } from '../../src/messages/morning/budget.js';
+import { collect, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
+import { morningInput } from '../../src/messages/morning/input.js';
+import { createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
+import { readerError, startFakeReader, type FakeHandlers } from './fake-reader.js';
+import { FIXTURE_NOW, makeWhatsAppFixture, type FixturePaths } from './fixture.js';
+import { buildReader, whatsAppRunning } from './reader-build.js';
+import { keyOf, startReader, type Running } from './reader-harness.js';
+
+const bin = await buildReader();
+
+const L = MESSAGES_LIMITS;
+const HOUR_MS = 3_600_000;
+const NOW = new Date(FIXTURE_NOW);
+const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR_MS).toISOString();
+
+// Synthetic keys as the reader makes them ("c" + 16 hex), with no long digit runs.
+const chatKey = (n: number) => `c${'ab'.repeat(7)}${n.toString(16).padStart(2, '0')}`;
+const callKey = (n: number) => `k${'cd'.repeat(7)}${n.toString(16).padStart(2, '0')}`;
+
+function chat(n: number, name: string, o: Partial<ChatOwner> = {}): ChatOwner {
+  return { chatKey: chatKey(n), name, kind: 'dm', lastAt: ago(1), unread: 0, lastFromMe: false, archived: false, ...o };
+}
+
+let stanza = 0;
+function line(c: ChatOwner, o: Partial<Message> = {}): Message {
+  stanza += 1;
+  return { msgKey: `${c.chatKey}.3EB0T${stanza}`, at: ago(2), fromMe: false, sender: o.fromMe ? 'Me' : c.name, kind: 'text', text: `line ${stanza}`, ...o };
+}
+
+/** `n` text lines an hour apart (oldest first), ending `endAgo` hours back. */
+function lines(c: ChatOwner, n: number, o: Partial<Message> = {}, endAgo = 1): Message[] {
+  return Array.from({ length: n }, (_, i) => line(c, { at: ago(endAgo + (n - 1 - i) * 0.01), ...o }));
+}
+
+function batchChat(c: ChatOwner, messages: Message[], o: { earlier?: Message[]; waiting?: boolean } = {}): BatchChat {
+  const earlier = o.earlier ?? [];
+  const waiting = o.waiting ?? false;
+  return { chat: c, messages, earlier, waiting, tier: tierOf(c, messages, earlier, waiting) };
+}
+
+function batchOf(chats: BatchChat[], calls: BatchCall[] = []): Batch {
+  return { chats, calls, cursor: { pk: 1, at: ago(1) }, reset: false, newestAt: ago(1), phone: true };
+}
+
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+describe.skipIf(!bin)('the morning on the real reader', () => {
+  let dir: string;
+  let paths: FixturePaths;
+  let held: { close(): void };
+  let reader: Running;
+  let client: ReaderClient;
+
+  beforeEach(async () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'jantar-morning-')));
+    paths = makeWhatsAppFixture(join(dir, 'wa'), { extraMessages: 5_000 });
+    held = whatsAppRunning(paths);
+    reader = await startReader(bin!, { fixture: paths, state: join(dir, 'state'), sock: join(dir, 'r.sock') });
+    client = createReaderClient(reader.sock);
+  });
+  afterEach(async () => {
+    client.close();
+    await reader.stop();
+    held.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function maxPk(): number {
+    const db = new DatabaseSync(join(paths.container, 'ChatStorage.sqlite'), { readOnly: true });
+    try {
+      return (db.prepare('SELECT max(Z_PK) AS pk FROM ZWAMESSAGE').get() as { pk: number }).pk;
+    } finally {
+      db.close();
+    }
+  }
+
+  it('budget keeps waiting dms first and reports drops on a 5,000-message group', async () => {
+    const k = (jid: string) => keyOf(reader.state, jid);
+    const [asha, ravi, group, mom1, mom2] = [k(paths.jids.ashaLid), k(paths.jids.ravi), k(paths.jids.group), k(paths.jids.mom1), k(paths.jids.mom2)];
+
+    const batch = await collect(client, null, NOW);
+    const byKey = new Map(batch.chats.map((c) => [c.chat.chatKey, c]));
+    // Every page of the first run: the group's 5,000 busy lines and its own six.
+    expect(byKey.get(group)!.messages).toHaveLength(5_006);
+    expect(batch.cursor.pk).toBe(maxPk());
+    expect(batch.reset).toBe(false);
+    expect(batch.newestAt).toBe('2026-11-13T20:00:00.000Z');
+    expect(byKey.get(group)).toMatchObject({ tier: 4, waiting: false });
+    expect(byKey.get(asha)).toMatchObject({ tier: 1, waiting: true });
+    expect(byKey.get(mom1)).toMatchObject({ tier: 1, waiting: true });
+    expect(byKey.get(ravi)).toMatchObject({ tier: 2, waiting: false });
+    expect(byKey.get(mom2)).toMatchObject({ tier: 2, waiting: false });
+    // Asha's call is returned (the owner wrote to her at 09:40); Ravi's two are not.
+    expect(batch.phone).toBe(true);
+    expect(batch.calls.map((c) => [c.at, c.who, c.via, c.chatKey, c.returned])).toEqual([
+      ['2026-11-13T09:30:00.000Z', 'Asha Test', 'whatsapp', asha, true],
+      ['2026-11-13T10:00:00.000Z', 'Ravi Test', 'whatsapp', ravi, false],
+      ['2026-11-13T11:00:00.000Z', 'Ravi Test', 'phone', ravi, false],
+    ]);
+
+    const { kept, dropped } = budget(batch);
+    expect(kept.chats.slice(0, 2).map((c) => c.chat.chatKey)).toEqual([asha, mom1]);
+    expect(kept.calls.map((c) => c.who)).toEqual(['Ravi Test', 'Ravi Test']);
+
+    // The busy group: only the windows around Asha's reply to the owner and Ravi's mention of him.
+    const content = byKey.get(group)!.messages.filter((m) => m.kind !== 'system' && m.kind !== 'deleted');
+    const anchors = content.flatMap((m, i) => (m.mentionsMe || m.replyTo === `${group}.3EB0FX0701` ? [i] : []));
+    expect(anchors.map((i) => content[i]!.msgKey)).toEqual([`${group}.3EB0FX0702`, `${group}.3EB0FX0703`]);
+    const windows = new Set(anchors.flatMap((i) => content.slice(Math.max(0, i - L.mentionWindow), i + L.mentionWindow + 1).map((m) => m.msgKey)));
+    const g = kept.chats.find((c) => c.chat.chatKey === group)!;
+    expect(g.messages.map((m) => m.msgKey).sort()).toEqual([...windows].sort());
+    expect(g.left).toBe(content.length - g.messages.length);
+    expect(dropped).toEqual([{ chatName: 'Group One', kept: windows.size, left: content.length - windows.size }]);
+    expect(dropped[0]!.left).toBeGreaterThanOrEqual(4_990);
+    // The model's input stays inside the budget.
+    expect(estimateTokens(morningInput(kept, { now: NOW, tz: 'Asia/Kolkata', ownerName: 'me' }).text)).toBeLessThanOrEqual(L.morningTokens);
+
+    // Squeezed: nothing else gets in before both waiting 1:1s are whole.
+    const whole = (b: Batch, key: string) => b.chats.find((c) => c.chat.chatKey === key)?.messages.length ?? 0;
+    let max = 100;
+    for (; max < 5_000; max += 10) {
+      const r = budget(batch, max).kept;
+      if (r.chats.some((c) => c.chat.chatKey !== asha && c.chat.chatKey !== mom1)) {
+        expect(whole(r, asha)).toBe(byKey.get(asha)!.messages.length);
+        expect(whole(r, mom1)).toBe(byKey.get(mom1)!.messages.length);
+        break;
+      }
+    }
+    expect(max).toBeLessThan(5_000);
+  });
+});
+
+describe('budget', () => {
+  it('fills in tier order: waiting 1:1s and mention windows, other 1:1s, groups, then busy counts', () => {
+    const waitingDm = chat(1, 'Asha Test');
+    const otherDm = chat(2, 'Ravi Test');
+    const small = chat(3, 'Small Group', { kind: 'group', members: 4 });
+    const medium = chat(4, 'Medium Group', { kind: 'group', members: 40 });
+    const busy = chat(5, 'Busy Group', { kind: 'group', members: 150 });
+    const archived = chat(6, 'Old Group', { kind: 'group', members: 5, archived: true });
+
+    const asks = lines(waitingDm, 3);
+    const chatter = lines(otherDm, 50);
+    const smallLines = lines(small, 40);
+    const mine = line(small, { fromMe: true, at: ago(5) });
+    // A line answering the owner's, and one naming him.
+    smallLines[3] = line(small, { at: smallLines[3]!.at, replyTo: mine.msgKey });
+    smallLines[12] = line(small, { at: smallLines[12]!.at, mentionsMe: true });
+    const mediumLines = lines(medium, 25);
+    const busyLines = lines(busy, 10);
+    const oldLines = lines(archived, 3);
+
+    const chats = [
+      batchChat(otherDm, chatter),
+      batchChat(small, smallLines, { earlier: [mine] }),
+      batchChat(medium, mediumLines),
+      batchChat(busy, busyLines),
+      batchChat(archived, oldLines),
+      batchChat(waitingDm, asks, { waiting: true }),
+    ];
+    expect(chats.map((c) => c.tier)).toEqual([2, 1, 3, 4, 4, 1]);
+
+    const { kept, dropped } = budget(batchOf(chats));
+    const of = (c: ChatOwner) => kept.chats.find((k) => k.chat.chatKey === c.chatKey)!;
+    // Tier order (waiting 1:1s ahead of the groups in tier 1), then the batch's order.
+    expect(kept.chats.map((c) => c.chat.name)).toEqual(['Asha Test', 'Small Group', 'Ravi Test', 'Medium Group', 'Busy Group', 'Old Group']);
+    expect(of(waitingDm).messages).toEqual(asks);
+    expect(of(otherDm).messages).toEqual(chatter.slice(-L.dmContext));
+    // A group: the windows around the lines about the owner, then its last smallGroupContext.
+    const smallKept = new Set([...smallLines.slice(0, 3 + L.mentionWindow + 1), ...smallLines.slice(12 - L.mentionWindow, 12 + L.mentionWindow + 1), ...smallLines.slice(-L.smallGroupContext)]);
+    expect(of(small).messages).toEqual(smallLines.filter((m) => smallKept.has(m)));
+    expect(of(small).earlier).toEqual([mine]);
+    expect(of(medium).messages).toEqual(mediumLines.slice(-L.smallGroupContext));
+    // Busy and archived groups: a count only.
+    expect(of(busy)).toMatchObject({ messages: [], earlier: [], left: 10 });
+    expect(of(archived)).toMatchObject({ messages: [], left: 3 });
+    expect(dropped).toEqual([
+      { chatName: 'Ravi Test', kept: L.dmContext, left: 50 - L.dmContext },
+      { chatName: 'Busy Group', kept: 0, left: 10 },
+      { chatName: 'Medium Group', kept: L.smallGroupContext, left: 25 - L.smallGroupContext },
+      { chatName: 'Old Group', kept: 0, left: 3 },
+      { chatName: 'Small Group', kept: smallKept.size, left: 40 - smallKept.size },
+    ]);
+    expect(smallKept.size).toBe(38);
+  });
+
+  it('stops at the first line that does not fit, never letting a lower tier in', () => {
+    const waitingDm = chat(1, 'Asha Test');
+    const otherDm = chat(2, 'Ravi Test');
+    const asks = lines(waitingDm, 30, { text: 'x'.repeat(300) });
+    const chats = [batchChat(otherDm, lines(otherDm, 5)), batchChat(waitingDm, asks, { waiting: true })];
+    const { kept, dropped } = budget(batchOf(chats), 2_000);
+    expect(kept.chats.map((c) => c.chat.name)).toEqual(['Asha Test']);
+    const n = kept.chats[0]!.messages.length;
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(30);
+    // The newest are kept.
+    expect(kept.chats[0]!.messages).toEqual(asks.slice(-n));
+    expect(dropped).toEqual([
+      { chatName: 'Asha Test', kept: n, left: 30 - n },
+      { chatName: 'Ravi Test', kept: 0, left: 5 },
+    ]);
+  });
+
+  it('drops system, reaction, deleted and skipped lines', () => {
+    const g = chat(1, 'Group One', { kind: 'group', members: 4 });
+    const said = line(g, { text: 'hello' });
+    const silent = [
+      line(g, { kind: 'system', text: undefined }),
+      line(g, { kind: 'reaction', text: undefined }),
+      line(g, { kind: 'deleted', text: undefined }),
+      line(g, { kind: 'other', text: undefined, sender: '[skipped]', skippedSender: true }),
+    ];
+    const only = chat(2, 'Quiet', { kind: 'group', members: 4 });
+    const { kept, dropped } = budget(batchOf([batchChat(g, [...silent, said]), batchChat(only, [line(only, { kind: 'system', text: undefined })])]));
+    expect(kept.chats.map((c) => [c.chat.name, c.messages])).toEqual([['Group One', [said]]]);
+    expect(dropped).toEqual([]);
+  });
+
+  it('keeps unreturned calls, before any line', () => {
+    const dm = chat(1, 'Ravi Test');
+    const missed: BatchCall = { callKey: callKey(1), at: ago(3), who: 'Ravi Test', chatKey: dm.chatKey, via: 'whatsapp', incoming: true, missed: true, video: false, durationS: 0, returned: false };
+    const back: BatchCall = { ...missed, callKey: callKey(2), via: 'phone', returned: true };
+    const { kept } = budget(batchOf([batchChat(dm, lines(dm, 5))], [missed, back]), 300);
+    expect(kept.calls).toEqual([missed]);
+  });
+
+  it('budget counts devanagari by bytes', () => {
+    // The same number of characters, three times the bytes.
+    expect('नमस्ते '.length * 60).toBe('hello '.length * 70);
+    expect(estimateTokens('नमस्ते'.repeat(1_000))).toBeGreaterThan(estimateTokens('hello'.repeat(1_000)));
+    expect(estimateTokens('hello')).toBe(2);
+    expect(estimateTokens('नमस्ते')).toBe(6);
+
+    const keptOf = (text: string) => {
+      const dm = chat(1, 'Asha Test');
+      return budget(batchOf([batchChat(dm, lines(dm, 40, { text }), { waiting: true })]), 4_000).kept.chats[0]!.messages.length;
+    };
+    const hindi = keptOf('नमस्ते '.repeat(60));
+    const english = keptOf('hello '.repeat(70));
+    expect(hindi).toBeGreaterThan(0);
+    expect(english).toBeGreaterThan(hindi * 2);
+  });
+
+  it('cut keeps emoji whole', () => {
+    const dm = chat(1, 'Asha Test');
+    const max = L.perMessageChars;
+    // The cut falls on the emoji's second half (dropped whole), then just after it (kept whole).
+    const texts = ['a'.repeat(max - 2) + '😀 tail', 'a'.repeat(max - 3) + '😀 tail', '😀'.repeat(max)];
+    const { kept } = budget(batchOf([batchChat(dm, texts.map((text) => line(dm, { text })), { waiting: true })]));
+    const out = kept.chats[0]!.messages.map((m) => m.text!);
+    expect(out[0]).toBe(`${'a'.repeat(max - 2)}…`);
+    expect(out[1]).toBe(`${'a'.repeat(max - 3)}😀…`);
+    for (const t of out) {
+      expect(t.length).toBeLessThanOrEqual(max);
+      expect(LONE_SURROGATE.test(t)).toBe(false);
+      expect(LONE_SURROGATE.test(lineBody(line(dm, { text: t })))).toBe(false);
+    }
+    // A long caption too.
+    const img = line(dm, { kind: 'image', text: undefined, caption: '😀'.repeat(max) });
+    expect(LONE_SURROGATE.test(lineBody(img))).toBe(false);
+    expect(lineBody(img).length).toBeLessThanOrEqual(max);
+  });
+
+  it('non-text kinds render as short marks', () => {
+    const dm = chat(1, 'Asha Test');
+    const media = (kind: Message['kind'], o: Partial<NonNullable<Message['media']>> = {}) => ({ kind, local: true, ...o });
+    const body = (o: Partial<Message>) => lineBody(line(dm, { text: undefined, ...o }));
+    expect(body({ kind: 'image', caption: 'invoice', media: media('image') })).toBe('[image: invoice]');
+    expect(body({ kind: 'image', media: media('image') })).toBe('[image]');
+    expect(body({ kind: 'voice', media: media('voice', { durationS: 42.4 }) })).toBe('[voice 0:42]');
+    expect(body({ kind: 'voice', media: media('voice', { durationS: 3_725 }) })).toBe('[voice 1:02:05]');
+    expect(body({ kind: 'video', caption: 'the hall', media: media('video', { durationS: 75 }) })).toBe('[video 1:15: the hall]');
+    expect(body({ kind: 'document', media: media('document', { fileName: 'name.pdf' }) })).toBe('[document: name.pdf]');
+    expect(body({ kind: 'location' })).toBe('[location]');
+    expect(body({ kind: 'contact' })).toBe('[contact]');
+    expect(body({ kind: 'sticker', media: media('sticker') })).toBe('[sticker]');
+    expect(body({ kind: 'gif', media: media('gif') })).toBe('[gif]');
+    expect(body({ kind: 'poll', text: 'Lunch?' })).toBe('[poll: Lunch?]');
+    expect(body({ kind: 'link', text: 'see https://example.com' })).toBe('see https://example.com');
+    expect(body({ kind: 'other' })).toBe('[message]');
+    expect(body({ kind: 'text', text: '  hello  ' })).toBe('hello');
+  });
+});
+
+describe('collect', () => {
+  let dir: string;
+  let client: ReaderClient | null;
+  const closers: (() => Promise<void>)[] = [];
+
+  beforeEach(() => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), 'jmc-')));
+    client = null;
+  });
+  afterEach(async () => {
+    client?.close();
+    for (const c of closers.splice(0)) await c();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  async function readerWith(handlers: FakeHandlers) {
+    const sock = join(dir, 'r.sock');
+    const fake = await startFakeReader(sock, handlers);
+    closers.push(() => fake.close());
+    client = createReaderClient(sock);
+    return { fake, client };
+  }
+
+  const a = chat(1, 'Asha Test');
+  const b = chat(2, 'Ravi Test');
+  const g = chat(3, 'Group One', { kind: 'group', members: 4 });
+  const call = (n: number, c: ChatOwner, hoursAgo: number, o: Partial<Call> = {}): Call => ({
+    callKey: callKey(n), at: ago(hoursAgo), who: c.name, chatKey: c.chatKey, via: 'whatsapp', incoming: true, missed: true, video: false, durationS: 0, ...o,
+  });
+
+  it('collect pages a long first run, marks waiting dms and returned calls', async () => {
+    const [a1, a2, a3] = [line(a, { at: ago(8) }), line(a, { at: ago(6), fromMe: true }), line(a, { at: ago(2) })];
+    const b1 = line(b, { at: ago(1.5) });
+    const b2 = line(b, { at: ago(1), fromMe: true });
+    const g1 = line(g, { at: ago(4), mentionsMe: true });
+    const before = line(a, { at: ago(30) });
+    const { fake, client } = await readerWith({
+      newSince: (args) =>
+        (args.cursor as { pk: number } | null) === null
+          ? { chats: [{ chat: a, messages: [a1, a2], earlier: [before] }, { chat: g, messages: [g1], earlier: [] }], nextCursor: { pk: 10, at: a2.at }, truncated: true, reset: false }
+          : { chats: [{ chat: b, messages: [b1, b2], earlier: [] }, { chat: a, messages: [a2, a3], earlier: [a1] }], nextCursor: { pk: 20, at: b2.at }, truncated: false, reset: false },
+      waCalls: () => ({ calls: [call(2, b, 5), call(3, b, 3, { incoming: false, missed: false, durationS: 60 }), call(1, a, 5.5)] }),
+      phoneCalls: () => {
+        throw readerError('no_access', 'macOS refused the iPhone call log to the reader');
+      },
+      lastFromMe: (args) => Object.fromEntries((args.chatKeys as string[]).map((k) => [k, k === a.chatKey ? a2.at : k === b.chatKey ? b2.at : null])),
+    });
+
+    const batch = await collect(client, null, NOW);
+    const feeds = fake.calls.filter((c) => c.op === 'newSince');
+    expect(feeds.map((c) => c.args)).toEqual([
+      { cursor: null, guardHours: L.cursorGuardHours, firstRunHours: L.firstRunHours, maxRows: expect.any(Number) },
+      // A first run's next page keeps its 24-hour window.
+      { cursor: { pk: 10, at: a2.at }, guardHours: L.firstRunHours, firstRunHours: L.firstRunHours, maxRows: expect.any(Number) },
+    ]);
+    expect(fake.calls.find((c) => c.op === 'waCalls')!.args).toEqual({ since: ago(L.firstRunHours) });
+    expect((fake.calls.find((c) => c.op === 'lastFromMe')!.args.chatKeys as string[]).sort()).toEqual([a.chatKey, b.chatKey].sort());
+
+    // Newest first; a chat on two pages is one, each line once, its first page's earlier lines.
+    expect(batch.chats.map((c) => [c.chat.name, c.messages, c.earlier, c.waiting, c.tier])).toEqual([
+      ['Ravi Test', [b1, b2], [], false, 2],
+      ['Asha Test', [a1, a2, a3], [before], true, 1],
+      ['Group One', [g1], [], false, 1],
+    ]);
+    expect(batch.cursor).toEqual({ pk: 20, at: b2.at });
+    expect(batch.reset).toBe(false);
+    expect(batch.newestAt).toBe(b2.at);
+    expect(batch.phone).toBe(false);
+    // Asha's call came after her last message from the owner; Ravi's was returned by the owner's call.
+    expect(batch.calls.map((c) => [c.callKey, c.returned])).toEqual([
+      [callKey(1), false],
+      [callKey(2), true],
+    ]);
+  });
+
+  it('collect goes on from a stored cursor, and a reset run reads firstRunHours back', async () => {
+    const a1 = line(a, { at: ago(2) });
+    const stored = { pk: 500, at: ago(20) };
+    const first = await readerWith({
+      newSince: () => ({ chats: [{ chat: a, messages: [a1], earlier: [] }], nextCursor: { pk: 600, at: a1.at }, truncated: false, reset: false }),
+      waCalls: () => ({ calls: [call(1, a, 30), call(2, a, 10)] }),
+      phoneCalls: () => ({ calls: [] }),
+      lastFromMe: () => ({ [a.chatKey]: null }),
+    });
+    const batch = await collect(first.client, stored, NOW);
+    expect(first.fake.calls.find((c) => c.op === 'newSince')!.args).toMatchObject({ cursor: stored, guardHours: L.cursorGuardHours });
+    // Calls since the stored cursor's time.
+    expect(first.fake.calls.find((c) => c.op === 'waCalls')!.args).toEqual({ since: stored.at });
+    expect(first.fake.calls.find((c) => c.op === 'phoneCalls')!.args).toEqual({ since: stored.at });
+    expect(batch.calls.map((c) => c.callKey)).toEqual([callKey(2)]);
+    expect(batch.phone).toBe(true);
+    // An unanswered line from them older than waitingDays is not waiting.
+    expect(batch.chats[0]).toMatchObject({ waiting: true, tier: 1 });
+
+    client!.close();
+    await closers.pop()!();
+    const old = line(a, { at: ago(24 * L.waitingDays + 1) });
+    const second = await readerWith({
+      newSince: (args) =>
+        (args.cursor as { pk: number }).pk === 500
+          ? { chats: [{ chat: a, messages: [old], earlier: [] }], nextCursor: { pk: 7, at: old.at }, truncated: true, reset: true }
+          : { chats: [], nextCursor: { pk: 9, at: old.at }, truncated: false, reset: false },
+      waCalls: () => ({ calls: [] }),
+      phoneCalls: () => ({ calls: [] }),
+      lastFromMe: () => ({ [a.chatKey]: null }),
+    });
+    const reset = await collect(second.client, stored, NOW);
+    expect(reset).toMatchObject({ reset: true, cursor: { pk: 9 } });
+    expect(second.fake.calls.filter((c) => c.op === 'newSince')[1]!.args).toMatchObject({ cursor: { pk: 7 }, guardHours: L.firstRunHours });
+    expect(second.fake.calls.find((c) => c.op === 'waCalls')!.args).toEqual({ since: ago(L.firstRunHours) });
+    expect(reset.chats[0]).toMatchObject({ waiting: false, tier: 2 });
+  });
+
+  it('collect with nothing new is an empty batch', async () => {
+    const { client } = await readerWith({
+      newSince: () => ({ chats: [], nextCursor: { pk: 3, at: ago(30) }, truncated: false, reset: false }),
+      waCalls: () => ({ calls: [] }),
+      phoneCalls: () => ({ calls: [] }),
+      lastFromMe: () => ({}),
+    });
+    expect(await collect(client, { pk: 3, at: ago(30) }, NOW)).toEqual({ chats: [], calls: [], cursor: { pk: 3, at: ago(30) }, reset: false, newestAt: null, phone: true });
+  });
+});

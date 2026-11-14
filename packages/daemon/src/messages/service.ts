@@ -65,6 +65,7 @@ import { notBuilt } from '../core/not-implemented.js';
 import { MediaHelper } from '../intel/read/media.js';
 import { READS_KEEP, addRead, lastRunAt, listReads, openMessagesDb, readPrefs, type MessagesDb } from './db.js';
 import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
+import { missedCalls } from './morning/collect.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from './reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
 import { MESSAGES_SAYS, readerSays } from './says.js';
@@ -296,19 +297,11 @@ class MessagesShell implements MessagesService {
       throw e;
     });
     const calls = [...wa.calls, ...phone.calls].filter((c) => Date.parse(c.at) >= sinceMs);
-    const missed = calls.filter((c) => c.incoming && c.missed);
-    const keys = [...new Set(missed.flatMap((c) => (c.chatKey ? [c.chatKey] : [])))];
+    const keys = [...new Set(calls.flatMap((c) => (c.incoming && c.missed && c.chatKey ? [c.chatKey] : [])))];
     const wrote: Record<string, string | null> = {};
     for (let i = 0; i < keys.length; i += KEYS_PER_ASK) Object.assign(wrote, await this.reader.call('lastFromMe', { chatKeys: keys.slice(i, i + KEYS_PER_ASK) }));
-    // One person: their 1:1's key (either id, and the iPhone's number when the reader matched it), else the name or number shown.
-    const person = (c: Call) => c.chatKey ?? `who:${c.who}`;
-    const after = (iso: string | null | undefined, ms: number) => typeof iso === 'string' && Date.parse(iso) >= ms;
-    // Returned: a later message from the owner, a later call the owner made, or a later call that connected (either way).
-    const open = missed.filter((c) => {
-      const at = Date.parse(c.at);
-      if (c.chatKey && after(wrote[c.chatKey], at)) return false;
-      return !calls.some((o) => (!o.incoming || !o.missed) && person(o) === person(c) && after(o.at, at));
-    });
+    // Returned (the morning run's rule too): a later message from the owner, a later call the owner made, or a later call that connected.
+    const open = missedCalls(calls, wrote).filter((c) => !c.returned);
     open.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     this.logRead('calls', by, undefined, open.length);
     return { calls: open.map((c) => ({ ...c, returned: false as const })) };

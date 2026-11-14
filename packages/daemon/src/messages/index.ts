@@ -8,7 +8,8 @@
  * morning run never runs). service.ts is the part; reader-client.ts the
  * reader's socket (reader-protocol.ts its protocol); db.ts messages.db;
  * skip.ts the skip list and its mirror; media.ts a message's file; says.ts
- * the sentences.
+ * the sentences; morning/ the morning run (collect.ts its batch, budget.ts
+ * what fits, input.ts what the model reads).
  */
 import type { DaemonContext, Factories, MessagesService } from '../contracts.js';
 import { buildMessagesService, type MessagesDeps, type MessagesOptions } from './service.js';
