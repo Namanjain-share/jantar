@@ -41,6 +41,8 @@ import type {
   MeetingsCore,
   MeetingsService,
   MeetingsStore,
+  MessagesService,
+  MorningApi,
   PaneFinder,
   Parts,
   Paths,
@@ -190,8 +192,8 @@ export function createTestContext(opts: TestContextOptions = {}): TestContext {
 
 /** The v0.3 parts. */
 export type V03Parts = Pick<Parts, 'files' | 'changes' | 'rewrite' | 'launcher' | 'controls'>;
-/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel), v0.5's (meetings) and v0.10's (chat). */
-export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings' | 'chat'>;
+/** The parts notBuiltParts() gives: v0.3's, v0.4's (life, intel), v0.5's (meetings), v0.10's (chat) and v0.15's (messages). */
+export type NotBuiltParts = V03Parts & Pick<Parts, 'life' | 'intel' | 'meetings' | 'chat' | 'messages'>;
 
 /**
  * v0.3, v0.4, v0.5 and v0.5.3 parts that start, stop and answer every call with
@@ -257,6 +259,12 @@ export function notBuiltParts(): NotBuiltParts {
       summaries: notBuilt<MeetingSummaries>('Meetings'),
     }),
     chat: notBuilt<ChatService>('Chat', { ...life }),
+    messages: notBuilt<MessagesService>('Messages', {
+      ...life,
+      broken: () => null,
+      skip: notBuilt<MessagesService['skip']>('Messages'),
+      morning: notBuilt<MorningApi>('Messages'),
+    }),
   };
 }
 

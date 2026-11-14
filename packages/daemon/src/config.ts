@@ -149,6 +149,11 @@ export function resolvePaths(opts: ResolvePathsOptions = {}): Paths {
     meetingSummaryDir: join(home, 'meeting-summary'),
     chatDb: join(home, 'chat.db'),
     chatDir: join(home, 'chat'),
+    // v0.15: the reader's state dir is Messages' folder; the database sits beside the others.
+    messagesDir: join(home, 'messages'),
+    messagesDb: join(home, 'messages.db'),
+    messagesReaderSock: join(runDir, 'messages-reader.sock'),
+    messagesReaderBin: join(home, 'messages', 'bin', 'jantar-messages-reader'),
     fleetDir: join(home, 'fleet'),
     hubKeyFile: join(home, 'fleet', 'hub-key.pem'),
     nodeDir: join(home, 'node'),

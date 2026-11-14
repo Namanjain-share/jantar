@@ -36,7 +36,7 @@
  * v0.6 Fleet adds the stand-ins each role puts where the other role's part
  * goes (offFleet on a node, offNodeLink on the hub), and on a node the
  * hub-only parts the API's type still asks for (nodeOffParts: Changes,
- * Rewrite, Life, Intel, Meetings, Ask, the push router, an inert ccw reader):
+ * Rewrite, Life, Intel, Meetings, Messages, Ask, the push router, an inert ccw reader):
  * none opens a file or starts a timer, and each answers 501 with the
  * sentence that it lives on the Mac. A node's `--read-only` is the same
  * wrappers as the hub's: its NodeView says readOnly, and every write there
@@ -59,6 +59,8 @@ import type {
   LifeModuleBuilders,
   LifeService,
   MeetingsService,
+  MessagesService,
+  MorningApi,
   NodeLinkService,
   NodeLinkStatus,
   NotificationRouter,
@@ -364,12 +366,13 @@ export interface NodeOffParts {
   life: LifeService;
   intel: IntelService;
   meetings: MeetingsService;
+  messages: MessagesService;
   chat: ChatService;
   notifications: NotificationRouter;
 }
 
 /**
- * On a node: Changes, Rewrite, Life, Intel, Meetings, Chat and the push router.
+ * On a node: Changes, Rewrite, Life, Intel, Meetings, Messages, Chat and the push router.
  * Their switches are off in the node's daemon.version and the link serves
  * none of their routes; a CLI call on the node's own socket gets the 501
  * that says they live on the Mac. Nothing here opens a file or starts a timer.
@@ -382,6 +385,11 @@ export function nodeOffParts(): NodeOffParts {
     life: standIn<LifeService>({ broken: () => null }, nodeOff),
     intel: standIn<IntelService>({ sources: () => [] }, nodeOff),
     meetings: standIn<MeetingsService>({ broken: () => null }, nodeOff),
+    // The reader runs only on the Mac: no socket is dialled, no messages.db opened.
+    messages: standIn<MessagesService>(
+      { broken: () => null, skip: standIn<MessagesService['skip']>({}, nodeOff), morning: standIn<MorningApi>({}, nodeOff) },
+      nodeOff,
+    ),
     chat: standIn<ChatService>({ broken: () => null }, nodeOff),
     notifications: { ...idle },
   };

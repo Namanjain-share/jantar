@@ -10,9 +10,9 @@
  *   3. parts: ccwLegacy -> sessions -> transcripts -> transcriptWatcher ->
  *      usage -> hooks -> terminal -> writer -> notifiers -> files -> changes
  *      -> rewrite -> launcher -> controls -> life -> intel -> meetings ->
- *      chat -> primer -> notifications -> api (the v0.3, v0.4, v0.5 and
- *      v0.5.3 parts sit behind their switches; the API refuses their routes
- *      while a switch is off)
+ *      messages -> chat -> primer -> notifications -> api (the v0.3, v0.4,
+ *      v0.5, v0.5.3 and v0.15 parts sit behind their switches; the API
+ *      refuses their routes while a switch is off)
  *   4. startServices() in that order; stop() runs them down in reverse.
  *
  * v0.5.3: one PaneLookup (api/services.ts) is built on the terminal before
@@ -27,7 +27,7 @@
  *   -> usage -> hooks -> terminal (terminal/pick.ts: tmux on Linux, none on
  *   Windows) -> writer -> files (policy only) -> launcher -> controls -> api
  *   (the control socket and the link app, no TCP) -> nodeLink. No Changes,
- *   Rewrite, Life, Intel, Meetings, Chat, primer or pushes (modes.ts
+ *   Rewrite, Life, Intel, Meetings, Messages, Chat, primer or pushes (modes.ts
  *   stand-ins, which open no file and start no timer); `notifiers` is [].
  *
  * main.ts calls startDaemon() with the command-line flags; the end-to-end
@@ -47,6 +47,7 @@ import type {
   LinkInjector,
   Logger,
   MeetingsService,
+  MessagesService,
   NodeLinkService,
   Notifier,
   NotificationRouter,
@@ -93,6 +94,7 @@ import { createLifeService, LIFE_MODULE_BUILDERS } from './life/index.js';
 import { buildLifeService } from './life/service.js';
 import { createIntelService, type IntelOptions } from './intel/index.js';
 import { createMeetingsService } from './meetings/index.js';
+import { createMessagesService } from './messages/index.js';
 import { createChatService } from './chat/index.js';
 import { createPrimer } from './primer/index.js';
 import { WebPushNotifier, createNotificationRouter, createNotifiers, type PushSender } from './notify/index.js';
@@ -233,6 +235,9 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const intel: IntelService = off ? off.intel : createIntelService(ctx, { files, usage, ccwLegacy }, { readOnly, ...opts.intel });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
+    // v0.15. Messages opens messages.db only while it is on; told --read-only, not wrapped: reads and the skip list
+    // work, the morning run (it spends quota) never runs.
+    const messages: MessagesService = off ? off.messages : createMessagesService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.10. Chat (replaces Ask) is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
     // Sessions reach it read only: the store's state and transcript pages, never the writer, terminal or hooks.
     // Life's per-device write limit is one budget: the api counts its routes on it, Chat a run's writes.
@@ -276,6 +281,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         life,
         intel,
         meetings,
+        messages,
         chat,
         panes,
         fleet,
@@ -302,6 +308,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       life,
       intel,
       meetings,
+      messages,
       chat,
       notifications,
       fleet,
@@ -331,6 +338,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
         ['life', life],
         ['intel', intel],
         ['meetings', meetings],
+        ['messages', messages],
         ['chat', chat],
         ...(primer ? ([['primer', primer]] as NamedService[]) : []),
         ['notifications', notifications],

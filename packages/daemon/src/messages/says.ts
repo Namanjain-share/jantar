@@ -1,0 +1,57 @@
+/**
+ * What Messages says (0.15): fixed sentences, never a name, a number or a
+ * message. The phone, the CLI and `jantar mcp` show them as they are.
+ *
+ * A reader failure the owner can fix is 503 messages_unavailable with one of
+ * these (readerSays); `not_found` and `bad_request` are the caller's 404 and
+ * 400, not here.
+ */
+import type { ReaderError } from './reader-protocol.js';
+
+/** "Messages can't read WhatsApp right now: {reason}. At the Mac: jantar messages status" (Review Focus 5). */
+export function cantRead(reason: string): string {
+  return `Messages can't read WhatsApp right now: ${reason}. At the Mac: jantar messages status`;
+}
+
+export const MESSAGES_SAYS = {
+  down: cantRead("the reader isn't running"),
+  noAccess: "Messages can't read WhatsApp right now: Full Disk Access is missing for jantar-messages-reader. At the Mac: jantar messages setup",
+  unsupported: 'This WhatsApp version stores chats differently; Messages needs an update.',
+  updateNeeded: 'The reader changed in this release. At the Mac: jantar messages setup, then re-grant Full Disk Access.',
+  skipRemoveMacOnly: 'Removing a chat from the skip list is done at the Mac: jantar messages skip remove <chat>',
+  off: 'Messages is off. At the Mac: jantar messages on',
+  // Status details.
+  notInstalled: "The reader isn't set up on this Mac. At the Mac: jantar messages setup",
+  noWhatsApp: "WhatsApp for Mac isn't on this Mac, or isn't linked to a phone yet.",
+  contacts: "Messages can't read WhatsApp right now: macOS refused WhatsApp's contact files (ContactsV2.sqlite, LID.sqlite) to the reader. At the Mac: jantar messages setup",
+  closed: 'WhatsApp is closed: open it on the Mac so Messages can read the newest messages.',
+  skipBroken: "The skip list file won't read, so Messages reads nothing until it is written again (turn Messages off and on at the Mac).",
+  // Answers.
+  busy: cantRead('WhatsApp is busy or closed'),
+  timeout: cantRead('WhatsApp took too long to answer'),
+  noImage: cantRead("jantar-media couldn't shrink the image (it needs Command Line Tools)"),
+  skipWrite: "The skip list couldn't be saved; nothing changed. At the Mac: jantar messages status",
+  noMirror: cantRead("the skip list couldn't be written for the reader"),
+  notAChat: 'No chat with that id (it may be skipped already, or gone).',
+  notSkipped: "That chat isn't on the skip list.",
+} as const;
+
+/** The sentence for a reader failure the owner can fix (503), or null for the caller's own 404 or 400. */
+export function readerSays(code: ReaderError | 'down'): string | null {
+  switch (code) {
+    case 'down':
+      return MESSAGES_SAYS.down;
+    case 'no_access':
+      return MESSAGES_SAYS.noAccess;
+    case 'unsupported':
+      return MESSAGES_SAYS.unsupported;
+    case 'busy':
+      return MESSAGES_SAYS.busy;
+    case 'timeout':
+      return MESSAGES_SAYS.timeout;
+    case 'not_found':
+    case 'bad_request':
+    case 'skipped':
+      return null;
+  }
+}

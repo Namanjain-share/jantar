@@ -173,6 +173,26 @@ import type {
 } from '@jantar/protocol';
 import type { NodeCallActor, NodeCallReply, NodeCallRequest, NodeRouteName, NodeSnapshot } from '@jantar/protocol/node-link';
 import type {
+  CallsToReturnResponse,
+  DraftState,
+  MessageKind,
+  MessagesAmbiguous,
+  MessagesChatsQuery,
+  MessagesChatsResponse,
+  MessagesPrefs,
+  MessagesReadQuery,
+  MessagesReadResponse,
+  MessagesSearchQuery,
+  MessagesSearchResponse,
+  MessagesStatus,
+  MessagesTodayResponse,
+  MorningRun,
+  MorningTrigger,
+  ReadLogEntry,
+  ReadVia,
+  SkipEntry,
+} from '@jantar/protocol/messages';
+import type {
   FolderClientResponse,
   ProjectHub,
   SearchItem,
@@ -394,6 +414,20 @@ export interface Paths {
    * holds only Ask's prompt copy and its empty work dir).
    */
   chatDir: string;
+  /**
+   * v0.15: jantar-messages-reader's state dir, <home>/messages (0700): its
+   * salt, spool/ (a message's file, copied for the daemon) and bin/ (the
+   * reader, built by `jantar messages setup`), which the reader keeps; the
+   * daemon writes skip.json there (the skip list's mirror, 0600) and runs
+   * jantar-media's image jobs in jobs/.
+   */
+  messagesDir: string;
+  /** v0.15: Messages' own database, <home>/messages.db (0600). Refused, never reset, when it will not open (messages/db.ts). Never backed up. */
+  messagesDb: string;
+  /** v0.15: the reader's socket, <runDir>/messages-reader.sock (0600; the reader answers only its own uid). */
+  messagesReaderSock: string;
+  /** v0.15: the installed reader, <messagesDir>/bin/jantar-messages-reader, with its build key beside it (<bin>.key: sha256 of its source). */
+  messagesReaderBin: string;
   /** v0.6: the hub's Fleet files, <home>/fleet (0700, made by the first `jantar fleet on`). */
   fleetDir: string;
   /** v0.6: the hub's Ed25519 key, <home>/fleet/hub-key.pem (PKCS8, 0600). Only its public half ever leaves the Mac (in join lines). */
@@ -2503,6 +2537,69 @@ export interface MeetingsService extends Service {
 }
 
 // ===========================================================================
+// v0.15: Messages
+//
+// One daemon part, `messages` (messages/index.ts, service.ts), with its own
+// database (messages.db: refused, never reset, when it will not open; opened
+// only while Messages is on) and a client for jantar-messages-reader, the one
+// program that opens WhatsApp's files (its own LaunchAgent, on
+// paths.messagesReaderSock). The reader enforces the skip list, which the
+// daemon keeps in messages.db and mirrors to <messagesDir>/skip.json.
+// Reads answer the reader's data or throw its ReaderFailure (messages/
+// reader-client.ts: `down` or the reader's error code); the routes turn one
+// into the sentence. Nothing here logs, emits or audits message text, a
+// name, a number or a WhatsApp id: logs and the read log carry chat keys,
+// message keys and counts.
+
+/** Who read: `jantar mcp` (its caller's pid and folder, advisory: the folder is kept as a basename), the CLI, the phone or the morning run. */
+export type ReadBy = { via: ReadVia; pid?: number; folder?: string };
+
+/** A message's file: an image shrunk by jantar-media to a JPEG with no metadata, or anything else by name, size and kind only. */
+export type MessagesMediaAnswer = { jpeg: Buffer } | { document: { fileName?: string; bytes: number; kind: MessageKind } };
+
+/** The morning run (messages/morning/). One run at a time; refused under --read-only. */
+export interface MorningApi {
+  prefs(): MessagesPrefs;
+  setPrefs(p: Partial<MessagesPrefs>, actor: Actor): LifeResult;
+  run(opts: { trigger: MorningTrigger }): Promise<MorningRun>;
+  today(): MessagesTodayResponse;
+  setDraft(id: string, state: DraftState, actor: Actor): LifeResult;
+  undo(runId: string, actor: Actor): LifeResult;
+  last(): MorningRun | null;
+}
+
+/**
+ * The Messages part. `status()` and `broken()` never throw. Every read is
+ * logged (messages.db `reads`: via, the MCP caller's pid and folder, the op,
+ * the chat key, a count) and answers with `phone` on 1:1 chats; the ctl
+ * routes drop it. While messages.db is closed (off) or broken the reads,
+ * the skip list and the read log throw ApiError messages_unavailable.
+ */
+export interface MessagesService extends Service {
+  status(): Promise<MessagesStatus>;
+  /** Cheap and never throws: MESSAGES_BROKEN_REASON while messages.db will not open, else null. */
+  broken(): string | null;
+  chats(q: MessagesChatsQuery, by: ReadBy): Promise<MessagesChatsResponse>;
+  read(chatKey: string, q: MessagesReadQuery, by: ReadBy): Promise<MessagesReadResponse>;
+  /** A name two or more chats share answers the candidates (the newest 20) and how many matched, never one picked. */
+  readByName(name: string, q: MessagesReadQuery, by: ReadBy): Promise<MessagesReadResponse | MessagesAmbiguous>;
+  search(q: MessagesSearchQuery, by: ReadBy): Promise<MessagesSearchResponse>;
+  media(msgKey: string, by: ReadBy): Promise<MessagesMediaAnswer>;
+  /** Missed incoming WhatsApp and phone calls of the last MESSAGES_LIMITS.waitingDays not followed by a message or a call to that person, newest first. */
+  callsToReturn(by: ReadBy): Promise<CallsToReturnResponse>;
+  readonly skip: {
+    list(): SkipEntry[];
+    /** Name and kind from the reader; already skipped is ok; a chat the reader doesn't show is not_found. */
+    add(chatKey: string, actor: Actor): Promise<LifeResult>;
+    /** The Mac's CLI only (`forbidden` for anyone else: a phone never widens what Jantar reads). */
+    remove(chatKey: string, actor: Actor): LifeResult;
+  };
+  /** The read log, newest first. */
+  reads(limit: number): ReadLogEntry[];
+  readonly morning: MorningApi;
+}
+
+// ===========================================================================
 // v0.10: Chat (replaces v0.5.3's Ask; spec 0.10 H, proposed)
 
 /**
@@ -2791,6 +2888,8 @@ export interface Parts {
   intel: IntelService;
   /** v0.5 */
   meetings: MeetingsService;
+  /** v0.15 */
+  messages: MessagesService;
   /** v0.10 (replaces v0.5.3's ask) */
   chat: ChatService;
   notifications: NotificationRouter;
@@ -2873,6 +2972,8 @@ export interface Factories {
   intel: Factory<IntelService, { files: FilesService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
+  /** v0.15 (messages/index.ts createMessagesService also takes `{ readOnly }`). `life`: the morning run's todos; `usage` and `ccwLegacy`: its account. */
+  messages: Factory<MessagesService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   /**
    * v0.10 (spec 0.10 B7.4). Only these: Life, Intel's list, get, read,
    * remove, reread and jobs, Meetings' library, summaries, status and
