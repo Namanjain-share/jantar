@@ -7,7 +7,8 @@
  * - Only lines with something in them: system, reaction and deleted lines
  *   and a skipped person's placeholders go. Each line is cut at
  *   perMessageChars (chat/text.ts cut(): never inside a surrogate pair);
- *   a non-text line is a short mark ("[image: invoice]", "[voice 0:42]").
+ *   a non-text line is a short mark ("[image: invoice]", "[voice 0:42]":
+ *   input.ts lineBody).
  * - Filled in this order, each step newest first, until the next piece
  *   doesn't fit; nothing after it goes in, so a lower tier never takes the
  *   place of a higher one:
@@ -23,12 +24,15 @@
  *   chat's `left`; `dropped` every chat with new lines left out, most first.
  *
  * The estimate counts each line in input.ts's markup at its longest (ids,
- * times, attributes), plus HEADER_TOKENS for the lines before the first chat.
+ * times, attributes), its name and text escaped as input.ts writes them (a
+ * "<m" in a line costs its "<\m", a quote in a name its &quot;), plus
+ * HEADER_TOKENS for the lines before the first chat.
  */
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { ChatOwner, Message } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
-import { aboutMe, isContent, ownerKeys, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { aboutMe, isContent, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { dataName, dataText, fromOf, lineBody } from './input.js';
 
 /** The estimate's rate: a token per this many UTF-8 bytes. */
 export const BYTES_PER_TOKEN = 3;
@@ -48,74 +52,18 @@ export interface Dropped {
 }
 
 // input.ts's markup at its longest, for the estimate.
-const LINE_FRAME = '<m id="m00000" at="Wed 2026-11-11 00:00" from="" to_me="yes" reply="m00000"></m>\n';
+const LINE_FRAME = '<m id="m00000" at="Wed 2026-11-11 00:00" from="" by_user="yes" to_me="yes" reply="m00000"></m>\n';
 const CHAT_FRAME = '<chat id="c0000" name="" kind="community" waiting="yes" members="00000" archived="yes" left="000000">\n</chat>\n';
 const CALL_FRAME = '<call id="k00000" at="Wed 2026-11-11 00:00" who="" via="whatsapp" missed="yes" video="yes" chat="c0000"/>\n';
-/** A mark's own characters: "[", ": " and "]". */
-const MARK_CHARS = 4;
-const MINUTE_S = 60;
-const HOUR_S = 3_600;
-
-/** "0:42", "1:02:05". */
-function clock(seconds: number): string {
-  const s = Math.floor(seconds);
-  const two = (n: number) => String(n).padStart(2, '0');
-  const h = Math.floor(s / HOUR_S);
-  const m = Math.floor((s % HOUR_S) / MINUTE_S);
-  return h > 0 ? `${h}:${two(m)}:${two(s % MINUTE_S)}` : `${m}:${two(s % MINUTE_S)}`;
-}
-
-/** "[head]" or "[head: detail]", the detail cut so the whole stays within perMessageChars. */
-function mark(head: string, detail: string | undefined): string {
-  return detail ? `[${head}: ${cut(detail, MESSAGES_LIMITS.perMessageChars - head.length - MARK_CHARS)}]` : `[${head}]`;
-}
-
-/**
- * A line as the model reads it: its text, or a mark for what it holds
- * ("[image: caption]", "[voice 0:42]", "[document: name.pdf]",
- * "[location]", "[contact]", "[sticker]"), at most perMessageChars.
- */
-export function lineBody(m: Message): string {
-  const text = m.text?.trim() || undefined;
-  const caption = m.caption?.trim() || undefined;
-  const timed = (head: string) => (m.media?.durationS ? `${head} ${clock(m.media.durationS)}` : head);
-  let body: string;
-  switch (m.kind) {
-    case 'text':
-    case 'link':
-      body = text ?? '[message]';
-      break;
-    case 'video':
-    case 'voice':
-      body = mark(timed(m.kind), caption ?? text);
-      break;
-    case 'document':
-      body = mark(m.kind, m.media?.fileName?.trim() || caption || text);
-      break;
-    case 'image':
-    case 'gif':
-    case 'sticker':
-    case 'location':
-    case 'contact':
-    case 'poll':
-    case 'call':
-      body = mark(m.kind, caption ?? text);
-      break;
-    default:
-      body = text ?? '[message]';
-  }
-  return cut(body, MESSAGES_LIMITS.perMessageChars);
-}
-
 /** A line as kept: its text and caption cut at perMessageChars. */
 function trimmed(m: Message): Message {
   const max = MESSAGES_LIMITS.perMessageChars;
   return { ...m, ...(m.text !== undefined ? { text: cut(m.text, max) } : {}), ...(m.caption !== undefined ? { caption: cut(m.caption, max) } : {}) };
 }
 
-const lineTokens = (m: Message) => estimateTokens(LINE_FRAME + m.sender + lineBody(m));
-const chatTokens = (c: ChatOwner) => estimateTokens(CHAT_FRAME + c.name);
-const callTokens = (c: BatchCall) => estimateTokens(CALL_FRAME + c.who);
+const lineTokens = (m: Message) => estimateTokens(LINE_FRAME + fromOf(m) + dataText(lineBody(m)));
+const chatTokens = (c: ChatOwner) => estimateTokens(CHAT_FRAME + dataName(c.name));
+const callTokens = (c: BatchCall) => estimateTokens(CALL_FRAME + dataName(c.who));
 const isDm = (c: ChatOwner) => c.kind === 'dm';
 
 interface Plan {
@@ -134,10 +82,9 @@ interface Plan {
 
 /** The new lines of `p` (indexes in its pool) that mention or answer the owner, newest first, each with its window: itself, then one each side, two... */
 function windows(p: Plan): number[] {
-  const mine = ownerKeys(p.pool);
   const out: number[] = [];
   for (let a = p.pool.length - 1; a >= p.firstNew; a--) {
-    if (!aboutMe(p.pool[a]!, mine)) continue;
+    if (!aboutMe(p.pool[a]!)) continue;
     out.push(a);
     for (let d = 1; d <= MESSAGES_LIMITS.mentionWindow; d++) {
       if (a - d >= 0) out.push(a - d);

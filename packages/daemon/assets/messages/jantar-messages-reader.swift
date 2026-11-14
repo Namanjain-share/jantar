@@ -633,12 +633,13 @@ let PHONE_TABLES: [(String, [String])] = [("ZCALLRECORD", ["ZADDRESS", "ZDATE", 
 
 /// One line and what it points at, for every query that answers lines
 /// (lineOut reads these columns by index: 0-5 the line, 6-8 its parent,
-/// 9-14 its media, 15-17 its group sender, 18 its chat, 19 its place in it).
+/// 9-14 its media, 15-17 its group sender, 18 its chat, 19 its place in it,
+/// 20 whether its parent is the owner's).
 let LINE_SELECT = """
   SELECT m.Z_PK, m.ZISFROMME, m.ZMESSAGETYPE, m.ZMESSAGEDATE, m.ZSTANZAID, m.ZTEXT,
          p.Z_PK, p.ZSTANZAID, p.ZCHATSESSION,
          mi.Z_PK, mi.ZFILESIZE, mi.ZMOVIEDURATION, mi.ZMEDIALOCALPATH, mi.ZTITLE, mi.ZVCARDNAME,
-         gm.ZMEMBERJID, gm.ZCONTACTNAME, gm.ZFIRSTNAME, m.ZCHATSESSION, m.ZSORT
+         gm.ZMEMBERJID, gm.ZCONTACTNAME, gm.ZFIRSTNAME, m.ZCHATSESSION, m.ZSORT, p.ZISFROMME
   FROM ZWAMESSAGE m
   LEFT JOIN ZWAMESSAGE p ON p.Z_PK = m.ZPARENTMESSAGE
   LEFT JOIN ZWAMEDIAITEM mi ON mi.Z_PK = m.ZMEDIAITEM
@@ -647,6 +648,7 @@ let LINE_SELECT = """
   """
 let LINE_CHAT = Int32(18)
 let LINE_SORT = Int32(19)
+let LINE_PARENT_MINE = Int32(20)
 let LINE_MEDIA_PATH = Int32(12)
 
 /// A group's own names for its members (its member rows), by person.
@@ -787,6 +789,7 @@ struct MessageOut: Encodable {
   var caption: String?
   var media: MediaOut?
   var replyTo: String?
+  var replyToMe: Bool?
   var mentionsMe: Bool?
   var skippedSender: Bool?
 }
@@ -1539,7 +1542,11 @@ final class Reader {
     }
     if let parentPk = q.intOrNil(6), let parentChat = q.intOrNil(8) {
       let parent: Session? = parentChat == s.pk ? s : w.byPk[parentChat].map { w.sessions[$0] }
-      if let ps = parent, ps.shown, !hide.hides(ps, w) { m.replyTo = msgKey(ps.key, q.text(7), parentPk) }
+      if let ps = parent, ps.shown, !hide.hides(ps, w) {
+        m.replyTo = msgKey(ps.key, q.text(7), parentPk)
+        // The morning run reads a reply to the owner as about him, wherever his line is.
+        if !fromMe, q.int(LINE_PARENT_MINE) == 1 { m.replyToMe = true }
+      }
     }
     return m
   }

@@ -88,7 +88,7 @@ export const FIXTURE_MEDIA = {
 } as const;
 
 export interface FixtureSpec {
-  /** Texts added to Group One before its own six, for the busy-group budget. */
+  /** Texts added to Group One before its own six, for the busy-group budget (the second answers the first). */
   extraMessages?: number;
   /** Message row ids start at 1, as after WhatsApp is re-linked; stanza ids stay. */
   renumberPk?: boolean;
@@ -371,6 +371,8 @@ class Store {
   }
 }
 
+const busyStanza = (n: number) => `3EB0FXB${String(n).padStart(6, '0')}`;
+
 function busyLines(count: number): FixtureMessage[] {
   const senders: MemberId[] = ['asha', 'ravi', 'neel'];
   const step = Math.max(1, Math.floor(EXTRA_SPAN_MS / Math.max(1, count)));
@@ -379,9 +381,11 @@ function busyLines(count: number): FixtureMessage[] {
     at: new Date(Date.parse(FIXTURE_SINCE) + i * step).toISOString(),
     fromMe: false,
     member: senders[i % senders.length]!,
-    stanza: `3EB0FXB${String(i + 1).padStart(6, '0')}`,
+    stanza: busyStanza(i + 1),
     type: WA_TYPE.text,
     text: `Busy line ${i + 1}`,
+    // The second answers the first: a reply, but not to the owner.
+    ...(i === 1 ? { replyTo: busyStanza(1) } : {}),
   }));
 }
 

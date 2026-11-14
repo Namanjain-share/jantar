@@ -2,13 +2,15 @@
  * The morning run's batch and budget (0.15 Messages):
  * - collect() takes the reader's lines since the last run (every page of a
  *   long one, a first or reset run keeping its firstRunHours window), the
- *   missed WhatsApp and iPhone calls since then (an iPhone log it may not
- *   read is left out quietly) and when the owner last wrote, and marks the
- *   1:1s waiting on him, each chat's tier and the calls he returned;
- * - budget() keeps what fits the token estimate (UTF-8 bytes / 3), filled
- *   in tier order: waiting 1:1s and the windows around lines that mention
- *   or answer the owner, other 1:1s, then groups, then busy groups' counts;
- *   system, reaction, deleted and skipped lines go; each line is cut at
+ *   missed WhatsApp and iPhone calls since then (a calls store it may not
+ *   or can no longer read is left out quietly) and when the owner last
+ *   wrote, and marks the 1:1s waiting on him, each chat's tier and the
+ *   calls he returned;
+ * - budget() keeps what fits the token estimate (UTF-8 bytes / 3, of the
+ *   lines as input.ts escapes them), filled in tier order: waiting 1:1s and
+ *   the windows around lines that mention or answer the owner (wherever his
+ *   line is), other 1:1s, then groups, then busy groups' counts; system,
+ *   reaction, deleted and skipped lines go; each line is cut at
  *   perMessageChars, never inside a surrogate pair.
  * The fixture's 5,000-line group runs on the real reader (skipped where
  * Swift can't build it); the rest on synthetic batches and the fake reader.
@@ -20,9 +22,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
-import { budget, estimateTokens, lineBody } from '../../src/messages/morning/budget.js';
+import { budget, estimateTokens } from '../../src/messages/morning/budget.js';
 import { collect, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
-import { morningInput } from '../../src/messages/morning/input.js';
+import { lineBody, morningInput } from '../../src/messages/morning/input.js';
 import { createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
 import { readerError, startFakeReader, type FakeHandlers } from './fake-reader.js';
 import { FIXTURE_NOW, makeWhatsAppFixture, type FixturePaths } from './fixture.js';
@@ -58,12 +60,14 @@ function lines(c: ChatOwner, n: number, o: Partial<Message> = {}, endAgo = 1): M
 function batchChat(c: ChatOwner, messages: Message[], o: { earlier?: Message[]; waiting?: boolean } = {}): BatchChat {
   const earlier = o.earlier ?? [];
   const waiting = o.waiting ?? false;
-  return { chat: c, messages, earlier, waiting, tier: tierOf(c, messages, earlier, waiting) };
+  return { chat: c, messages, earlier, waiting, tier: tierOf(c, messages, waiting) };
 }
 
 function batchOf(chats: BatchChat[], calls: BatchCall[] = []): Batch {
-  return { chats, calls, cursor: { pk: 1, at: ago(1) }, reset: false, newestAt: ago(1), phone: true };
+  return { chats, calls, cursor: { pk: 1, at: ago(1) }, reset: false, newestAt: ago(1), waCalls: true, phone: true };
 }
+
+const count = (text: string, re: RegExp) => (text.match(re) ?? []).length;
 
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
@@ -129,6 +133,11 @@ describe.skipIf(!bin)('the morning on the real reader', () => {
     const content = byKey.get(group)!.messages.filter((m) => m.kind !== 'system' && m.kind !== 'deleted');
     const anchors = content.flatMap((m, i) => (m.mentionsMe || m.replyTo === `${group}.3EB0FX0701` ? [i] : []));
     expect(anchors.map((i) => content[i]!.msgKey)).toEqual([`${group}.3EB0FX0702`, `${group}.3EB0FX0703`]);
+    expect(content[anchors[0]!]).toMatchObject({ replyTo: `${group}.3EB0FX0701`, replyToMe: true });
+    // The fixture's second busy line answers the first, not the owner.
+    const busyReply = content.find((m) => m.msgKey === `${group}.3EB0FXB000002`)!;
+    expect(busyReply.replyTo).toBe(`${group}.3EB0FXB000001`);
+    expect(busyReply).not.toHaveProperty('replyToMe');
     const windows = new Set(anchors.flatMap((i) => content.slice(Math.max(0, i - L.mentionWindow), i + L.mentionWindow + 1).map((m) => m.msgKey)));
     const g = kept.chats.find((c) => c.chat.chatKey === group)!;
     expect(g.messages.map((m) => m.msgKey).sort()).toEqual([...windows].sort());
@@ -167,7 +176,7 @@ describe('budget', () => {
     const smallLines = lines(small, 40);
     const mine = line(small, { fromMe: true, at: ago(5) });
     // A line answering the owner's, and one naming him.
-    smallLines[3] = line(small, { at: smallLines[3]!.at, replyTo: mine.msgKey });
+    smallLines[3] = line(small, { at: smallLines[3]!.at, replyTo: mine.msgKey, replyToMe: true });
     smallLines[12] = line(small, { at: smallLines[12]!.at, mentionsMe: true });
     const mediumLines = lines(medium, 25);
     const busyLines = lines(busy, 10);
@@ -246,6 +255,42 @@ describe('budget', () => {
     const back: BatchCall = { ...missed, callKey: callKey(2), via: 'phone', returned: true };
     const { kept } = budget(batchOf([batchChat(dm, lines(dm, 5))], [missed, back]), 300);
     expect(kept.calls).toEqual([missed]);
+  });
+
+  it('a reply to the owner is about him wherever his line is', () => {
+    const busy = chat(1, 'Busy Group', { kind: 'group', members: 150 });
+    const small = chat(2, 'Small Group', { kind: 'group', members: 4 });
+    const mine = line(busy, { fromMe: true, at: ago(30) });
+    const fresh = lines(busy, 60);
+    // One answers the owner's line in the batch, far outside its window; one a line of his from before the batch.
+    fresh[20] = line(busy, { at: fresh[20]!.at, replyTo: mine.msgKey, replyToMe: true });
+    fresh[50] = line(busy, { at: fresh[50]!.at, replyTo: `${busy.chatKey}.3EB0OLD1`, replyToMe: true });
+    // A reply to someone else is not about him.
+    fresh[35] = line(busy, { at: fresh[35]!.at, replyTo: fresh[34]!.msgKey });
+    const answered = line(small, { replyTo: `${small.chatKey}.3EB0OLD2`, replyToMe: true });
+    const chats = [batchChat(busy, [mine, ...fresh]), batchChat(small, [answered])];
+    expect(chats.map((c) => c.tier)).toEqual([4, 1]);
+
+    const { kept } = budget(batchOf(chats));
+    const pool = [mine, ...fresh];
+    const window = (i: number) => pool.slice(i - L.mentionWindow, i + L.mentionWindow + 1);
+    const g = kept.chats.find((c) => c.chat.chatKey === busy.chatKey)!;
+    expect(g.messages).toEqual([...window(21), ...window(51)]);
+    // The model reads both as answering the owner, though his line is not shown.
+    const { text } = morningInput(kept, { now: NOW, tz: 'Asia/Kolkata', ownerName: 'me' });
+    expect(count(text, /to_me="yes"/g)).toBe(3);
+    expect(text).not.toContain('by_user="yes"');
+  });
+
+  it('tag-heavy lines stay within the budget once escaped', () => {
+    // Every "<m" escapes to "<\m", every quote in a name to &quot;: the estimate counts them as written.
+    const chats = Array.from({ length: 200 }, (_, i) => {
+      const dm = chat(i + 1, `Asha ${'"'.repeat(20)} Test ${i}`);
+      return batchChat(dm, lines(dm, 2, { text: '<m'.repeat(L.perMessageChars / 2) }), { waiting: true });
+    });
+    const { kept, dropped } = budget(batchOf(chats));
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(estimateTokens(morningInput(kept, { now: NOW, tz: 'Asia/Kolkata', ownerName: 'me' }).text)).toBeLessThanOrEqual(L.morningTokens);
   });
 
   it('budget counts devanagari by bytes', () => {
@@ -374,6 +419,7 @@ describe('collect', () => {
     expect(batch.reset).toBe(false);
     expect(batch.newestAt).toBe(b2.at);
     expect(batch.phone).toBe(false);
+    expect(batch.waCalls).toBe(true);
     // Asha's call came after her last message from the owner; Ravi's was returned by the owner's call.
     expect(batch.calls.map((c) => [c.callKey, c.returned])).toEqual([
       [callKey(1), false],
@@ -419,6 +465,55 @@ describe('collect', () => {
     expect(reset.chats[0]).toMatchObject({ waiting: false, tier: 2 });
   });
 
+  it('collect leaves out a calls source it cannot read, and fails on anything else', async () => {
+    const a1 = line(a, { at: ago(2) });
+    const feed = () => ({ chats: [{ chat: a, messages: [a1], earlier: [] }], nextCursor: { pk: 5, at: a1.at }, truncated: false, reset: false });
+    const lastFromMe = () => ({ [a.chatKey]: null });
+
+    // Both call stores changed shape (a WhatsApp or iOS update): the lines still come.
+    const changed = await readerWith({
+      newSince: feed,
+      waCalls: () => {
+        throw readerError('unsupported', 'CallHistory.sqlite lacks a column');
+      },
+      phoneCalls: () => {
+        throw readerError('unsupported', 'the iPhone call log lacks a column');
+      },
+      lastFromMe,
+    });
+    const both = await collect(changed.client, null, NOW);
+    expect(both).toMatchObject({ calls: [], waCalls: false, phone: false });
+    expect(both.chats.map((c) => [c.chat.name, c.waiting])).toEqual([['Asha Test', true]]);
+
+    client!.close();
+    await closers.pop()!();
+    // WhatsApp's refused, the iPhone's read.
+    const refused = await readerWith({
+      newSince: feed,
+      waCalls: () => {
+        throw readerError('no_access', 'macOS refused CallHistory.sqlite to the reader');
+      },
+      phoneCalls: () => ({ calls: [call(1, a, 3, { via: 'phone' })] }),
+      lastFromMe,
+    });
+    const phoneOnly = await collect(refused.client, null, NOW);
+    expect(phoneOnly).toMatchObject({ waCalls: false, phone: true });
+    expect(phoneOnly.calls.map((c) => [c.callKey, c.via])).toEqual([[callKey(1), 'phone']]);
+
+    client!.close();
+    await closers.pop()!();
+    // Anything else (WhatsApp closed, a deadline) fails the run, to be tried again.
+    const busy = await readerWith({
+      newSince: feed,
+      waCalls: () => {
+        throw readerError('busy', 'CallHistory.sqlite is closed for now');
+      },
+      phoneCalls: () => ({ calls: [] }),
+      lastFromMe,
+    });
+    await expect(collect(busy.client, null, NOW)).rejects.toMatchObject({ code: 'busy' });
+  });
+
   it('collect with nothing new is an empty batch', async () => {
     const { client } = await readerWith({
       newSince: () => ({ chats: [], nextCursor: { pk: 3, at: ago(30) }, truncated: false, reset: false }),
@@ -426,6 +521,6 @@ describe('collect', () => {
       phoneCalls: () => ({ calls: [] }),
       lastFromMe: () => ({}),
     });
-    expect(await collect(client, { pk: 3, at: ago(30) }, NOW)).toEqual({ chats: [], calls: [], cursor: { pk: 3, at: ago(30) }, reset: false, newestAt: null, phone: true });
+    expect(await collect(client, { pk: 3, at: ago(30) }, NOW)).toEqual({ chats: [], calls: [], cursor: { pk: 3, at: ago(30) }, reset: false, newestAt: null, waCalls: true, phone: true });
   });
 });

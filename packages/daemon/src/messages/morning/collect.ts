@@ -9,24 +9,27 @@
  *   to the reader any later page is a cursor, which reads guardHours back.
  *   At most NEW_PAGES_MAX pages: the rest waits for the next run.
  * - Calls: WhatsApp's and the iPhone's from the stored cursor's time (at
- *   most guardHours back; a first or reset run, firstRunHours). An iPhone
- *   call log the reader may not open (no Full Disk Access) is left out
- *   quietly, with `phone: false`. Only missed incoming calls are kept, each
- *   marked `returned` (missedCalls).
+ *   most guardHours back; a first or reset run, firstRunHours). A call store
+ *   the reader may not open (the iPhone's without Full Disk Access) or no
+ *   longer reads (`unsupported`: a WhatsApp or iOS update changed it) is
+ *   left out quietly, with `waCalls: false` or `phone: false` for the run's
+ *   report, so the lines still make todos; anything else fails the run.
+ *   Only missed incoming calls are kept, each marked `returned` (missedCalls).
  * - `waiting`: a 1:1 whose last line in the batch is theirs, within
  *   waitingDays, with nothing from the owner to that person since (under
  *   either of their ids: the reader's lastFromMe).
  * - `tier` (budget.ts fills in its order): 1 a waiting 1:1, or a group with
- *   a new line that mentions or answers the owner; 2 any other 1:1; 3 any
- *   other group; 4 a busy group (busyGroupMessages new lines, or
- *   busyGroupMembers members, or archived).
+ *   a new line that mentions or answers the owner (the reader's mentionsMe
+ *   and replyToMe, wherever his line is); 2 any other 1:1; 3 any other
+ *   group; 4 a busy group (busyGroupMessages new lines, or busyGroupMembers
+ *   members, or archived).
  *
  * Nothing here logs: the batch holds other people's words.
  */
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
 import { ReaderFailure, type ReaderClient } from '../reader-client.js';
-import type { ReaderCursor, ReaderNewSince } from '../reader-protocol.js';
+import type { ReaderCursor, ReaderError, ReaderNewSince } from '../reader-protocol.js';
 
 /** Where the morning feed got to (stored after a run that went well). */
 export type Cursor = ReaderCursor;
@@ -48,13 +51,18 @@ export interface BatchChat {
 /** A missed incoming call; `returned`: the owner wrote or called that person since, or a call with them connected. */
 export type BatchCall = Call & { returned: boolean };
 
-/** Chats newest first, calls oldest first. `newestAt`: the newest line's time (null with none); `phone`: the iPhone call log was read. */
+/**
+ * Chats newest first, calls oldest first. `newestAt`: the newest line's
+ * time (null with none); `waCalls`, `phone`: WhatsApp's calls, the iPhone
+ * call log were read.
+ */
 export interface Batch {
   chats: BatchChat[];
   calls: BatchCall[];
   cursor: Cursor;
   reset: boolean;
   newestAt: string | null;
+  waCalls: boolean;
   phone: boolean;
 }
 
@@ -68,20 +76,17 @@ const DAY_MS = 86_400_000;
 const KEYS_PER_ASK = 500;
 /** Kinds that carry nothing to read (the reader sends them without text). */
 const SILENT_KINDS: ReadonlySet<Message['kind']> = new Set(['system', 'reaction', 'deleted']);
+/** A calls store failing so is left out of the run; any other failure fails it. */
+const CALLS_LEFT_OUT: ReadonlySet<ReaderError | 'down'> = new Set(['no_access', 'unsupported']);
 
 /** A line with something in it: not a system, reaction or deleted line, nor a skipped person's. */
 export function isContent(m: Message): boolean {
   return !SILENT_KINDS.has(m.kind) && m.skippedSender !== true;
 }
 
-/** Someone else's line that mentions the owner or answers one of his (`mine`: his lines' keys). */
-export function aboutMe(m: Message, mine: ReadonlySet<string>): boolean {
-  return !m.fromMe && (m.mentionsMe === true || (m.replyTo !== undefined && mine.has(m.replyTo)));
-}
-
-/** The owner's lines' keys among `lines`. */
-export function ownerKeys(lines: readonly Message[]): Set<string> {
-  return new Set(lines.filter((m) => m.fromMe).map((m) => m.msgKey));
+/** Someone else's line that mentions the owner or answers one of his (the reader marks both). */
+export function aboutMe(m: Message): boolean {
+  return !m.fromMe && (m.mentionsMe === true || m.replyToMe === true);
 }
 
 const isDm = (c: ChatOwner) => c.kind === 'dm';
@@ -95,12 +100,11 @@ export function isBusy(chat: ChatOwner, newLines: number): boolean {
 }
 
 /** The chat's tier (see the file comment). */
-export function tierOf(chat: ChatOwner, messages: readonly Message[], earlier: readonly Message[], waiting: boolean): Tier {
+export function tierOf(chat: ChatOwner, messages: readonly Message[], waiting: boolean): Tier {
   if (isDm(chat)) return waiting ? 1 : 2;
   const fresh = messages.filter(isContent);
   if (isBusy(chat, fresh.length)) return 4;
-  const mine = ownerKeys([...earlier, ...messages]);
-  return fresh.some((m) => aboutMe(m, mine)) ? 1 : 3;
+  return fresh.some(aboutMe) ? 1 : 3;
 }
 
 /** A 1:1 whose last line is theirs, within waitingDays, unanswered (`wroteAt`: the owner's last line to that person). */
@@ -134,6 +138,16 @@ export function missedCalls(calls: readonly Call[], wrote: Readonly<Record<strin
     });
 }
 
+/** One calls store's calls since `since`; `read: false` when it is left out (CALLS_LEFT_OUT). */
+async function callsFrom(reader: ReaderClient, op: 'waCalls' | 'phoneCalls', since: string): Promise<{ calls: Call[]; read: boolean }> {
+  try {
+    return { calls: (await reader.call(op, { since })).calls, read: true };
+  } catch (e) {
+    if (e instanceof ReaderFailure && CALLS_LEFT_OUT.has(e.code)) return { calls: [], read: false };
+    throw e;
+  }
+}
+
 /** lastFromMe for `keys`, KEYS_PER_ASK at a time. */
 async function lastFromMe(reader: ReaderClient, keys: readonly string[]): Promise<Record<string, string | null>> {
   const wrote: Record<string, string | null> = {};
@@ -150,7 +164,7 @@ interface Gathered {
 
 /**
  * The batch since `cursor` (null: the first run), as of `now`. Throws the
- * reader's ReaderFailure, but for an iPhone call log it may not read.
+ * reader's ReaderFailure, but for a calls store it may not or can't read.
  */
 export async function collect(reader: ReaderClient, cursor: Cursor | null, now: Date): Promise<Batch> {
   const L = MESSAGES_LIMITS;
@@ -183,15 +197,8 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
 
   const fromMs = cursor === null || reset ? nowMs - L.firstRunHours * HOUR_MS : Math.max(Date.parse(cursor.at), nowMs - L.cursorGuardHours * HOUR_MS);
   const since = new Date(fromMs).toISOString();
-  const wa = await reader.call('waCalls', { since });
-  let phone = true;
-  const iphone = await reader.call('phoneCalls', { since }).catch((e: unknown) => {
-    if (e instanceof ReaderFailure && e.code === 'no_access') {
-      phone = false;
-      return { calls: [] as Call[] };
-    }
-    throw e;
-  });
+  const wa = await callsFrom(reader, 'waCalls', since);
+  const iphone = await callsFrom(reader, 'phoneCalls', since);
   const calls = [...wa.calls, ...iphone.calls].filter((c) => Date.parse(c.at) >= fromMs).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
   const gathered = [...chats.values()];
@@ -203,7 +210,7 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
   ranked.sort((a, b) => b.last.ms - a.last.ms);
   const out: BatchChat[] = ranked.map(({ g }) => {
     const waiting = isWaiting(g.chat, g.messages, wrote[g.chat.chatKey], nowMs);
-    return { chat: g.chat, messages: g.messages, earlier: g.earlier, waiting, tier: tierOf(g.chat, g.messages, g.earlier, waiting) };
+    return { chat: g.chat, messages: g.messages, earlier: g.earlier, waiting, tier: tierOf(g.chat, g.messages, waiting) };
   });
 
   return {
@@ -212,7 +219,8 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
     cursor: page.nextCursor,
     reset,
     newestAt: ranked[0]?.last.at ?? null,
-    phone,
+    waCalls: wa.read,
+    phone: iphone.read,
   };
 }
 

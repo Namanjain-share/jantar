@@ -222,7 +222,10 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     const line = (stanza: string) => res.messages.find((m) => m.msgKey === groupLine(key, stanza));
 
     expect(line('3EB0FX0701')).toMatchObject({ fromMe: true, sender: 'Me', kind: 'text', text: 'Agenda for Saturday is in the doc.' });
-    expect(line('3EB0FX0702')).toMatchObject({ fromMe: false, sender: 'Asha Test', kind: 'text', replyTo: groupLine(key, '3EB0FX0701') });
+    // A reply to one of the owner's lines says so; his own line and a mention don't.
+    expect(line('3EB0FX0702')).toMatchObject({ fromMe: false, sender: 'Asha Test', kind: 'text', replyTo: groupLine(key, '3EB0FX0701'), replyToMe: true });
+    expect(line('3EB0FX0701')).not.toHaveProperty('replyToMe');
+    expect(line('3EB0FX0703')).not.toHaveProperty('replyToMe');
     // FIXTURE_TEXT.mention is "@" + the owner's @lid digits.
     expect(line('3EB0FX0703')).toMatchObject({ sender: 'Ravi Test', text: '@Me can you check?', mentionsMe: true });
     const jpegBytes = statSync(join(paths.container, 'Message', FIXTURE_MEDIA.localPath)).size;
@@ -461,7 +464,7 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     const group = ReaderReadSchema.parse(await r.ok('read', { chatKey: groupKey, limit: 50 }));
     const hers = group.messages.find((m) => m.msgKey === groupLine(groupKey, '3EB0FX0702'))!;
     expect(hers).toMatchObject({ sender: '[skipped]', skippedSender: true, fromMe: false });
-    for (const field of ['text', 'caption', 'media', 'replyTo', 'mentionsMe']) expect(hers).not.toHaveProperty(field);
+    for (const field of ['text', 'caption', 'media', 'replyTo', 'replyToMe', 'mentionsMe']) expect(hers).not.toHaveProperty(field);
     expect(JSON.stringify(group)).not.toContain('Asha');
     expect(await r.call('read', { chatKey: ashaKey, limit: 50 })).toMatchObject({ ok: false, error: 'not_found' });
     expect(await r.call('readByName', { name: 'Asha Test', limit: 50 })).toMatchObject({ ok: false, error: 'not_found' });

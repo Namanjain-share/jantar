@@ -102,8 +102,10 @@ export type MessageMedia = z.infer<typeof MessageMediaSchema>;
 
 /**
  * One message. `sender` is the name the owner's contacts or WhatsApp give
- * ("Unknown" when none). A skipped person's line in a shared group has
- * `sender: "[skipped]"`, `skippedSender: true` and no text, caption or media.
+ * ("Unknown" when none). `replyTo`: the line it answers, when shown;
+ * `replyToMe`: that line is the owner's. A skipped person's line in a shared
+ * group has `sender: "[skipped]"`, `skippedSender: true` and no text,
+ * caption or media.
  */
 export const MessageSchema = z.object({
   msgKey: MsgKeySchema,
@@ -115,6 +117,7 @@ export const MessageSchema = z.object({
   caption: z.string().optional(),
   media: MessageMediaSchema.optional(),
   replyTo: MsgKeySchema.optional(),
+  replyToMe: z.literal(true).optional(),
   mentionsMe: z.boolean().optional(),
   skippedSender: z.literal(true).optional(),
 });
