@@ -21,11 +21,12 @@ import {
   type RouteDef,
   type RouteName as IndexRouteName,
 } from '@jantar/protocol';
+import { MESSAGES_ROUTES, type MessagesRouteName } from '@jantar/protocol/messages';
 import { WORK_ROUTES, type WorkRouteName } from '@jantar/protocol/work';
 
-/** Every owner route: the index's table and v0.13 Work's (the `@jantar/protocol/work` subpath). */
-type RouteName = IndexRouteName | WorkRouteName;
-const OWNER_ROUTES: Readonly<Record<RouteName, RouteDef>> = { ...ROUTES, ...WORK_ROUTES };
+/** Every owner route: the index's table, v0.13 Work's and 0.15 Messages' (the `@jantar/protocol/work` and `/messages` subpaths). */
+type RouteName = IndexRouteName | WorkRouteName | MessagesRouteName;
+const OWNER_ROUTES: Readonly<Record<RouteName, RouteDef>> = { ...ROUTES, ...WORK_ROUTES, ...MESSAGES_ROUTES };
 import { hashDeviceSecret } from '../../src/auth/devices.js';
 import { needsDeviceSecret } from '../../src/api/app.js';
 import { HOST, ORIGIN, bare, h, makeApi, makeCard, pairCookie, type TestApi } from './fakes.js';
@@ -151,6 +152,13 @@ describe('which routes need the device secret', () => {
         'workStagesUpdate',
         // 0.14.0: the switching rules' save (control scope)
         'patchSwitchRules',
+        // 0.15 Messages (control scope; removing a skip is refused over TCP anyway, after this check)
+        'messagesDraftUpdate',
+        'messagesMorningRun',
+        'messagesMorningUndo',
+        'messagesPrefsPatch',
+        'messagesSkipAdd',
+        'messagesSkipRemove',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

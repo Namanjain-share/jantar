@@ -5,8 +5,9 @@
  *   Host check -> device cookie (and, on `/v1/ext/` only, the extension
  *   key) -> scope -> Origin (writes and WS) -> device secret (control /
  *   launch / admin writes and WS) -> `localOnly` refusal -> feature switch
- *   (v0.3, v0.4, v0.5, v0.5.3) -> a broken life.db or meetings.db (503) -> zod
- *   validation -> Idempotency-Key -> handler -> audit (writes).
+ *   (v0.3, v0.4, v0.5, v0.5.3, 0.15) -> a broken life.db, meetings.db or
+ *   messages.db (503) -> zod validation -> Idempotency-Key -> handler ->
+ *   audit (writes).
  *   v0.5's `extension` routes swap the device steps for the extension's:
  *   a loopback peer and Host with no forwarding header, no device cookie,
  *   the key, the Origin bound to it, a per-extension request limit (the
@@ -266,7 +267,7 @@ export const EXTENSION_NOT_PAIRED = 'The Jantar extension is not paired. On your
 /** What a phone write on Meetings answers past V04_LIMITS.lifeWrite (Meetings share Life's per-device write limit). */
 export const MEETING_WRITES_LIMITED = 'Too many meeting changes from this device; try again in a minute';
 
-/** v0.5.3: what a phone write on Chat (Ask until 0.10) answers past V04_LIMITS.lifeWrite (it shares Life's per-device write limit). */
+/** v0.5.3: what a phone write on Chat (Ask until 0.10) answers past V04_LIMITS.lifeWrite (it shares Life's per-device write limit); 0.15: Messages' too. */
 export const ASK_WRITES_LIMITED = 'Too many changes from this device; try again in a minute';
 
 /** The origin a pairing claim must come from: the published extension's. */
@@ -330,6 +331,8 @@ export function featureOn(def: Pick<RouteDef, 'feature'>, settings: Settings): b
       return settings.meetings.enabled;
     case 'ask':
       return settings.ask.enabled;
+    case 'messages':
+      return settings.messages.enabled;
     default:
       return settingsFeatures(settings)[f];
   }
@@ -673,7 +676,7 @@ function forwardTarget(s: ApiServices, name: AnyRouteName, transport: Transport,
 /**
  * The pipeline's refusals that need no body: authentication, scope, Origin
  * and the device secret (gate, the extension's own gate included), `localOnly`,
- * the route's switch, a broken life.db or meetings.db, --read-only and
+ * the route's switch, a broken life.db, meetings.db or messages.db, --read-only and
  * --no-terminal. Throws ApiError. A `rawBody` route runs it in `preParsing`
  * (before its body is read) and again in the handler; every other route in
  * the handler. v0.6: returns the paired server the route goes to, or null:
@@ -711,6 +714,11 @@ function preBodyChecks(name: AnyRouteName, def: RouteDef, auth: RequestAuth, req
   if (def.feature === 'meetings') {
     const broken = s.deps.meetings.broken();
     if (broken !== null) throw new ApiError('meetings_unavailable', broken);
+  }
+  // 0.15: messages.db would not open (the file is untouched); the status sits behind no switch and still answers.
+  if (def.feature === 'messages') {
+    const broken = s.deps.messages.broken();
+    if (broken !== null) throw new ApiError('messages_unavailable', broken);
   }
   if (s.mode.readOnly && (READ_ONLY_REFUSED as ReadonlySet<string>).has(name)) throw new ApiError('forbidden', READ_ONLY_REASON);
   if (s.mode.terminal === 'off' && (NO_TERMINAL_REFUSED as ReadonlySet<string>).has(name)) throw new ApiError('not_implemented', NO_TERMINAL_REASON);
@@ -919,11 +927,12 @@ function registerRoute(app: FastifyInstance, s: ApiServices, transport: Transpor
             });
           }
         }
-        // v0.5: a phone's Meetings writes share that limit (the extension has its own, in the gate); v0.5.3: so do Ask's.
-        if (isWrite && (def.feature === 'meetings' || def.feature === 'ask') && auth.actor?.kind === 'device') {
+        // v0.5: a phone's Meetings writes share that limit (the extension has its own, in the gate); v0.5.3: so do Ask's;
+        // 0.15: so do Messages' (a skip, a draft, Run now, Undo, the times).
+        if (isWrite && (def.feature === 'meetings' || def.feature === 'ask' || def.feature === 'messages') && auth.actor?.kind === 'device') {
           const limited = s.lifeWriteLimiter.hit(actorName(auth));
           if (!limited.ok) {
-            const message = def.feature === 'ask' ? ASK_WRITES_LIMITED : MEETING_WRITES_LIMITED;
+            const message = def.feature === 'meetings' ? MEETING_WRITES_LIMITED : ASK_WRITES_LIMITED;
             throw new ApiError('rate_limited', message, { 'retry-after': String(Math.ceil(limited.retryAfterMs / 1000)) });
           }
         }

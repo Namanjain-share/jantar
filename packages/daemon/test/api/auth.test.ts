@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEVICE_COOKIE, ErrorBodySchema, ROUTES, type RouteDef, type RouteName as IndexRouteName } from '@jantar/protocol';
+import { MESSAGES_ROUTES, type MessagesRouteName } from '@jantar/protocol/messages';
 import { WORK_ROUTES, type WorkRouteName } from '@jantar/protocol/work';
 import { HOST, ORIGIN, h, makeApi, pairCookie, type TestApi } from './fakes.js';
 
-/** Every owner route: the index's table and v0.13 Work's (the `@jantar/protocol/work` subpath). */
-type RouteName = IndexRouteName | WorkRouteName;
-const OWNER_ROUTES: Readonly<Record<RouteName, RouteDef>> = { ...ROUTES, ...WORK_ROUTES };
+/** Every owner route: the index's table, v0.13 Work's and 0.15 Messages' (the `@jantar/protocol/work` and `/messages` subpaths). */
+type RouteName = IndexRouteName | WorkRouteName | MessagesRouteName;
+const OWNER_ROUTES: Readonly<Record<RouteName, RouteDef>> = { ...ROUTES, ...WORK_ROUTES, ...MESSAGES_ROUTES };
 
 const PARAMS: Record<string, string> = {
   sid: 'sess-aaaa-1111',

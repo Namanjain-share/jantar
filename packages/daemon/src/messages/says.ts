@@ -4,9 +4,12 @@
  *
  * A reader failure the owner can fix is 503 messages_unavailable with one of
  * these (readerSays); `not_found` and `bad_request` are the caller's 404 and
- * 400, not here.
+ * 400 (api/routes/messages.ts says noChat, noFile, tooBig or badAsk).
  */
+import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { ReaderError } from './reader-protocol.js';
+
+const MB = 1024 * 1024;
 
 /** "Messages can't read WhatsApp right now: {reason}. At the Mac: jantar messages status" (Review Focus 5). */
 export function cantRead(reason: string): string {
@@ -34,6 +37,11 @@ export const MESSAGES_SAYS = {
   noMirror: cantRead("the skip list couldn't be written for the reader"),
   notAChat: 'No chat with that id (it may be skipped already, or gone).',
   notSkipped: "That chat isn't on the skip list.",
+  // The routes' 404 and 400 (a skipped chat or sender is told as one that isn't there).
+  noChat: 'No chat with that name or id.',
+  noFile: 'No file for that message on this Mac.',
+  tooBig: `That file is over ${MESSAGES_LIMITS.mediaMaxBytes / MB} MB, too large to show.`,
+  badAsk: "The reader couldn't take that request.",
 } as const;
 
 /** The sentence for a reader failure the owner can fix (503), or null for the caller's own 404 or 400. */

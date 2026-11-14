@@ -357,6 +357,14 @@ export type MorningAnswer = z.infer<typeof MorningAnswerSchema>;
 // ---------------------------------------------------------------------------
 // Route table (owner-only: control scope, his host, never under /v1/p/)
 
+/**
+ * On ctl.sock, `jantar mcp` names its caller for the read log (advisory):
+ * `via: mcp`, the Claude session's pid, and its folder percent-encoded
+ * (encodeURIComponent; the log keeps the basename). Over TCP they are never
+ * read: a phone is the phone.
+ */
+export const MESSAGES_CALLER_HEADERS = { via: 'x-jantar-via', pid: 'x-jantar-pid', folder: 'x-jantar-folder' } as const;
+
 function route<T extends RouteDef>(r: T): T {
   return r;
 }
