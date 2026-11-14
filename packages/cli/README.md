@@ -25,7 +25,7 @@ jantar import-ccw-v2      copy a ccw-v2 state dir (the old name, ~/.ccw-v2) into
 Everything past the Board is off until switched on here, on the Mac. A
 phone can never change these settings (`files`, `folders`, `launch`,
 `rewrite`, `controls`, `screenshots`, `life`, `intel`, `accounts`,
-`meetings` and `ask` are Mac-only groups), so every "turn it on at your Mac"
+`meetings`, `ask` and (0.15) `messages` are Mac-only groups), so every "turn it on at your Mac"
 sentence the phone shows names one of these commands:
 
 ```
@@ -48,6 +48,7 @@ jantar accounts keep <n...>           keep accounts for other work: Auto, Rewrit
 jantar accounts prime on|off          start idle 5-hour windows early (cswap only; --kept for kept accounts too)
 jantar meetings on|off                Meetings from the Chrome extension (bare: the status; unpair)
 jantar meetings export <id|last|--all> [--out DIR]   a folder per meeting: meeting.md and shots/*.jpg
+jantar messages on|off                Messages (0.15): your WhatsApp, read only (status, setup, chats, read, search, calls, skip, morning)
 jantar ask on|off                     Ask: a chat page that suggests todos, reminders, food, money and posts (status)
 ```
 
@@ -66,7 +67,7 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `init [--yes]` | `config.json` only (accounts, launching, folders), after asking; through the daemon when one runs | nothing (it only looks for files and binaries) |
 | `install` | `~/.jantar/` (0700), `config.json` (`bins`: absolute paths found now), `~/.jantar/bin/jantar-hook`, `~/Library/LaunchAgents/com.jantar.daemon.plist`; refuses while ccw-v2's LaunchAgent is installed | `launchctl bootout` / `bootstrap` for `com.jantar.daemon` only |
 | `install --print` | nothing | nothing |
-| `uninstall [--purge]` | removes the plist (and `~/.jantar` with `--purge`, after a y/N) | `launchctl bootout` for `com.jantar.daemon` only |
+| `uninstall [--purge]` | removes the plist, and (0.15, a Mac) the Messages reader's (and `~/.jantar` with `--purge`, after a y/N) | `launchctl bootout` for `com.jantar.daemon` and `com.jantar.messages-reader` only |
 | `doctor` | nothing | `cswap --version` (profile env stripped), `pgrep -f "ccw --telegram"`, `tailscale status --json`, `tailscale serve status --json`; v0.6, with Fleet: `/usr/bin/pmset -g custom` at the Mac, and on a server `tmux -V`, `ps --version`, `loginctl show-user` (Linux) or `systeminfo` and `claude --version` (Windows) |
 | `hooks install` / `uninstall` | nothing, unless `--apply` (asks y/N) or `--yes`; then Claude's settings file, with a backup | nothing |
 | `remote setup --apply` | settings (`remote.publicUrl`, `allowedOrigins`) | `tailscale serve --bg --https=443 http://127.0.0.1:7420` |
@@ -76,6 +77,11 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `meetings export` | a new folder per meeting under `--out` (default: the current folder), 0700, holding `meeting.md` and `shots/*.jpg` (0600), read over `ctl.sock`; one meeting refuses a folder already there, `--all` leaves it as it is and goes on; times in Life's time zone when one is set, else the Mac's | nothing |
 | `meetings unpair` | revokes every paired extension key, through the daemon | nothing |
 | `ask on/off` | settings, through the daemon (or `config.json` while it is down); `on` says what goes to Claude and what stays on the Mac, `off` makes the daemon forget Ask's history (kept in its memory only) | nothing; with Ask on, the daemon runs one headless `claude -p` per message, on Rewrite's model |
+| `messages on/off` (0.15) | settings (`messages.enabled`), through the daemon (or `config.json` while it is down); `on` says what the morning run sends | nothing |
+| `messages setup` (0.15) | `~/.jantar/messages/bin/jantar-messages-reader` (0700) and its `.key`, only when missing or built from another release's source; `~/Library/LaunchAgents/com.jantar.messages-reader.plist` | `/usr/bin/xcode-select -p` and `/usr/bin/swiftc -O -swift-version 5 -lsqlite3` (only to build), `launchctl bootout` / `bootstrap` for `com.jantar.messages-reader` only, and `/usr/bin/open` at System Settings' Full Disk Access (only while the iPhone call log isn't readable) |
+| `messages status`, `chats`, `read`, `search`, `calls`, `skip list` (0.15) | nothing (the daemon logs each read: ids and counts) | nothing |
+| `messages skip add` / `remove` (0.15) | the skip list in `messages.db` and the reader's `skip.json`, through the daemon | nothing |
+| `messages morning --now` (0.15) | todos, call-backs and drafts, and the run's report, through the daemon (`--dry-run`: nothing) | nothing itself; the daemon runs one headless `claude -p` with no tools |
 | `pair --extension` | a one-time code in the daemon, printed as `jantar-ext:<port>:<code>` | nothing |
 | `life backup` / `restore` | a copy of `life.db` in `~/.jantar/backups` / `life.db` from a backup (the old one kept beside it), through the daemon | nothing |
 | `work on/off` | settings (`life.work`, and `life.todos` with `on`), through the daemon (or `config.json` while it is down) | nothing |

@@ -8,7 +8,7 @@
  *
  * Owner-only: every route here is a control route on his host. Removing a
  * chat from the skip list is not here at all: a phone never widens what
- * Jantar reads (the Mac's `jantar messages skip remove`), and the daemon
+ * Jantar reads (the Mac's `jantar messages skip remove <chat>`), and the daemon
  * refuses it over the network anyway. A blank search is left out of the
  * query (the daemon refuses an empty `q`).
  */

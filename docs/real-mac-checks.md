@@ -568,6 +568,30 @@ people hostname behind its Access app with the One-time PIN:
 | WK21 | Insights on the phone and the Mac with a made-up book in two currencies: each currency has its own cards, This FY starts on 1 April, and a period with nothing closed says "–", never 0 % | Insights (W36, W17) |
 | WK22 | A project's page: Add two milestones with days, tick one done; the summary says "1 of 2" and the next one; a day that passed shows as missed | milestones |
 
+### Messages (0.15)
+
+The suites run the real reader (built with `swiftc`) against a synthetic
+WhatsApp the tests make, with fake ids and invented names, and the
+daemon, the CLI, the MCP server and the phone screens against fakes. What
+only the real Mac, its WhatsApp and a real Claude Code can show is below.
+Reading a chat is the Mac's owner's to do: write down counts and yes or
+no only, never a name, a number or a word of a chat.
+
+| # | Check | What it settles |
+|---|---|---|
+| M1 | `jantar messages on`, then `jantar messages setup`: the reader builds once (setup again says it is already built), its LaunchAgent starts, and setup ends with the reader answering. Full Disk Access only if you want the iPhone call log, after reading [what the grant opens](../SECURITY.md#the-reader-and-full-disk-access): add the file setup prints, run setup again, and status says the call log reads | setup, the reader under launchd, the grant on the reader's file alone |
+| M2 | `jantar messages status`: the reader ok, WhatsApp found and running with its newest message minutes old, the skipped count; `jantar doctor` shows the reader's line | status |
+| M3 | `jantar messages chats`, then `read` of a chat you pick, by its name and by its id; a name two chats share lists both and exits 2 | reading |
+| M4 | `skip add` a chat you pick: it is gone from `chats`, `search` and `calls`; a person skipped by their 1:1 shows as [skipped] in a group you share; `skip remove` brings it back. The phone's skip list has no remove | the skip list |
+| M5 | `jantar mcp install` twice: the second says "Already in ~/.claude.json"; `jantar mcp status` shows it present. In a fresh `cswap run` session in a scratch window, `/mcp` lists `jantar`, and `messages_read` asks before it runs. In an auto-mode session, `messages_chats` asks too: note where the prompt shows (the Terminal only, or a card on the phone with the hooks) | the install reaching every account; the ask rule in every mode |
+| M6 | `jantar messages morning --dry-run`: the table makes sense, a time only where a message states one, and nothing is written (Life and Today unchanged) | the morning run's answer |
+| M7 | `jantar messages morning --now`: todos in the WhatsApp project, drafts on Today, call-backs at the right times, one push with counts only; Undo this morning takes them back. Then a morning time a few minutes ahead: it fires once, after WhatsApp is open and synced | the morning run for real, and its timer |
+| M8 | On an iPhone (Home Screen app) and an iPad: Today and Settings scroll with no sideways scroll; Open in WhatsApp opens the 1:1 with the draft typed in and sends nothing; Copy; Done and Dismiss, each with Undo | the phone screens |
+| M9 | **Done 14 November 2026.** Message type 14 is a revoked message ("This message was deleted"): its rows carry no message text (where the text column is set, it holds the id of whoever deleted it, which must never be shown), and none has a file on the Mac. The reader maps 14 to `deleted`, with no text. Left, optional: one of them in WhatsApp shows "This message was deleted" | `MESSAGE_KINDS` 14 |
+| M10 | **Measured 14 November 2026.** Group members' `@lid`s with no link to a number in `LID.sqlite` or `ContactsV2.sqlite`: many, mostly silent members of big groups, and a few among recent senders of group lines and among call participants. `ZWAGROUPMEMBER` has no number column to link them otherwise, so a skipped person can still show there. Still open, at setup: after skipping the 1:1 of someone who shares groups with you, count that their group lines show as [skipped] and that their calls are gone (counts only). If any slip through, a later reader can warn when a skipped person has no link | the skip list's `@lid` gap |
+| M11 | **Done 14 November 2026.** WhatsApp calls (`waCalls`) answer on the real Mac, from WhatsApp's real `CallHistory.sqlite` layout (one row per call, its attempts, the people on it), and nearly every call links to its chat | WhatsApp calls and call-backs |
+| M12 | With Full Disk Access on the reader: does the grant hold under launchd, and does a rebuilt reader (setup after an update that changed it) lose it? | the "re-grant Full Disk Access" sentence |
+
 ## iPad checks (0.12)
 
 0.12 was built and tested in Chromium (Playwright's iPad contexts: touch,

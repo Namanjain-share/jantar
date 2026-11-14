@@ -34,7 +34,7 @@ import { ReaderCursorSchema, type ReaderCursor } from './reader-protocol.js';
 
 /** What every messages route but the status answers (503 messages_unavailable) while messages.db will not open. */
 export const MESSAGES_BROKEN_REASON =
-  'Messages data could not be opened. The file is untouched. Move messages.db aside at your Mac to start again (jantar messages on makes a new one).';
+  'Messages data could not be opened. The file is untouched. To start again, move messages.db aside at your Mac and turn Messages off and on (the skip list is kept): jantar messages off, then jantar messages on.';
 
 /** messages.db, open: the same handle shape as life.db's (prepare, tx, meta, close). */
 export type MessagesDb = LifeDb;

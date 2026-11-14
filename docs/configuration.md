@@ -78,13 +78,19 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar intel jobs` | 0.8: the reads waiting, running and finished in the last day |
 | `jantar intel retry <id> [--depth D]` / `delete <id>` | 0.8: read an item again; delete a saved item and its pictures |
 | `jantar intel shortcut add [--name N] \| list \| revoke <id\|--all>` | 0.8: keys for the iOS Shortcut "Save to Jantar", made at the Mac only and shown once ([Shortcut](shortcut.md)) |
-| `jantar mcp` | the MCP server Claude Code sessions use for the shelf and their folder's todos; in a terminal it prints the `claude mcp add` line to paste ([MCP](intel.md#from-claude-code-mcp)) |
+| `jantar mcp` | the MCP server Claude Code sessions use for the shelf, their folder's todos and (0.15, Messages on) WhatsApp; in a terminal it prints how to add it ([MCP](intel.md#from-claude-code-mcp)) |
+| `jantar mcp install [--dry-run]` / `status` / `ask on \| off` | 0.15: add it once to `~/.claude.json` (cswap copies it into each account) with ask rules for the WhatsApp tools; which accounts have it; the ask rules ([Messages](messages.md#in-claude-code-sessions)) |
 | `jantar accounts` | one login or cswap, the kept accounts and the legacy ccw tool's hold list ([Accounts](accounts.md)) |
 | `jantar accounts keep <n...>` / `keep --none` | the accounts kept for other work |
 | `jantar accounts prime [on [--kept] \| off]` | prime idle 5-hour windows ([the primer](primer.md)) |
 | `jantar meetings [on \| off]` | Meetings from the Chrome extension ([Meetings](extension.md)) |
 | `jantar meetings export <id> \| last \| --all [--out DIR]` | a folder per meeting: `meeting.md` and `shots/*.jpg` |
 | `jantar meetings unpair` | revoke every paired extension |
+| `jantar messages [on \| off \| status]` | 0.15: [Messages](messages.md), your WhatsApp read only (`on` says what the morning run sends) |
+| `jantar messages setup` | build the WhatsApp reader (only when this release changed it), start its LaunchAgent, show where to add Full Disk Access (optional: the iPhone call log) |
+| `jantar messages chats \| read <name\|chat id> \| search <words> \| calls` | your chats, one chat, lines holding words, missed calls to return ([At the Mac](messages.md#at-the-mac)) |
+| `jantar messages skip list \| add <name\|chat id> \| remove <name\|chat id>` | the chats Messages never reads (removing only here, never from a phone) |
+| `jantar messages morning [--now \| --dry-run]` | the morning run now, or what it would make |
 | `jantar chat on \| off \| status` | Chat, which does what you ask across Jantar with Undo and asks before deleting ([Chat](assistant.md)); `off` hides it and closes the Siri door, the history stays; `status` names the models, the history on disk and the door |
 | `jantar chat clear [--broken] [--yes] \| keep <days> \| voice-model <m>` | delete the history (what it added stays); how long it is kept (`ask.keepDays`, 1-365, 30); the model a Siri question runs on (`ask.voiceModel`, `sonnet`) |
 | `jantar chat shortcut add \| list \| revoke <id\|--all> \| steps` | the Siri Shortcut's keys ([Ask Jantar with Siri](shortcut.md#ask-jantar-with-siri)); `add` only in your own Terminal, the key shown once |
@@ -190,6 +196,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `intel` | `enabled` (off), `sources` (up to 10 files); 0.8: `read` (off: reading saved links), `speechLocale` (`en-IN`) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |
+| `messages` | 0.15: `enabled` (off); the morning and call-back times live in `messages.db` (set on the phone) | the Mac (`jantar messages`) |
 | `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal); 0.8: `ytDlp` (optional) | the Mac |
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |
@@ -219,6 +226,7 @@ Everything Jantar keeps is in `~/.jantar` (or `JANTAR_HOME`), mode 0700:
 | `jantar.db` | events, the audit log, devices, push subscriptions, paired extensions, paired servers (their public keys only) |
 | `life.db`, `backups/` | Life, and its nightly copies (the newest 30) |
 | `meetings.db`, `meetings/` | Meetings' text, and the screenshots, a folder per meeting |
+| `messages.db`, `messages/` | 0.15: Messages' skip list, drafts, run reports and read log; the WhatsApp reader (`messages/bin/`), its salt and `skip.json` ([Messages](messages.md#what-messages-keeps)) |
 | `uploads/<session>/` | files sent from the phone, removed after 7 days |
 | `intel/captures.jsonl` | items added with `jantar intel add`, the phone, Add post, the Shortcut, Ask and Chat. 0.8: a read item's lines too (a later line with the same id replaces the earlier one); compacted on Delete and when most of the file is old lines; new saves refused past 50 MB |
 | `intel/bin/` | 0.8: `jantar-media`, the frames and speech helper built once from `assets/intel/jantar-media.swift` with Apple's Command Line Tools, and its cache key |

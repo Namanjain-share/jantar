@@ -58,6 +58,9 @@ jantar/
                          server (dispatcher.ts), the tools, the journal and the taps (tools.ts,
                          actions.ts, taps.ts), the run's input and the reply (input.ts, text.ts)
       src/mcp/rpc.ts     v0.10 the MCP JSON-RPC core shared by Chat's dispatcher and `jantar mcp`
+      src/messages/      0.15 Messages: the WhatsApp reader's client and protocol, messages.db, the
+                         skip list and its mirror, the service, and the morning run (morning/);
+                         the reader itself is assets/messages/jantar-messages-reader.swift
       src/link/          v0.6 the node link's library: Ed25519 keys and node.json (keys.ts), the
                          handshake, frames and bulks (codec.ts), backoff, join (pairWithHub), ws
       src/fleet/         v0.6 the hub's Fleet part: the link server (socket.ts), the registry of
@@ -1000,3 +1003,41 @@ when Save answers (`kit.css` gives a bottom sheet's `.sheet-actions` a
 320 × 568. The first load is 278.6 kB. The integration test's 02 has no
 five_hour in cswap's usage, and adds a 320 × 568 run: Esc, a scrim tap and
 a swipe down asking, and a refused Save with its reason and Save on screen.
+
+### v0.15.0 (unreleased)
+
+Messages: the owner's WhatsApp, read only. The protocol: the subpath
+`@jantar/protocol/messages` (`messages.ts`: keys, chats, messages, calls,
+the skip list, the morning run's answer, report and preview,
+`MESSAGES_ROUTES` at phase `v0.15`, `MESSAGES_CALLER_HEADERS`), and in the
+index the `messages` settings group (Mac only), the `messages` switch, the
+errors `messages_unavailable` (503) and `not_an_image` (415),
+`MESSAGES_LIMITS` and `TodoFromSchema`'s `messages`. The reader:
+`packages/daemon/assets/messages/jantar-messages-reader.swift`, one Swift
+file built on the Mac by `jantar messages setup` (`readerSourceKey` is its
+build key), the only code that opens WhatsApp's files; its wire format is
+`messages/reader-protocol.ts`. The daemon's `src/messages/`:
+`reader-client.ts` (one connection, requests by id), `db.ts` (messages.db,
+refused never reset, `secure_delete`), `skip.ts` (the table and its
+`skip.json` mirror), `media.ts` (pictures through Intel's `jantar-media`),
+`says.ts` (every sentence), `service.ts`, and `morning/` (`collect.ts`,
+`budget.ts`, `input.ts`, `run.ts` through the shared runner with no tools,
+`apply.ts`, `timer.ts`), with the prompt
+`assets/messages/morning-v1.md`; `api/routes/messages.ts`;
+`hooks/ask-rules.ts` (the ask rules, through the hooks installer's plan and
+guarded write). Chat: `fromSource` (`items.ts`) marks a todo from a meeting
+or WhatsApp, framed and tainting in `tools.ts`, and named by kind only in
+the "Looking at" line (`input.ts`). The CLI: `commands/messages.ts`, the
+reader's LaunchAgent in `lib/launchd.ts` (`READER_LABEL`), doctor's reader
+line, `uninstall` boots it out; `commands/mcp.ts`'s five WhatsApp tools,
+`install`, `status` and `ask`, and the slim entry `bin/jantar-mcp.mjs` with
+`src/mcp-main.ts`. The web: `ui/screens/messages/` (Today and Settings, in
+their own chunk). Tests: `packages/protocol/test/messages.test.ts`;
+`packages/daemon/test/messages/**` (`fixture.ts` writes a synthetic
+WhatsApp with fake ids, `reader-build.ts` compiles the real reader, skipped
+without `swiftc`; `fake-reader.ts` for the rest),
+`test/api/messages-routes.test.ts`, `test/hooks/ask-rules.test.ts`;
+`packages/cli/test/{messages,mcp-messages,mcp-install}.test.ts` and the
+sentences sweep (`jantar messages`); `packages/web/test/messages/**` and
+`test/integration/web-fixture-messages.ts` in the layout matrix.
+`scripts/check-secrets.mjs` gains `whatsapp-jid`.

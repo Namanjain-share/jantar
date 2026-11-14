@@ -4,7 +4,9 @@
 // Two kinds of checks:
 // 1. Generic patterns: private keys, API tokens, Telegram bot tokens, JWTs,
 //    OAuth token JSON, real e-mail addresses (anything outside the reserved
-//    example.* / .test / .invalid domains) and absolute macOS home paths.
+//    example.* / .test / .invalid domains), absolute macOS home paths and
+//    (0.15) WhatsApp ids: a number before @s.whatsapp.net or @lid, but the
+//    test fixtures' fakes (999 0000…, 91 999 0000…, 888 0000…).
 // 2. Personal terms (names, client folders, account aliases). They are never
 //    in the tree, not even hashed: a salted hash of a short term can be
 //    brute-forced from the salt beside it, so scripts/secret-denylist.json
@@ -84,10 +86,14 @@ const PATTERNS = [
     re: /"(?:access|refresh|id)_?[Tt]oken"\s*:\s*"[A-Za-z0-9._~+/=-]{20,}"/g,
   },
   { id: 'macos-home-path', re: /\/Users\/(?!(?:you|me|example|runner|user|USER|name|shared|Shared)\b)[A-Za-z0-9._-]+/g },
+  // 0.15: a WhatsApp id (a phone number, or an @lid), but the fixtures' fakes (91 999 0000…, 999 0000…, 888 0000…).
+  { id: 'whatsapp-jid', re: /\b(?!(?:91)?(?:999|888)0000)\d{10,15}@(?:s\.whatsapp\.net|lid)\b/g },
 ];
 
 const EMAIL_RE = /\b([A-Za-z0-9._%+-]+)@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b/g;
 const ALLOWED_EMAIL_DOMAIN = /(^|\.)(example\.(com|org|net)|example|test|invalid|localhost)$/i;
+/** WhatsApp's id for a number reads like an address: whatsapp-jid judges the ones it matches, never the e-mail rule. */
+const WHATSAPP_NUMBER_ID = (user, domain) => /^\d{10,15}$/.test(user) && /^s\.whatsapp\.net$/i.test(domain);
 /** No-reply addresses reach nobody: a commit trailer's `noreply@...`, GitHub's `<id>+<user>@users.noreply.github.com`. */
 const NOREPLY_EMAIL = (user, domain) => user.toLowerCase() === 'noreply' || /(^|\.)users\.noreply\.github\.com$/i.test(domain);
 /**
@@ -301,7 +307,7 @@ function scanLine(line, n, file, deny, hashCache, { terms = true, email = true }
   if (email) {
     EMAIL_RE.lastIndex = 0;
     for (const m of line.matchAll(EMAIL_RE)) {
-      if (!ALLOWED_EMAIL_DOMAIN.test(m[2]) && !NOREPLY_EMAIL(m[1], m[2]) && !isPublicString(m[0])) findings.push({ file, line: n, col: (m.index ?? 0) + 1, rule: 'email', text: m[0] });
+      if (!ALLOWED_EMAIL_DOMAIN.test(m[2]) && !NOREPLY_EMAIL(m[1], m[2]) && !WHATSAPP_NUMBER_ID(m[1], m[2]) && !isPublicString(m[0])) findings.push({ file, line: n, col: (m.index ?? 0) + 1, rule: 'email', text: m[0] });
     }
   }
   if (terms) for (const h of termHits(line, deny, hashCache)) findings.push({ file, line: n, ...h });

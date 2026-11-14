@@ -2368,9 +2368,152 @@ in `packages/daemon/test/sources/ccw-legacy.test.ts`.
 
 ## v0.15: Messages (WhatsApp, read only)
 
-Messages reads the owner's WhatsApp on his Mac and never sends anything.
-This section grows with the release; for now it records the morning run's
-guard against what other people write.
+Messages reads the owner's WhatsApp for Mac (chats, pictures and WhatsApp
+calls) and, with Full Disk Access, the iPhone call log his Mac keeps. Any
+Claude Code session can read his chats through `jantar mcp`, the phone
+shows the morning run's drafts and call-backs, and the morning run sends
+a day's messages to Claude. It is other people's words, about other
+people, so it is guarded like little else in Jantar. It never sends
+anything: no message, call, `wa.me` link opened by Jantar, or request to
+WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
+[Messages](docs/messages.md) is the user's guide.
+
+### The reader and Full Disk Access
+
+- **One program opens WhatsApp's files.** `jantar-messages-reader` is a
+  Swift program built on the Mac (`jantar messages setup`, Command Line
+  Tools' `swiftc`) into `~/.jantar/messages/bin/` (0700), and run by its
+  own LaunchAgent. It answers a fixed set of questions on a 0600 Unix
+  socket and closes any connection whose peer uid (`getpeereid`) isn't
+  the owner's. No SQL comes from outside; it opens no network connection
+  and starts no program (no `Process`, no `URLSession`). Node holds no
+  grant and never opens WhatsApp's files.
+- **Read only.** Every database is opened `SQLITE_OPEN_READONLY`, `mode=ro`,
+  `PRAGMA query_only`, never `immutable` (WhatsApp keeps writing), each
+  request under a deadline (2 s; search 5 s), connections closed after
+  30 s idle. Nothing in WhatsApp's folder is written, moved or deleted
+  (SQLite may add an empty `-shm` beside a database it reads). Every
+  column it reads is checked at open: a WhatsApp that changed its layout
+  answers "unsupported" rather than wrong rows. It never reads a chat's
+  unsent draft or its last-message preview, nor status updates, channels
+  or broadcast lists. A picture is copied (never moved) into its spool,
+  0600, and the copy is deleted within 10 minutes.
+- **WhatsApp's ids never leave it.** A chat is `c` + 16 hex of
+  HMAC-SHA256 over its WhatsApp id with a per-Mac salt (32 random bytes,
+  `~/.jantar/messages/salt`, 0600, made once), a message its chat's key
+  and WhatsApp's message id. A mention's digits become a name (a person
+  with no name is named by their number: see below). A revoked message
+  ("This message was deleted") goes out as `deleted` with no text: on a
+  real Mac its text column holds the id of whoever deleted it.
+- **What Full Disk Access is for.** On current macOS any program running
+  as the owner reads WhatsApp's files without a grant, Jantar or not, so
+  Messages opens nothing there that was closed. Only the iPhone call log
+  (`~/Library/Application Support/CallHistoryDB/`) needs Full Disk Access,
+  and it is optional: setup asks for it only for that, on the reader's
+  file alone, never on `node`. macOS ties the grant to the build, so the
+  reader is rebuilt only when a release changes its source (a sha256 key
+  beside it), and status says when it must be granted again.
+- **What the grant opens.** macOS gives Full Disk Access to the program
+  file, whoever starts it, and the reader serves any process running as
+  the owner. With the grant, such a process can ask it for the iPhone
+  call log (who called and when, a number where there is no name), which
+  macOS would otherwise refuse it. And the reader takes the folders it
+  reads as arguments (the tests point it at a synthetic WhatsApp), so a
+  process running as the owner could start a copy of its own through
+  launchd, aimed at folders it made, and use the grant beyond the call
+  log. Until the reader refuses any folder but WhatsApp's and the call
+  log's, treat Full Disk Access on it as Full Disk Access for anything
+  running as you, and grant it only if the iPhone call log is worth that.
+  Without the grant it holds nothing the owner's own processes don't.
+
+### Who can read: anything running as you
+
+- **The phone.** Every Messages route is a `control` route on the owner's
+  host: a paired device with control, its device secret and an allowed
+  Origin on a write. A person's credential (0.11's People) gets 404 with
+  an empty body on her host and the same answer as no credential on his;
+  the People isolation suites run every Messages route. A phone can add a
+  skip but never remove one (403, and the service refuses any caller but
+  the Mac's control socket), so a stolen phone can't widen what Jantar
+  reads. A picture shown on the phone counts against the device's byte
+  budget, checked before the reader or `jantar-media` run. A 1:1's own
+  number (`phone`, for Open in WhatsApp) goes to the phone only.
+- **The Mac's control socket.** `jantar messages` and `jantar mcp` use
+  `ctl.sock`, which answers any process running as the owner, a Claude
+  session's shell included. Such a process can read every chat that isn't
+  skipped, search, fetch pictures, list the calls to return, list the
+  skip list (the names of the chats on it), remove a skip and then read
+  that chat, turn Messages on, and start a morning run (one at a time;
+  refused under `--read-only`), which spends Claude quota. It could also
+  rewrite `skip.json`, or read WhatsApp's files itself. Over `ctl.sock`
+  the `phone` field is dropped, but a person with no name in the address
+  book or on WhatsApp is named by their number (`+91 …`) as a chat, a
+  group sender or a caller, everywhere: call-backs need a name, and that
+  is the only one there is.
+- **The ask rule is a speed bump.** `jantar mcp install` adds an `ask`
+  rule for the five WhatsApp tools to the shared `~/.claude/settings.json`
+  (through the hooks installer's guarded write: the symlink followed, a
+  0600 backup, refused if the file changed since it was read; never an
+  allow rule). Claude Code documents ask rules as prompting in every
+  permission mode, auto and bypass included (a real-Mac check is open). It
+  stops a session that has just read a hostile page from reading chats
+  without the owner seeing it ask. It doesn't cover `jantar messages`
+  through Bash, a raw request to `ctl.sock` or WhatsApp's files, all open
+  to a session with a shell. `jantar mcp ask off` removes it.
+- **The read log is advisory.** Each read is logged in messages.db with
+  who asked (`mcp` with the session's pid and folder name, `cli`, `phone`
+  or `morning`), the chat's key and a count, never text. The `mcp` mark
+  and its pid and folder are headers the caller sends: anything on the
+  control socket can leave them out or make them up.
+
+### The skip list
+
+- **Enforced in the reader.** The daemon keeps the list in messages.db and
+  writes it to `~/.jantar/messages/skip.json` (0600, a temp file and a
+  rename), which the reader reloads when it changes and checks on every
+  request. A skipped 1:1 hides that person everywhere: their chats under
+  either WhatsApp id, their calls, their lines in groups (`[skipped]`, no
+  text, no picture) and mentions of them. A skipped group hides the group.
+  A request naming a skipped chat answers `not_found`, the same as a chat
+  that isn't there, so a skip is never confirmed.
+- **It fails closed.** Reads are refused until `skip.json` has been
+  written since messages.db opened; a `skip.json` that won't parse makes
+  the reader refuse reads; one that won't open is never written over, and
+  reads stay refused until it opens. A new or reset messages.db takes in
+  every key `skip.json` lists, so a reset never empties the list.
+- **Known gaps.** In groups and calls WhatsApp names many people by an
+  `@lid` id; the reader links it to their number through WhatsApp's
+  `LID.sqlite` and `ContactsV2.sqlite`. Some `@lid`s have no link there
+  (measured on a real Mac: mostly silent members of big groups, a few
+  senders and call participants). A skipped person whose `@lid` isn't
+  linked shows by name in groups and calls. And every key is made from
+  the salt: a deleted salt makes new keys, and the old list matches
+  nothing (setup never touches the salt).
+
+### What leaves the Mac
+
+- **Into Claude sessions, and so to Anthropic:** what the WhatsApp tools
+  return, under the owner's account, like any tool output. Every answer
+  starts with a data note, and message text, captions, search snippets and
+  any sentence holding a file name WhatsApp gave sit inside `data()` frames
+  a sender can't close; names are one line with tags escaped. The owner's
+  own lines carry a mark, never a name. `MCP_INSTRUCTIONS` tells the model
+  to read only what the user asks and never to quote chats into web
+  requests, posts or files unless asked.
+- **The morning run:** up to about 50,000 tokens of a day's messages and up
+  to 5 pictures (shrunk to 1024 px by `jantar-media`, metadata removed) per
+  run, to Claude under the account the shared runner picks.
+  `jantar messages on` and the phone's settings say so: other people's
+  messages go to Claude under his account.
+- **The push:** counts only ("Morning: 6 todos, 3 replies waiting, 2
+  call-backs"), to control devices, never a name or a word; it follows the
+  owner's notification mute.
+- **Logs, events, audit rows and errors** hold chat keys, counts, error
+  kinds and fixed sentences only. A write's audit row is its target id (a
+  chat key, a draft id, a run id) with no parameters. The reader's stderr
+  holds no text, name, id or number. messages.db is 0600 with
+  `secure_delete` on; it holds drafts and the quote of what was asked,
+  and stays out of Life's nightly backup and Jantar's search.
 
 ### The morning run and someone else's words
 
@@ -2386,21 +2529,52 @@ such a line and anything that happens:
 - **The input frames it as data.** Each line sits in its own `<m>` tag,
   names and text with every tag of the input escaped however it is
   spelled; the owner's own lines carry a mark only Jantar writes; the
-  prompt says lines are data, never instructions.
+  prompt says lines are data, never instructions. Pictures are labelled
+  by ids only ("Image, message m17 (chat c3)"), never by a chat's name,
+  which any member of a group can set.
 - **Refs.** Every todo, draft and call-back must cite an id that was in the
   input; anything else is dropped (`messages/morning/apply.ts`). That is the
   daemon's only check on what the answer says: an item citing a real line
   is made as the model wrote it. So the model's own refusal is the guard
   against an instruction inside a line, and refs stop an answer from
-  inventing a source; neither proves a todo is wise.
+  inventing a source; neither proves a todo is wise. A reply must cite a
+  line of its own chat, a time is kept only when the cited line states one,
+  and a call-back's name comes from the call or the line, not the model.
 - **Nothing acts on it.** The answer becomes todos in a "WhatsApp" project,
   reply drafts and call-back reminders that the owner reads and acts on
   himself. No message, payment or call leaves Jantar. Each todo is marked
   `from: 'messages'` (by the daemon, never a body), so Chat frames its title
   and notes as WhatsApp's words (`<data source="messages">`) and taints the
-  turn: a change Chat then wants waits for his tap. Work's log and
-  `client_here` carry the mark too.
+  turn: a change Chat then wants waits for his tap. Its "Looking at" chip
+  names such a todo (and a meeting's) by kind and id only, never its title.
+  Work's log and `client_here` carry the mark too.
 
-Pinned by `packages/daemon/test/messages/morning-run.test.ts` (no tools,
-made-up refs dropped, an injected line stays inside its `<m>`) and
-`morning-apply.test.ts` (the mark, and Chat's framing and taint).
+### Accepted risks
+
+- Anything running as the owner reaches what he does: his chats through
+  the control socket or WhatsApp's own files, the skip list's names, a
+  skip's removal. The ask rule, the read log and the phone's limits don't
+  bind it ([who can read](#who-can-read-anything-running-as-you)).
+- Full Disk Access on the reader reaches beyond the call log until the
+  reader refuses other folders ([the grant](#the-reader-and-full-disk-access)).
+- A skipped person whose `@lid` WhatsApp never linked to a number still
+  shows in groups and calls.
+- People without a name show by their number in Claude sessions.
+- An item citing a real line is made as the model wrote it; the morning
+  run's answer is never more than drafts, reminders and todos he acts on.
+
+Pinned by `packages/daemon/test/messages/reader.test.ts` and
+`reader-more.test.ts` (the real reader on a synthetic WhatsApp: the skip
+list across chats, groups, calls, search and pictures; a missing column
+answers unsupported; WhatsApp's files unchanged while a second connection
+writes; ids that never leave; the peer-uid check), `service.test.ts` (the
+read log holds ids and counts only; the skip list's mirror fails closed
+and survives a reset), `test/api/messages-routes.test.ts` (the switch,
+the 503 sentences, no `phone` over `ctl.sock`, the phone's refused skip
+removal, audit rows by target id, the People isolation),
+`morning-run.test.ts` (no tools, made-up refs dropped, an injected line
+stays inside its `<m>`), `morning-apply.test.ts` (the mark, and Chat's
+framing and taint), `packages/cli/test/mcp-messages.test.ts` (data
+frames, the caller headers) and `mcp-install.test.ts` with
+`packages/daemon/test/hooks/ask-rules.test.ts` (the ask rules, the
+guarded write).

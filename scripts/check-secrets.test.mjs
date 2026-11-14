@@ -52,6 +52,27 @@ test('generic patterns are caught and printed masked', () => {
   assert.ok(!r.out.includes(realishEmail));
 });
 
+// 0.15 Messages: WhatsApp ids, built at runtime like the secrets above.
+const jid = (digits, server) => [digits, '@', server].join('');
+const WA = ['s', 'whatsapp', 'net'].join('.');
+
+test('flags a real-looking jid and passes the fixture fakes', () => {
+  const real = [jid('919812345678', WA), jid('447700123456', WA), jid('123456789012345', 'lid'), jid('9876543210', WA)];
+  const r = scan({ 'a.ts': real.map((j) => `const x = '${j}';`).join('\n') + '\n' });
+  assert.equal(r.code, 1, r.out);
+  assert.equal(r.out.match(/\bwhatsapp-jid\b/g)?.length, real.length, r.out);
+  for (const j of real) assert.ok(!r.out.includes(j.split('@')[0]), 'the id itself is not printed');
+  // The fixture's fakes: 91 999 0000…, 999 0000…, 888 0000…@lid; and what is no person's id.
+  const fakes = [jid('919990000001', WA), jid('919990000000', WA), jid('9990000001', WA), jid('88800000000001', 'lid'), jid('88800000000002', 'lid')];
+  const others = ['status@broadcast', 'a 919812345678 number with no server'];
+  const ok = scan({ 'b.ts': [...fakes, ...others].map((j) => `const x = '${j}';`).join('\n') + '\n' });
+  assert.equal(ok.code, 0, ok.out);
+  // Any other id at that server is still an address to the e-mail rule.
+  const short = scan({ 'c.ts': `const x = '${jid('123456789', WA)}';\n` });
+  assert.equal(short.code, 1, short.out);
+  assert.match(short.out, /\bemail\b/);
+});
+
 test('the hashed denylist matches words, word parts and word pairs', () => {
   const salt = 'test-salt';
   const h = (t) => createHash('sha256').update(`${salt}:${t}`).digest('hex');

@@ -71,6 +71,10 @@ point below links to its section there.
   "Follow-up" and its time unless you turn its words on at the Mac. Jantar
   never messages a client and never reads another app's contacts
   ([Work](../SECURITY.md#v013-work-clients-the-log-follow-ups)).
+- With Messages on (0.15), what a Claude session reads from your WhatsApp
+  goes into that session, and the morning run sends a day's messages and
+  up to 5 pictures to Claude, both under your account; its push holds
+  counts only ([Messages](#messages-015)).
 - There is no Jantar server, no telemetry and no account with this project.
 
 ## Servers (v0.6, Fleet)
@@ -142,6 +146,32 @@ delete), 10 times a minute, until you revoke it: `jantar chat shortcut
 revoke --all`. [SECURITY.md](../SECURITY.md#v010-chat-and-the-siri-door)
 has the details.
 
+## Messages (0.15)
+
+Off until you run `jantar messages on` at the Mac
+([SECURITY.md](../SECURITY.md#v015-messages-whatsapp-read-only) has the
+full model, [Messages](messages.md) the guide).
+
+- It reads WhatsApp for Mac's files, read only, through one small program,
+  the reader; it never sends a message, calls anyone or opens WhatsApp for
+  you. On current macOS any program running as you can read those files
+  anyway: Messages opens nothing that was closed.
+- Full Disk Access is optional, only for the iPhone call log, and given to
+  the reader's file alone. While the reader takes its folders as
+  arguments, that grant is close to Full Disk Access for anything running
+  as you: grant it only if the call log is worth it.
+- The skip list is enforced inside the reader: a skipped 1:1 hides that
+  person's chats, calls and group lines everywhere. The phone can add a
+  skip, never remove one. A person WhatsApp never linked to a number can
+  still show in groups.
+- Claude Code asks before each WhatsApp tool runs (the ask rule `jantar
+  mcp install` adds). That is a speed bump: a session with a shell can run
+  `jantar messages` or read WhatsApp's files directly.
+- People without a name in your address book or on WhatsApp show by their
+  number, in sessions too.
+- The morning run has no tools, every item must cite a message it was
+  given, and what it makes is only todos, drafts and reminders you act on.
+
 ## What a session can do
 
 The trust boundary is your macOS user (and, with Fleet, the user Jantar
@@ -157,6 +187,9 @@ shelf, save notes to it, and list and add todos of the Life project linked
 to its folder (at most 20 an hour), never complete, edit or delete one.
 Any process running as you could do the same for any linked folder
 ([folder todos and the MCP server](../SECURITY.md#folder-todos-and-the-mcp-server)).
+With Messages on, any process running as you can also read your chats
+through `jantar messages`, list and remove skips and start a morning run
+([who can read](../SECURITY.md#who-can-read-anything-running-as-you)).
 When a session's ask shows Claude's 2-minute countdown, the daemon reads
 that screen to warn your phone, and keeps nothing it reads
 ([the countdown read](../SECURITY.md#the-countdown-read)).

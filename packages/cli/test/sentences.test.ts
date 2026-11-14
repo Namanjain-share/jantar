@@ -1,11 +1,12 @@
 /**
  * Every sentence the daemon or the web app shows that names a v0.3, v0.4,
- * v0.5, v0.5.3 or v0.13 jantar command ("Turn it on at your Mac: jantar files on",
- * "On your Mac run: jantar devices grant <device> launch", MAC_COMMAND's
- * "jantar folders", "jantar life on medicines", "jantar meetings on",
- * "jantar pair --extension", "jantar chat on", "jantar notify test", "jantar
- * mcp") names one that exists and does its job. The sentences are read from
- * the source, so a new one is checked as soon as it is written. A command
+ * v0.5, v0.5.3, v0.13 or 0.15 jantar command ("Turn it on at your Mac:
+ * jantar files on", "On your Mac run: jantar devices grant <device>
+ * launch", MAC_COMMAND's "jantar folders", "jantar life on medicines",
+ * "jantar meetings on", "jantar pair --extension", "jantar chat on",
+ * "jantar notify test", "jantar mcp", "jantar messages setup") names one
+ * that exists and does its job. The sentences are read from the source, so
+ * a new one is checked as soon as it is written. A command
  * still a WP0 stub (`stub: true`) has its sentences skipped; they are
  * checked once its package drops the flag (`pair --extension` goes with
  * `meetings`: one package builds both).
@@ -15,21 +16,27 @@
  * ctl.sock of a booted jantard.
  */
 import { readdirSync, readFileSync } from 'node:fs';
-import { mkdir, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resolvePaths } from '@jantar/daemon';
+import { onCommand } from '@jantar/daemon/core/testing';
+import { READER_SOURCE, readerSourceKey } from '@jantar/daemon/messages/reader-protocol';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
 import { meetingDetail } from '@jantar/fixtures';
 import type { DevicePublic, IntelReadStatus, LifeStatus, MeetingsStatus } from '@jantar/protocol';
+import type { MessagesStatus } from '@jantar/protocol/messages';
 import { INTEL_SHELLS } from '../src/commands/intel.js';
 import { SHORTCUT_SHELL } from '../src/commands/intel-shortcut.js';
 import { CHAT_SHORTCUT_SHELL } from '../src/commands/chat-shortcut.js';
 import { COMMANDS, EXIT, main, memoryIo } from '../src/index.js';
-import { contextFor, fakeCtl, fakeSettings, ok } from './helpers.js';
+import { LAUNCHCTL } from '../src/lib/launchd.js';
+import { contextFor, fakeCtl, fakeSettings, ok, testDeps } from './helpers.js';
 
 const PACKAGES = fileURLToPath(new URL('../../', import.meta.url));
-const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|chat|ask|notify|mcp|work|pair(?= --extension))\\b';
+const COMMAND = '(?:files|folders|launch|devices|rewrite|controls|screenshots|new|life|intel|accounts|init|meetings|chat|ask|notify|mcp|work|messages|pair(?= --extension))\\b';
 /** Commands WP0 registered as stubs, until their packages build them. */
 const STUBS = new Set(COMMANDS.filter((c) => c.stub).map((c) => c.name));
 /** A sentence's command when another command's package builds it (v0.5: WP-MC builds `pair --extension` with `meetings`). */
@@ -49,7 +56,9 @@ const OWN_HELP: Readonly<Record<string, string>> = { mcp: 'claude mcp add ' };
 /** Commands that only read from the daemon and write files on the Mac: they get `--out` and must write something. */
 const WRITES_FILES = /^meetings export\b/;
 /** v0.8: commands that only read from the daemon and print (the sentence points at them to see something, not to change it). */
-const READS_ONLY = /^(?:intel (?:read status|shortcut list)|chat (?:status|shortcut list))$/;
+const READS_ONLY = /^(?:intel (?:read status|shortcut list)|chat (?:status|shortcut list)|messages status)$/;
+/** 0.15: commands that change nothing through the daemon but load a LaunchAgent on the Mac (the WhatsApp reader's). */
+const LOADS_AGENT = /^messages setup$/;
 /** Words after the command: a <placeholder>, or a plain word (paths like ~/Desktop included). */
 const WORDS = '(?: (?:<[a-z-]+>|[A-Za-z0-9~/._-]+))*';
 const LITERAL = new RegExp(`\\bjantar (${COMMAND}${WORDS})`, 'g');
@@ -66,6 +75,18 @@ const PLACEHOLDERS: Readonly<Record<string, string>> = {
   '<id>': meetingDetail().meeting.id,
   // v0.5.3
   '<group>': 'needs',
+  // 0.15: a skipped chat's id (MESSAGES_STATUS' skip list holds it).
+  '<chat>': 'c0123456789abcdef',
+};
+
+/** 0.15: what GET /v1/messages/status answers once the reader answers (WhatsApp found, no iPhone call log). */
+const MESSAGES_STATUS: MessagesStatus = {
+  enabled: true,
+  reader: { state: 'ok' },
+  whatsapp: { found: true, running: true, newestAt: '2026-01-15T09:00:00.000Z', schemaOk: true },
+  phone: { readable: false },
+  skipped: 1,
+  morning: { at: null, lastRunAt: null },
 };
 
 /**
@@ -153,7 +174,23 @@ describe('the commands the daemon and the web app name', () => {
   });
   afterEach(async () => {
     await home.cleanup();
+    await Promise.all(shortDirs.splice(0).map((d) => rm(d, { recursive: true, force: true })));
   });
+
+  /** Folders made for short socket paths, removed after each test. */
+  const shortDirs: string[] = [];
+
+  /** 0.15 `messages setup`: paths with a short reader socket, this release's reader in place (its .key beside it), launchctl faked. */
+  async function readerSetup(h: FakeHome) {
+    const run = await mkdtemp(join(tmpdir(), 'js-'));
+    shortDirs.push(run);
+    const paths = { ...resolvePaths({ env: h.env }), messagesReaderSock: join(run, 'messages-reader.sock') };
+    const source = await readFile(join(paths.assetsDir, READER_SOURCE), 'utf8');
+    await mkdir(dirname(paths.messagesReaderBin), { recursive: true, mode: 0o700 });
+    await writeFile(paths.messagesReaderBin, '#!/bin/sh\n', { mode: 0o700 });
+    await writeFile(`${paths.messagesReaderBin}.key`, readerSourceKey(source), { mode: 0o600 });
+    return { paths, deps: testDeps({ handlers: [onCommand(LAUNCHCTL, { code: 0 })] }) };
+  }
 
   const found = sentences();
 
@@ -193,6 +230,13 @@ describe('the commands the daemon and the web app name', () => {
         'mcp',
         // v0.13
         'work on',
+        // 0.15
+        'messages on',
+        'messages off',
+        'messages status',
+        'messages setup',
+        'messages skip remove <chat>',
+        'messages',
       ]),
     );
   });
@@ -249,15 +293,23 @@ describe('the commands the daemon and the web app name', () => {
         'POST /v1/chat/keys': () => ok({ id: meetingDetail().meeting.id, key: `jchat_${'A'.repeat(43)}`, name: 'iphone', chatUrl: null }),
         'GET /v1/chat/keys': () => ok({ keys: [{ id: meetingDetail().meeting.id, name: 'iphone', createdAt: at, lastSeenAt: null }], chatUrl: null, why: 'Synthetic: no door.' }),
         'POST /v1/chat/keys/revoke': () => ok({ revoked: 1 }),
+        // 0.15: Messages at the Mac (the reader answers; one chat skipped).
+        'GET /v1/messages/status': () => ok(MESSAGES_STATUS),
+        'GET /v1/messages/skip': () => ok({ skip: [{ chatKey: PLACEHOLDERS['<chat>'], name: 'Asha Test', kind: 'dm', addedAt: at }] }),
+        [`DELETE /v1/messages/skip/${PLACEHOLDERS['<chat>']}`]: () => ok({ ok: true }),
       });
+      // 0.15: setup finds this release's reader built (no swiftc), loads its agent with a faked launchctl,
+      // and needs a reader socket path macOS takes (the fake home's is too long).
+      const setup = LOADS_AGENT.test(line) ? await readerSetup(home) : null;
       // A person at the Mac answers yes when a command asks (life restore asks before it replaces life.db).
       // v0.10: `chat shortcut add` shows a key, so it runs only on a terminal (a person's own Terminal).
-      const { ctx, io } = contextFor(home, { ctl, ioOptions: { answers: ['y', 'y', 'y'], isTTY: line.startsWith('chat shortcut add') } });
+      const { ctx, io } = contextFor(home, { ctl, ...setup, ioOptions: { answers: ['y', 'y', 'y'], isTTY: line.startsWith('chat shortcut add') } });
       const out = join(home.home, 'exports');
       const argv = WRITES_FILES.test(line) ? [...words, '--out', out] : words;
       expect(await main(argv, { io, context: ctx }), `${io.stdout}${io.stderr}`).toBe(EXIT.ok);
       if (WRITES_FILES.test(line)) expect((await readdir(out)).length, 'the command wrote nothing').toBeGreaterThan(0);
       else if (READS_ONLY.test(line)) expect(ctl.calls.some((c) => c.method === 'GET'), 'the command asked nothing').toBe(true);
+      else if (setup) expect(setup.deps.exec.calls.some((c) => c.file === LAUNCHCTL && c.args[0] === 'bootstrap'), 'the command loaded nothing').toBe(true);
       else expect(ctl.calls.some((c) => c.method !== 'GET'), 'the command changed nothing').toBe(true);
       expect(io.stderr).toBe('');
     });

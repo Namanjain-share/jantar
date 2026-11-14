@@ -18,6 +18,8 @@ short version of this page.
   [primer](primer.md).
 - Optional: Tailscale, or a Cloudflare Tunnel, for the phone.
 - Optional: Chrome 120 or newer for [Meetings](extension.md).
+- Optional, 0.15: WhatsApp for Mac and Apple's Command Line Tools
+  (`xcode-select --install`) for [Messages](messages.md).
 - Optional, v0.6: Linux servers, Windows machines and other Macs paired
   with this Mac. Each needs its own install; [Servers](fleet.md#before-you-start)
   lists what.
@@ -171,17 +173,29 @@ Or run the daemon in the foreground instead of under launchd:
 - **Files and Folders.** Under launchd, macOS may ask whether `node` may
   read `~/Desktop` or `~/Documents` the first time a folder there is
   browsed.
+- **Full Disk Access, for Messages' reader only.** Only with
+  [Messages](messages.md) on, and only for the iPhone call log: WhatsApp's
+  own files read without it. `jantar messages setup` opens System
+  Settings > Privacy & Security > Full Disk Access and prints the one file
+  to add, `~/.jantar/messages/bin/jantar-messages-reader`. It is optional, and
+  wider than it looks: read [what the grant
+  opens](../SECURITY.md#the-reader-and-full-disk-access) first. Never give
+  `node` or Terminal Full Disk Access for Jantar. An update that rebuilds
+  the reader needs the grant again (status says so).
 
 ### Uninstall
 
 ```sh
 jantar hooks uninstall --apply   # if you installed the hooks: restores Claude's settings minus Jantar's entries
-jantar uninstall                 # stops the daemon and removes the LaunchAgent; keeps ~/.jantar
+jantar uninstall                 # stops the daemon and removes the LaunchAgent (0.15: the Messages reader's too); keeps ~/.jantar
 jantar uninstall --purge         # also deletes ~/.jantar (settings, devices, audit log), after a y/N
 ```
 
 `--purge --yes` does not ask. `--purge` refuses while Claude's settings
-still call Jantar's hook client; `--force` purges anyway. Turn off Tailscale
+still call Jantar's hook client; `--force` purges anyway. If you gave the
+Messages reader Full Disk Access, take it out in System Settings, and
+`claude mcp remove --scope user jantar` takes Jantar out of Claude Code
+(`jantar mcp ask off` first removes its ask rules). Turn off Tailscale
 Serve or stop the tunnel with their own tools.
 
 ## Reach it from your phone

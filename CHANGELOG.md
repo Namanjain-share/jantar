@@ -3,6 +3,86 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.15.0 (unreleased)
+
+**Messages** (off until you turn it on with `jantar messages on`, on a Mac
+only): your WhatsApp, read only. Any Claude Code session can read a chat
+when you ask, a morning run turns what came in into todos, reply drafts
+and call-back reminders, and the phone shows them. Jantar never sends a
+message, never calls anyone and never opens WhatsApp for you.
+[Messages](docs/messages.md) has it all.
+
+**Before upgrading: nothing to copy by hand.** life.db keeps its schema;
+Messages keeps its own `messages.db`, made when you turn it on.
+**Going back to 0.14** hides the todos the morning run made (0.14 doesn't
+know their source, `messages`): they show and ring again on 0.15, and the
+WhatsApp project stays. 0.14 never opens messages.db, and a setting
+changed there drops the `messages` switch: if Messages is off when you
+come back, run `jantar messages on` again. 0.14 doesn't know the reader:
+stop it first with `launchctl bootout
+gui/$(id -u)/com.jantar.messages-reader` and remove
+`~/Library/LaunchAgents/com.jantar.messages-reader.plist`. And the entry
+`jantar mcp install` added points at a file 0.14 doesn't have: run
+`claude mcp remove --scope user jantar`, then add it the 0.14 way
+(`jantar mcp` prints the line).
+
+- **The reader.** `jantar messages setup` builds one small program,
+  `jantar-messages-reader`, the only part of Jantar that opens WhatsApp
+  for Mac's files, read only, and starts it as its own LaunchAgent. It is
+  rebuilt only when a release changes it. WhatsApp's files need no Full
+  Disk Access on current macOS; the iPhone call log does, and that is
+  optional: setup shows where to add the reader's file alone, and
+  [SECURITY.md](SECURITY.md#the-reader-and-full-disk-access) says what the
+  grant opens. `jantar messages status` and `jantar doctor` say what is
+  wrong and what fixes it.
+- **In every Claude Code session.** Five new tools in `jantar mcp`:
+  `messages_chats`, `messages_read` (a chat by name or id; a name two chats
+  share answers both, and the session asks you which), `messages_search`,
+  `messages_media` (a picture, shrunk and stripped of its metadata) and
+  `calls_to_return` (missed calls you haven't returned by a message or a
+  call). Every answer marks what people wrote as data, never instructions.
+  `jantar mcp install` adds the server to `~/.claude.json` once, and cswap
+  copies it into every account the next time that account starts;
+  `jantar mcp status` shows which have it. It also has Claude Code ask
+  before each WhatsApp tool runs (`jantar mcp ask on|off`): a speed bump,
+  since a session with a shell can still use `jantar messages`.
+- **A lighter MCP entry.** `jantar mcp install` registers
+  `jantar-mcp.mjs`, which skips the CLI's other commands: about 82 MB per
+  session where the full CLI takes about 93 MB. The hope was 60 MB; the
+  protocol's schemas are most of what is left.
+- **The morning run**, at a time you set on the phone (off until then). It
+  waits for WhatsApp to be open and synced, for up to 6 hours, and says
+  when its data wasn't fresh; a Mac asleep at the time runs it on waking
+  (within those 6 hours).
+  It reads what came in since the last run, the 1:1s waiting on you first,
+  then what mentions you, within about 50,000 tokens, and lists what it
+  left out. One Claude run with no tools makes todos in a "WhatsApp"
+  project (a time only when the message states one), "Call back" todos
+  (at the time the message states, else your call-back time, 11:00), and
+  reply drafts; anything that doesn't cite a message it was given is
+  dropped. One push holds counts only ("Morning: 6 todos, 3 replies
+  waiting, 2 call-backs") and follows your notification mute. A run never
+  makes the same thing twice, and Undo this morning takes a run back.
+  `jantar messages morning --dry-run` shows what it would make.
+- **On the phone**: Messages, after Meetings. Today has how fresh the data
+  was, the summary, Waiting on you (Copy, Open in WhatsApp with the draft
+  typed in for a 1:1, Done, Dismiss), Call back and the todos made, with
+  Run now and Undo this morning. Settings has the two times, the skip list,
+  the last run's report and a log of every read: which session, the
+  Terminal, the phone or the morning run, which chat and how much.
+- **The skip list.** Skipping a 1:1 skips that person everywhere: their
+  chat, their calls, and their lines in groups (shown as "[skipped]").
+  The reader enforces it, below everything else. A phone can add a skip
+  but never remove one: that is `jantar messages skip remove` at the Mac.
+  A person WhatsApp never linked to a number can still show in groups.
+- **At the Mac**: `jantar messages chats`, `read`, `search`, `calls`,
+  `skip` and `morning`. A name two chats share lists both and stops.
+- In Chat, todos the morning made are someone else's words: Chat reads them
+  as data, and a change it then wants waits for your tap. Its "Looking
+  at" chip names a todo from a meeting or WhatsApp by kind only, never by
+  its title. Work marks a follow-up the morning made "from WhatsApp".
+- `jantar uninstall` stops and removes the reader's LaunchAgent too.
+
 ## 0.14.1 (20 November 2026)
 
 - **Share a PDF or a picture from the phone.** In Files, a PDF or an image
