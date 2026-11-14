@@ -8,10 +8,11 @@
 //     -> {"id":1,"ok":true,"data":{…}} | {"id":1,"ok":false,"error":"not_found","detail":"…"}
 //
 //   status                                      {whatsapp: {found, running, schemaOk, newestAt, walMtime},
-//                                                phone: {readable}, skipped, version}
+//                                                phone: {readable}, skipped, skipOk, version}
 //   chats      {q?, since?, limit, waiting?}    {chats: [chat (+phone)], total}
 //   read       {chatKey, since?, before?, limit} {chat, messages (oldest first), more}
-//   readByName {name, since?, before?, limit}   a read's answer, or {ambiguous: [chat]}
+//                                                (next page: before = messages[0].at; see read())
+//   readByName {name, since?, before?, limit}   a read's answer, or {ambiguous: [chat], total}
 //
 //   jantar-messages-reader --container <dir> --phone-db <file> --socket <path> --state <dir> [--now <iso>]
 //   (exit 64 on bad arguments; --now is for tests)
@@ -30,13 +31,15 @@
 //   reads answer `unsupported` rather than wrong rows.
 // - WhatsApp's ids never leave: a chat is "c" + 16 hex of HMAC-SHA256(salt,
 //   its id), a message its chat's key + "." + its stanza id. The salt (32
-//   random bytes, <state>/salt, 0600) is made once and never replaced.
+//   random bytes, <state>/salt, 0600) is made once and never replaced. A
+//   mention (WhatsApp stores "@" + the id's digits) becomes "@" + a name.
 // - The skip list (<state>/skip.json, the daemon's) is reloaded when it
 //   changes, checked on every request. A skipped 1:1 hides that person
 //   everywhere: their chats under either id (@lid or number), their lines
-//   in groups ("[skipped]") and mentions of them; a skipped group hides the
-//   group. A skipped chat is `not_found`. A skip list that won't parse
-//   refuses reads (`busy`) rather than read everything.
+//   in groups ("[skipped]") and mentions of them ("@[skipped]"); a skipped
+//   group hides the group. A skipped chat is `not_found`. A skip list that
+//   won't parse refuses reads (`busy`, status `skipOk: false`) rather than
+//   read everything.
 // - Status, channels, broadcast lists, removed and hidden chats are left out.
 //   The chat's unsent-draft and last-message-preview columns are never read.
 // - stderr carries no text, name, id or number.
@@ -104,6 +107,8 @@ let READ_DEFAULT = 50
 /// MESSAGES_LIMITS.waitingDays.
 let WAITING_S: TimeInterval = 3 * 86_400
 let AMBIGUOUS_MAX = 20
+/// The fewest digits after "@" that make a mention (an id: country code and number, or an @lid).
+let MENTION_DIGITS_MIN = 8
 
 // ---------------------------------------------------------------- output and failures
 
@@ -149,10 +154,14 @@ let isoPlain: ISO8601DateFormatter = {
 
 func parseIso(_ s: String) -> Date? { isoFrac.date(from: s) ?? isoPlain.date(from: s) }
 
-/// Core Data seconds (since 2001-01-01Z) as ISO, cut down to the millisecond:
-/// a time read back as `before` then never includes the message it came from.
+/// Core Data seconds (since 2001-01-01Z) cut down to the millisecond, the
+/// finest time a reply carries. SQL's `ZMESSAGEDATE * 1000 >= ms` is the same cut.
+func appleMs(_ seconds: Double) -> Int64 { Int64((seconds * 1000).rounded(.down)) }
+
+/// Core Data seconds as ISO, cut down to the millisecond: a time read back
+/// as `before` then never includes the message it came from.
 func isoApple(_ seconds: Double) -> String {
-  isoFrac.string(from: Date(timeIntervalSinceReferenceDate: (seconds * 1000).rounded(.down) / 1000))
+  isoFrac.string(from: Date(timeIntervalSinceReferenceDate: Double(appleMs(seconds)) / 1000))
 }
 
 func isoUnix(_ ts: timespec) -> String {
@@ -528,6 +537,14 @@ final class World {
 
   /// A person's one id: their number's jid when known, else the id itself.
   func person(_ jid: String) -> String { jid.hasSuffix(LID_SUFFIX) ? (lidToUser[jid] ?? jid) : jid }
+
+  /// Every key a person goes by (their 1:1s under either id, either id's
+  /// own key), from any one of them; empty for a key that isn't a person's.
+  /// Whether a jid is skipped is `Hidden.persons.contains(person(jid))`.
+  func personKeys(_ chatKey: String) -> Set<String> {
+    guard let p = personByKey[chatKey] else { return [] }
+    return Set(personByKey.compactMap { $0.value == p ? $0.key : nil })
+  }
 }
 
 /// What the skip list hides: people (by person()) and groups (by jid).
@@ -628,7 +645,11 @@ struct ReadOut: Encodable {
   let more: Bool
 }
 
-struct AmbiguousOut: Encodable { let ambiguous: [ChatOut] }
+/// `total`: how many chats matched (`ambiguous` holds the newest AMBIGUOUS_MAX).
+struct AmbiguousOut: Encodable {
+  let ambiguous: [ChatOut]
+  let total: Int
+}
 
 struct WhatsAppOut: Encodable {
   let found: Bool
@@ -652,10 +673,12 @@ struct WhatsAppOut: Encodable {
 
 struct PhoneOut: Encodable { let readable: Bool }
 
+/// `skipOk`: false while the skip list won't parse (reads answer `busy`; `skipped` counts the last good one).
 struct StatusOut: Encodable {
   let whatsapp: WhatsAppOut
   let phone: PhoneOut
   let skipped: Int
+  let skipOk: Bool
   let version: Int
 }
 
@@ -826,6 +849,7 @@ final class Reader {
       whatsapp: WhatsAppOut(found: found, running: whatsAppRunning(), schemaOk: schemaOk, newestAt: newest, walMtime: mtime(chat.path + "-wal")),
       phone: PhoneOut(readable: phoneReadable()),
       skipped: skip.keys.count,
+      skipOk: !skip.broken,
       version: READER_VERSION)
   }
 
@@ -1007,8 +1031,28 @@ final class Reader {
 
   // ---- reading a chat
 
-  /// The text with a skipped person's "@<number>" made "@[skipped]", and whether it names the owner.
-  func mentions(_ text: String, _ w: World, _ hide: Hidden) -> (String, Bool) {
+  /// A group's own names for its members (the group's member rows), by person.
+  func memberNames(_ s: Session, _ w: World) throws -> [String: (contact: String?, first: String?)] {
+    guard s.type != SESSION_DM, let db = try chat.get() else { return [:] }
+    let q = try db.prepare("SELECT ZMEMBERJID, ZCONTACTNAME, ZFIRSTNAME FROM ZWAGROUPMEMBER WHERE ZCHATSESSION = ? AND ZMEMBERJID IS NOT NULL")
+      .bind(s.pk)
+    var names: [String: (contact: String?, first: String?)] = [:]
+    while try q.step() {
+      if let jid = q.text(0) { names[w.person(jid)] = (q.text(1), q.text(2)) }
+    }
+    return names
+  }
+
+  /// How a group line's sender is named: the group's contact name, the
+  /// address book, the group's first name, their push name.
+  func senderName(_ person: String, contact: String?, first: String?, _ w: World) -> String? {
+    nonEmpty(contact) ?? nonEmpty(w.contactNames[person]) ?? nonEmpty(first) ?? nonEmpty(w.pushNames[person])
+  }
+
+  /// The text with each mention ("@" and an id's digits, as WhatsApp stores
+  /// it) made "@" and that person's name: "@Me", "@[skipped]", "@Unknown"
+  /// when nobody has a name for it; and whether it names the owner.
+  func mentions(_ text: String, _ w: World, _ hide: Hidden, _ name: (String) -> String?) -> (String, Bool) {
     guard text.contains("@") else { return (text, false) }
     var out = String.UnicodeScalarView()
     var me = false
@@ -1024,10 +1068,20 @@ final class Reader {
         digits.unicodeScalars.append(scalars[i])
         i += 1
       }
-      if digits.isEmpty { continue }
-      if w.ownerDigits.contains(digits) { me = true }
-      let skipped = hide.persons.contains(w.person(digits + USER_SUFFIX)) || hide.persons.contains(w.person(digits + LID_SUFFIX))
-      out.append(contentsOf: (skipped ? SKIPPED : digits).unicodeScalars)
+      guard (MENTION_DIGITS_MIN...PHONE_MAX).contains(digits.count) else {
+        // "@5pm": no mention.
+        out.append(contentsOf: digits.unicodeScalars)
+        continue
+      }
+      let who: String
+      if w.ownerDigits.contains(digits) {
+        me = true
+        who = ME
+      } else {
+        let people = [w.person(digits + LID_SUFFIX), w.person(digits + USER_SUFFIX)]
+        who = people.contains(where: { hide.persons.contains($0) }) ? SKIPPED : people.compactMap(name).first ?? UNKNOWN
+      }
+      out.append(contentsOf: who.unicodeScalars)
     }
     return (String(out), me)
   }
@@ -1038,7 +1092,47 @@ final class Reader {
     return fileState(opts.container + "/Message/" + rel) == .present
   }
 
+  /// One page of a chat, oldest first. The next page is asked for with
+  /// `before` = the page's first `at`, a millisecond, so a page never ends
+  /// inside one: it stops short of every line sharing the first left-out
+  /// line's millisecond (they lead the next page), or, when all its lines
+  /// share it (a burst, an album), grows past `limit` to hold them all (up
+  /// to READ_MAX). Exact while WhatsApp's order (ZSORT) and its times agree;
+  /// a line whose time is out of order (a skewed clock) can come twice or,
+  /// when it is newer than a later page's cut, be missed.
   func read(_ s: Session, _ w: World, _ hide: Hidden, since: Double?, before: Double?, limit: Int) throws -> ReadOut {
+    var page = try lines(s, w, hide, since: since, before: before, fromMs: nil, limit: limit + 1)
+    var more = page.count > limit
+    if more {
+      let cut = page[limit].ms
+      let kept = page.prefix(limit).filter { $0.ms > cut }
+      if kept.isEmpty {
+        page = try lines(s, w, hide, since: since, before: before, fromMs: cut, limit: READ_MAX + 1)
+        more = page.count > READ_MAX
+        if more { page.removeLast(page.count - READ_MAX) } else { more = try olderThan(cut, s, since: since) }
+      } else {
+        page = kept
+      }
+    }
+    return ReadOut(chat: try chatOut(s, w, withPhone: true), messages: page.reversed().map(\.message), more: more)
+  }
+
+  /// Whether the chat has a line before millisecond `ms` (and from `since`).
+  func olderThan(_ ms: Int64, _ s: Session, since: Double?) throws -> Bool {
+    guard let db = try chat.get() else { throw Failure("no_access") }
+    var sql = "SELECT 1 FROM ZWAMESSAGE WHERE ZCHATSESSION = ? AND ZMESSAGEDATE * 1000 < ?"
+    var binds: [Any?] = [s.pk, ms]
+    if let since {
+      sql += " AND ZMESSAGEDATE >= ?"
+      binds.append(since)
+    }
+    return try db.prepare(sql + " LIMIT 1").bindAll(binds).step()
+  }
+
+  /// Up to `limit` of a chat's lines, newest first (WhatsApp's order), each
+  /// with its millisecond; `fromMs`: only those at or after it.
+  func lines(_ s: Session, _ w: World, _ hide: Hidden, since: Double?, before: Double?, fromMs: Int64?,
+             limit: Int) throws -> [(ms: Int64, message: MessageOut)] {
     guard let db = try chat.get() else { throw Failure("no_access") }
     var sql = """
       SELECT m.Z_PK, m.ZISFROMME, m.ZMESSAGETYPE, m.ZMESSAGEDATE, m.ZSTANZAID, m.ZTEXT,
@@ -1053,19 +1147,24 @@ final class Reader {
       """
     if since != nil { sql += " AND m.ZMESSAGEDATE >= ?" }
     if before != nil { sql += " AND m.ZMESSAGEDATE < ?" }
+    if fromMs != nil { sql += " AND m.ZMESSAGEDATE * 1000 >= ?" }
     sql += " ORDER BY m.ZSORT DESC LIMIT ?"
     var binds: [Any?] = [s.pk]
     if let since { binds.append(since) }
     if let before { binds.append(before) }
-    binds.append(limit + 1)
+    if let fromMs { binds.append(fromMs) }
+    binds.append(limit)
     let q = try db.prepare(sql).bindAll(binds)
 
-    var out: [MessageOut] = []
+    // Read once, on the first line that may hold a mention.
+    var members: [String: (contact: String?, first: String?)]?
+    var out: [(ms: Int64, message: MessageOut)] = []
     while try q.step() {
       let pk = q.int(0)
       let fromMe = q.int(1) == 1
       let type = Int(q.int(2))
       let mk = msgKey(s.key, q.text(4), pk)
+      let ms = appleMs(q.double(3))
       let at = isoApple(q.double(3))
       let raw = q.text(5)
 
@@ -1076,10 +1175,10 @@ final class Reader {
         } else if let memberJid = q.text(15) {
           let person = w.person(memberJid)
           if hide.persons.contains(person) {
-            out.append(MessageOut(msgKey: mk, at: at, fromMe: false, sender: SKIPPED, kind: "other", skippedSender: true))
+            out.append((ms, MessageOut(msgKey: mk, at: at, fromMe: false, sender: SKIPPED, kind: "other", skippedSender: true)))
             continue
           }
-          sender = nonEmpty(q.text(16)) ?? nonEmpty(w.contactNames[person]) ?? nonEmpty(q.text(17)) ?? nonEmpty(w.pushNames[person]) ?? UNKNOWN
+          sender = senderName(person, contact: q.text(16), first: q.text(17), w) ?? UNKNOWN
         } else {
           sender = UNKNOWN
         }
@@ -1088,14 +1187,22 @@ final class Reader {
       let kind = MESSAGE_KINDS[type] ?? (nonEmpty(raw) != nil ? "text" : "other")
       var m = MessageOut(msgKey: mk, at: at, fromMe: fromMe, sender: sender, kind: kind)
       if !SILENT_KINDS.contains(kind) {
+        let title = q.isNull(9) ? nil : nonEmpty(q.text(13))
+        let captioned = CAPTIONED_KINDS.contains(kind) ? title : nil
+        if members == nil, (raw?.contains("@") ?? false) || (captioned?.contains("@") ?? false) { members = try memberNames(s, w) }
+        let named = members ?? [:]
+        let name = { (p: String) in self.senderName(p, contact: named[p]?.contact, first: named[p]?.first, w) }
         if let raw = nonEmpty(raw) {
-          let (text, me) = mentions(raw, w, hide)
+          let (text, me) = mentions(raw, w, hide, name)
           m.text = text
           if me { m.mentionsMe = true }
         }
+        if let captioned {
+          let (caption, me) = mentions(captioned, w, hide, name)
+          m.caption = caption
+          if me { m.mentionsMe = true }
+        }
         if !q.isNull(9) {
-          let title = nonEmpty(q.text(13))
-          if CAPTIONED_KINDS.contains(kind) { m.caption = title }
           if kind == "contact" { m.caption = nonEmpty(q.text(14)) }
           if MEDIA_KINDS.contains(kind) {
             let bytes = q.int(10)
@@ -1109,11 +1216,9 @@ final class Reader {
           if let ps = parent, ps.shown, !hide.hides(ps, w) { m.replyTo = msgKey(ps.key, q.text(7), parentPk) }
         }
       }
-      out.append(m)
+      out.append((ms, m))
     }
-    let more = out.count > limit
-    if more { out.removeLast() }
-    return ReadOut(chat: try chatOut(s, w, withPhone: true), messages: Array(out.reversed()), more: more)
+    return out
   }
 
   func readByName(_ name: String, since: Double?, before: Double?, limit: Int) throws -> any Encodable {
@@ -1124,7 +1229,7 @@ final class Reader {
     if hits.isEmpty { hits = visible.filter { $0.name.range(of: name, options: match) != nil } }
     guard let first = hits.first else { throw Failure("not_found") }
     if hits.count == 1 { return try read(first, w, hide, since: since, before: before, limit: limit) }
-    return AmbiguousOut(ambiguous: try hits.prefix(AMBIGUOUS_MAX).map { try chatOut($0, w, withPhone: false) })
+    return AmbiguousOut(ambiguous: try hits.prefix(AMBIGUOUS_MAX).map { try chatOut($0, w, withPhone: false) }, total: hits.count)
   }
 }
 

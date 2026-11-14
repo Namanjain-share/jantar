@@ -8,8 +8,9 @@
  * - A request is `{id, op, args}`; a reply `{id, ok: true, data}` or
  *   `{id, ok: false, error, detail?}` (`id` 0 when the request had none).
  * - WhatsApp's ids never cross it: chats are keys (HMAC under the reader's
- *   salt), messages their chat's key and stanza id. A phone number (digits)
- *   is on a 1:1's chat only.
+ *   salt), messages their chat's key and stanza id; a mention in a line is
+ *   "@" + the person's name ("@Me", "@[skipped]", "@Unknown"). A phone
+ *   number (digits) is on a 1:1's chat only.
  * - A skipped chat is `not_found`, never `skipped`, so a reply never
  *   confirms it exists.
  * - Every reply is checked here before the daemon uses it.
@@ -47,7 +48,13 @@ export type ReaderReply = z.infer<typeof ReaderReplySchema>;
  * database is closed: macOS's SQLite opens it read-only only with its -wal
  * there, so reads answer `busy` until WhatsApp is open. `phone.readable`:
  * macOS lets the reader open the iPhone call log (Full Disk Access).
- * `skipped`: entries in the skip list.
+ * `skipped`: entries in the skip list; `skipOk`: false while the skip list
+ * won't parse (reads then answer `busy`, and `skipped` counts the last good one).
+ *
+ * Telling `busy` and `no_access` apart: `busy` is WhatsApp closed
+ * (`found` and no `walMtime`), a broken skip list (`skipOk: false`) or
+ * SQLite busy; `no_access` with `found: false` is no WhatsApp for Mac here,
+ * not a missing Full Disk Access (WhatsApp's files don't need it).
  */
 export const ReaderStatusSchema = z.object({
   whatsapp: z.object({
@@ -59,16 +66,24 @@ export const ReaderStatusSchema = z.object({
   }),
   phone: z.object({ readable: z.boolean() }),
   skipped: count,
+  skipOk: z.boolean(),
   version: z.number().int().positive(),
 });
 export type ReaderStatus = z.infer<typeof ReaderStatusSchema>;
 
 export const ReaderChatsSchema = z.object({ chats: z.array(ChatOwnerSchema), total: count });
 export type ReaderChats = z.infer<typeof ReaderChatsSchema>;
-/** Oldest first; `more`: older messages exist (ask again with `before`). */
+/**
+ * Oldest first; `more`: older messages exist (ask again with `before` = the
+ * first message's `at`). A page never ends inside a millisecond: it stops
+ * short of the lines sharing the first left-out one's, or, when all its
+ * lines share it, holds them all past `limit` (up to MESSAGES_LIMITS.readMax).
+ * Exact while WhatsApp's order and its times agree; a line with a skewed
+ * time can come on two pages or, rarely, be missed.
+ */
 export const ReaderReadSchema = MessagesReadResponseSchema;
 export type ReaderRead = z.infer<typeof ReaderReadSchema>;
-/** A name two or more chats share answers the candidates, never one picked. */
+/** A name two or more chats share answers the candidates (the newest 20, with `total`), never one picked. */
 export const ReaderReadByNameSchema = z.union([ReaderReadSchema, MessagesAmbiguousSchema]);
 export type ReaderReadByName = z.infer<typeof ReaderReadByNameSchema>;
 

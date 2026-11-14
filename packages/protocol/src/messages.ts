@@ -201,8 +201,8 @@ export type MessagesChatsResponse = z.infer<typeof MessagesChatsResponseSchema>;
 export const MessagesReadResponseSchema = z.object({ chat: ChatOwnerSchema, messages: z.array(MessageSchema), more: z.boolean() });
 export type MessagesReadResponse = z.infer<typeof MessagesReadResponseSchema>;
 
-/** A name two or more chats share ("Mom"): the candidates, never one picked. */
-export const MessagesAmbiguousSchema = z.object({ ambiguous: z.array(ChatSchema) });
+/** A name two or more chats share ("Mom"): the candidates (the newest 20), never one picked; `total`: how many matched. */
+export const MessagesAmbiguousSchema = z.object({ ambiguous: z.array(ChatSchema), total: count });
 export type MessagesAmbiguous = z.infer<typeof MessagesAmbiguousSchema>;
 
 export const MessagesReadByNameResponseSchema = z.union([MessagesReadResponseSchema, MessagesAmbiguousSchema]);
