@@ -8,8 +8,13 @@
  *   settings change) and closes when it turns off. A failed open makes
  *   `broken()` the fixed sentence (every messages route answers 503 with it)
  *   and logs the code only; turning Messages off and on tries again. At
- *   open the skip list's mirror is written, before any read; until it has
- *   been, reads are refused (to the reader no skip.json is an empty list).
+ *   open the keys skip.json lists that the table hasn't (a new or reset
+ *   messages.db) are kept, then the mirror is written, before any read;
+ *   until it has been, reads are refused (to the reader no skip.json is an
+ *   empty list). One deleted or changed by anyone else is written again
+ *   before the next read and by status(); a change that fails rewrites it
+ *   from the table it rolled back to.
+ * - A job left in <messagesDir>/jobs by a crash goes at start.
  * - The morning run answers 501 (NotImplementedError) until it is built.
  * - Reads need messages.db open (each is logged there: via, the MCP
  *   caller's pid and folder, the op, the chat key, a count) and answer the
@@ -57,7 +62,7 @@ import type {
 import { notBuilt } from '../core/not-implemented.js';
 import { MediaHelper } from '../intel/read/media.js';
 import { READS_KEEP, addRead, lastRunAt, listReads, openMessagesDb, readPrefs, type MessagesDb } from './db.js';
-import { mediaAnswer, type ImageShrinker } from './media.js';
+import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from './reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
 import { MESSAGES_SAYS, readerSays } from './says.js';
@@ -74,7 +79,7 @@ export interface MessagesDeps {
 export interface MessagesOptions {
   /** jantard --read-only: reads and the skip list work, the morning run never runs (it spends quota). */
   readOnly?: boolean;
-  /** What shrinks images. Default jantar-media (Intel's helper, built on first use). */
+  /** What shrinks images: daemon.ts passes the jantar-media helper Intel uses (built on first use). Default: one of its own. */
   shrinker?: ImageShrinker;
   /** Default paths.messagesDb; tests pass ":memory:". */
   dbFile?: string;
@@ -107,6 +112,8 @@ class MessagesShell implements MessagesService {
   private skipStore: SkipStore | null = null;
   /** skip.json was written since messages.db opened. */
   private mirrored = false;
+  /** skip.json's stamp when it was last written (SkipStore.stamp). */
+  private mirrorStamp: string | null = null;
   private brokenReason: string | null = null;
   private unsub: Unsubscribe | null = null;
   private sourceKeyRead: Promise<string | null> | null = null;
@@ -134,6 +141,8 @@ class MessagesShell implements MessagesService {
   }
 
   async start(): Promise<void> {
+    // No image job runs before start.
+    await clearJobs(this.ctx.paths.messagesDir);
     this.unsub ??= this.ctx.settings.subscribe((next, prev) => this.onSettings(next, prev));
     if (this.ctx.settings.get().messages.enabled) this.open();
   }
@@ -165,6 +174,8 @@ class MessagesShell implements MessagesService {
         phone = { readable: st.phone.readable };
         readerSkipped = st.skipped;
         reader = installed === 'stale' || st.version !== READER_VERSION ? { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded } : this.readerLine(st);
+        // The reader enforces another list than the table's (skip.json changed outside the daemon): ours again.
+        if (st.skipOk && this.mirrorDiffers(st.skipped)) this.mirror();
       } catch (e) {
         reader = installed === 'stale' ? { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded } : this.failedLine(e);
       }
@@ -206,7 +217,7 @@ class MessagesShell implements MessagesService {
     const code = e instanceof ReaderFailure ? e.code : 'down';
     switch (code) {
       case 'no_access':
-        return { state: 'no_access', detail: MESSAGES_SAYS.noAccess };
+        return { state: 'no_access', detail: readerSays(code, e instanceof ReaderFailure ? e.detail : undefined) ?? MESSAGES_SAYS.noAccess };
       case 'unsupported':
         return { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded };
       default:
@@ -287,10 +298,11 @@ class MessagesShell implements MessagesService {
     // One person: their 1:1's key (either id, and the iPhone's number when the reader matched it), else the name or number shown.
     const person = (c: Call) => c.chatKey ?? `who:${c.who}`;
     const after = (iso: string | null | undefined, ms: number) => typeof iso === 'string' && Date.parse(iso) >= ms;
+    // Returned: a later message from the owner, a later call the owner made, or a later call that connected (either way).
     const open = missed.filter((c) => {
       const at = Date.parse(c.at);
       if (c.chatKey && after(wrote[c.chatKey], at)) return false;
-      return !calls.some((o) => !o.incoming && person(o) === person(c) && after(o.at, at));
+      return !calls.some((o) => (!o.incoming || !o.missed) && person(o) === person(c) && after(o.at, at));
     });
     open.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     this.logRead('calls', by, undefined, open.length);
@@ -320,9 +332,11 @@ class MessagesShell implements MessagesService {
         skip.add({ chatKey, name: chat.name, kind: chat.kind, addedAt: this.ctx.clock.iso() });
         skip.writeMirror();
       });
-      this.mirrored = true;
+      this.wrote();
     } catch (e) {
       this.log.error('messages: a skip was not saved', { error: errorKind(e) });
+      // The mirror may have been written before the commit failed: the table it rolled back to again.
+      this.mirror();
       return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     }
     this.log.info('messages: a chat is skipped', { chatKey, by: actor.kind });
@@ -339,9 +353,11 @@ class MessagesShell implements MessagesService {
         skip.remove(chatKey);
         skip.writeMirror();
       });
-      this.mirrored = true;
+      this.wrote();
     } catch (e) {
       this.log.error('messages: a skip was not removed', { error: errorKind(e) });
+      // A mirror written before a failed commit would leave the chat readable: the table it rolled back to again.
+      this.mirror();
       return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     }
     this.log.info('messages: a chat is read again', { chatKey });
@@ -358,11 +374,32 @@ class MessagesShell implements MessagesService {
 
   /**
    * As need(), before a read: fails closed until skip.json has been written
-   * since open (to the reader a missing file is an empty list).
+   * since open (to the reader a missing file is an empty list), and writes
+   * it again first when it is gone or changed since (one stat).
    */
   private needReads(): void {
     this.need();
-    if (!this.mirrored && !this.mirror()) throw new ApiError('messages_unavailable', MESSAGES_SAYS.noMirror);
+    if ((!this.mirrored || this.mirrorMoved()) && !this.mirror()) throw new ApiError('messages_unavailable', MESSAGES_SAYS.noMirror);
+  }
+
+  /** The reader counts `skipped` keys, or skip.json isn't the one last written; false while messages.db is closed. */
+  private mirrorDiffers(skipped: number): boolean {
+    try {
+      return this.skipStore !== null && (skipped !== this.skipStore.count() || this.mirrorMoved());
+    } catch {
+      return false;
+    }
+  }
+
+  /** skip.json isn't the one last written (deleted, replaced or edited). */
+  private mirrorMoved(): boolean {
+    return this.skipStore !== null && this.skipStore.stamp() !== this.mirrorStamp;
+  }
+
+  /** skip.json was just written. */
+  private wrote(): void {
+    this.mirrored = true;
+    this.mirrorStamp = this.skipStore?.stamp() ?? null;
   }
 
   private logRead(op: string, by: ReadBy, chatKey: string | undefined, count: number): void {
@@ -382,7 +419,7 @@ class MessagesShell implements MessagesService {
     if (!this.skipStore) return false;
     try {
       this.skipStore.writeMirror();
-      this.mirrored = true;
+      this.wrote();
       return true;
     } catch (e) {
       this.log.error('messages: the skip list mirror was not written', { error: errorKind(e) });
@@ -401,6 +438,13 @@ class MessagesShell implements MessagesService {
     this.brokenReason = null;
     this.db = r.db;
     this.skipStore = createSkipStore(r.db, this.ctx.paths.messagesDir);
+    try {
+      // A new or reset messages.db: what skip.json still lists stays skipped (it never empties by itself).
+      const kept = this.skipStore.keep(this.ctx.clock.iso());
+      if (kept > 0) this.log.warn('messages: kept skipped chats the skip list file listed', { count: kept });
+    } catch (e) {
+      this.log.error("messages: the skip list file's keys were not read", { error: errorKind(e) });
+    }
     // Before any read: the reader enforces what the daemon lists.
     this.mirror();
   }
@@ -408,6 +452,7 @@ class MessagesShell implements MessagesService {
   private close(): void {
     this.reader.close();
     this.mirrored = false;
+    this.mirrorStamp = null;
     this.skipStore = null;
     this.db?.close();
     this.db = null;

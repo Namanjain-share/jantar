@@ -123,9 +123,9 @@ describe('v0.8: the tests\' seams never reach the running daemon', () => {
     for (const banned of [/\bintel\s*:/, /executablePath/, /\blookup\s*:/, /\bdial\s*:/, /\bca\s*:/]) expect(text).not.toMatch(banned);
   });
 
-  it('daemon.ts gives the Intel service readOnly and only the seams its own options carry', () => {
+  it('daemon.ts gives the Intel service readOnly, the shared jantar-media helper and only the seams its own options carry', () => {
     const text = code(join(SRC, 'daemon.ts'));
-    expect(text).toMatch(/createIntelService\(ctx, \{ files, usage, ccwLegacy \}, \{ readOnly, \.\.\.opts\.intel \}\)/);
+    expect(text).toMatch(/createIntelService\(ctx, \{ files, usage, ccwLegacy \}, \{ readOnly, helper: media, \.\.\.opts\.intel \}\)/);
     expect(text).toMatch(/intel\?: Pick<IntelOptions, 'net' \| 'browser'>/);
   });
 

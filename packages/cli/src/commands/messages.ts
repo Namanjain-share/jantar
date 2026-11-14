@@ -20,10 +20,13 @@
  *   daemon.
  * - `chats`, `read <name|chat id>`, `search <words>`, `calls`: the owner's
  *   own terminal, so text is printed, with escapes and control characters
- *   removed (other people's words).
+ *   removed (other people's words); read and search start with the data
+ *   note (a Claude session may run them through Bash, where no ask rule
+ *   applies). A bare date in a time flag is local midnight.
  * - `skip list | add | remove <name|chat id>`: a name resolves through the
  *   chats (add) or the skip list (remove), exact names first; one that
- *   matches several chats lists them and exits 2, never one picked.
+ *   matches several chats, or more chats than one list holds, lists them
+ *   and exits 2, never one picked.
  * - `morning [--now | --dry-run]`: the morning pass now (Task 12's run).
  *
  * Everything goes over ctl.sock, where a 1:1's number is never sent; the
@@ -32,7 +35,8 @@
 import { constants } from 'node:fs';
 import { access, chmod, mkdir, mkdtemp, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { ensureStateDirs } from '@jantar/daemon';
+import { ensureStateDirs, socketPathOk } from '@jantar/daemon';
+import { dataNote } from '@jantar/daemon/chat/text';
 import { READER_SOURCE, readerSourceKey } from '@jantar/daemon/messages/reader-protocol';
 import { MESSAGES_LIMITS, buildPath } from '@jantar/protocol';
 import {
@@ -84,6 +88,12 @@ const MORNING_TIMEOUT_MS = MESSAGES_LIMITS.morningTimeoutMs + 60_000;
 /** The most chats a name is matched against. */
 const NAME_MATCHES_MAX = 200;
 const NAME_MAX = 100;
+/** Before other people's words (as `jantar mcp` frames them). */
+const WHATSAPP_NOTE = `${dataNote('WhatsApp')}\n`;
+/** The reader's states that waiting won't change: setup says them at once. */
+const SETTLED: ReadonlySet<MessagesStatus['reader']['state']> = new Set(['no_access', 'unsupported', 'update_needed', 'not_installed']);
+/** A date with no time, read as the Mac's midnight. */
+const BARE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const FLAGS = {
   q: { type: 'string', help: 'chats: only chats whose name holds these letters' },
@@ -147,10 +157,12 @@ function when(iso: string, zone: string): string {
   return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
 }
 
-/** A time flag as the ISO time the routes take; a usage error when it isn't a time. */
+/** A time flag as the ISO time the routes take (a bare date is local midnight, as a time is local); a usage error when it isn't a time. */
 function timeFlag(v: string | undefined, name: string): string | undefined {
   if (v === undefined) return undefined;
-  const t = Date.parse(v.trim());
+  const text = v.trim();
+  // Date.parse reads a bare date as UTC but a date with a time as local.
+  const t = Date.parse(BARE_DATE.test(text) ? `${text}T00:00` : text);
   if (!Number.isFinite(t)) throw new UsageError(`--${name} needs a time like 2026-11-13 or 2026-11-13T08:00, got "${clip(v, 40)}"`);
   return new Date(t).toISOString();
 }
@@ -236,7 +248,11 @@ function whatsappText(st: MessagesStatus, now: number): string {
 function fdaText(ctx: CliContext, st: MessagesStatus): string {
   if (st.phone.readable) return 'granted (the iPhone call log reads too)';
   if (st.reader.state !== 'ok') return "can't tell until the reader answers";
-  return `not granted. Only the iPhone call log needs it: add ${ctx.paths.messagesReaderBin} in System Settings > Privacy & Security > Full Disk Access`;
+  // The reader can't tell a refused call log from none.
+  return (
+    'not granted, or there is no iPhone call log on this Mac. ' +
+    `Only the iPhone call log needs it: add ${ctx.paths.messagesReaderBin} in System Settings > Privacy & Security > Full Disk Access`
+  );
 }
 
 function morningText(st: MessagesStatus, now: number): string {
@@ -367,7 +383,7 @@ async function ensureReader(ctx: CliContext, source: string): Promise<'kept' | '
   return there ? 'rebuilt' : 'new';
 }
 
-/** The status until the reader answers or two minutes pass; null when the daemon isn't running. */
+/** The status until the reader answers, says what waiting won't change, or two minutes pass; null when the daemon isn't running. */
 async function waitForReader(ctx: CliContext): Promise<MessagesStatus | null> {
   const until = ctx.deps.now() + SETUP_WAIT_MS;
   for (;;) {
@@ -378,7 +394,7 @@ async function waitForReader(ctx: CliContext): Promise<MessagesStatus | null> {
       if (e instanceof CtlUnavailableError) return null;
       throw e;
     }
-    if (st.reader.state === 'ok' || !(ctx.deps.now() < until)) return st;
+    if (st.reader.state === 'ok' || SETTLED.has(st.reader.state) || !(ctx.deps.now() < until)) return st;
     await ctx.deps.sleep(SETUP_POLL_MS);
   }
 }
@@ -397,6 +413,11 @@ async function fdaSteps(ctx: CliContext, why: string): Promise<void> {
 
 async function setup(ctx: CliContext): Promise<number> {
   if (ctx.deps.platform !== 'darwin') throw new Error('Messages reads WhatsApp for Mac: setup runs on a Mac only');
+  // The reader would refuse it, and launchd restart it every 10 s.
+  const sock = ctx.paths.messagesReaderSock;
+  if (!socketPathOk(sock)) {
+    throw new Error(`the reader's socket path is longer than macOS allows for a Unix socket (103 bytes): ${sock}. Point JANTAR_HOME at a shorter directory.`);
+  }
   const bin = ctx.paths.messagesReaderBin;
   const asset = join(ctx.paths.assetsDir, READER_SOURCE);
   const source = await readFile(asset, 'utf8').catch(() => {
@@ -439,7 +460,13 @@ async function setup(ctx: CliContext): Promise<number> {
   ctx.io.out(`Reader: ${readerText(st)}\nWhatsApp: ${whatsappText(st, ctx.deps.now())}\n`);
 
   if (st.phone.readable) ctx.io.out('Full Disk Access: granted; the iPhone call log reads too.\n');
-  else await fdaSteps(ctx, 'Full Disk Access is optional, only for the iPhone call log (WhatsApp reads without it).');
+  else {
+    await fdaSteps(
+      ctx,
+      "The iPhone call log isn't readable: Full Disk Access isn't granted, or this Mac has no iPhone call log. " +
+        'Full Disk Access is optional, only for the iPhone call log (WhatsApp reads without it).',
+    );
+  }
   if (!st.enabled) ctx.io.out('Messages is off. Turn it on: jantar messages on\n');
   return EXIT.ok;
 }
@@ -475,6 +502,7 @@ async function read(ctx: CliContext, arg: string | undefined, flags: Flags): Pro
   if ('ambiguous' in r) return ambiguous(ctx, which, r.ambiguous, r.total);
   const zone = zoneOf(ctx);
   const c = r.chat;
+  ctx.io.out(WHATSAPP_NOTE);
   ctx.io.out(`${clip(c.name, 60)} (${c.kind}${c.members !== undefined ? `, ${plural(c.members, 'member')}` : ''}), ${plural(r.messages.length, 'message')}  ${c.chatKey}\n`);
   for (const m of r.messages) ctx.io.out(messageLine(m, zone));
   const oldest = r.messages[0];
@@ -492,6 +520,7 @@ async function search(ctx: CliContext, words: readonly string[], flags: Flags): 
     return EXIT.ok;
   }
   const zone = zoneOf(ctx);
+  ctx.io.out(WHATSAPP_NOTE);
   for (const h of r.hits) {
     ctx.io.out(`${h.chatKey}  ${when(h.at, zone)}  ${clip(h.chatName, 40)} · ${h.fromMe ? 'me' : clip(h.sender, 40)}: ${clean(h.snippet)}\n`);
   }
@@ -519,6 +548,14 @@ type Picked = { ok: true; chatKey: string; name: string | null } | { ok: false; 
 async function chatToSkip(ctx: CliContext, which: string): Promise<Picked> {
   if (isChatKey(which)) return { ok: true, chatKey: which, name: null };
   const r = await get<MessagesChatsResponse>(ctx, MESSAGES_ROUTES.messagesChats.path, { q: which, limit: NAME_MATCHES_MAX });
+  if (r.total > r.chats.length) {
+    // A chat of that name may be past the newest ones listed: never one picked.
+    ctx.io.err(
+      `jantar messages: ${r.total} chats hold "${clip(which, NAME_MAX)}", more than one list shows. ` +
+        `Skip it by its chat id: find it with jantar messages chats --q "<more of its name>"\n`,
+    );
+    return { ok: false, code: EXIT.usage };
+  }
   const hits = byName(which, r.chats);
   const [one] = hits;
   if (!one) throw new Error(`no chat named "${clip(which, NAME_MAX)}" (it may be skipped already: jantar messages skip list)`);

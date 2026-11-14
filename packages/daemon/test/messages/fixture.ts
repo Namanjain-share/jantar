@@ -21,8 +21,9 @@
  *
  * CallHistory.sqlite has the real Mac's call tables and columns (checked
  * 14 Nov): one aggregate row per call, its attempts, and the other people
- * on it, who hang off the aggregate. ContactsV2 and LID.sqlite follow
- * WhatsApp's naming, but their columns were not checked on the real Mac.
+ * on it, who hang off the aggregate. ContactsV2 and LID.sqlite have the
+ * columns the reader reads on the real Mac too (its real-data check of
+ * 14 Nov: status ok, contacts read, chats named).
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

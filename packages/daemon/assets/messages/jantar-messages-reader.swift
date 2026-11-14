@@ -1807,7 +1807,8 @@ final class Reader {
     var out: [CallOut] = []
     while try q.step() {
       let ids = { (i: Int32) in (q.text(i) ?? "").split(separator: " ").map(String.init) }
-      if ids(8).contains(where: { hide.persons.contains(w.person($0)) }) { continue }
+      // The owner starts every outgoing call: never hidden by a skipped "Message yourself" chat.
+      if ids(8).filter({ !w.isOwner($0) }).contains(where: { hide.persons.contains(w.person($0)) }) { continue }
       // Each person once (either id), by id so `who` reads the same every time.
       let people = Set(ids(9).filter { !w.isOwner($0) }.map { w.person($0) }).sorted()
       let who: String
@@ -1845,6 +1846,9 @@ final class Reader {
       db = try Database.open(opts.phoneDb)
     } catch let f as Failure where f.code == "busy" {
       throw Failure("busy", "the iPhone call log is closed for now")
+    } catch let f as Failure where f.code == "no_access" {
+      // The daemon tells this apart by its words (no Full Disk Access), whatever the file is called.
+      throw Failure("no_access", "macOS refused the iPhone call log to the reader")
     }
     let missing = try db.missingColumns(PHONE_TABLES)
     guard missing.isEmpty else { throw Failure("unsupported", "the iPhone call log lacks \(missing.prefix(3).joined(separator: ", "))") }

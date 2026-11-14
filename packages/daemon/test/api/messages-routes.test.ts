@@ -329,6 +329,33 @@ describe('reading', () => {
     expect([big.statusCode, err(big.body)]).toEqual([400, { code: 'invalid_request', message: MESSAGES_SAYS.tooBig }]);
   });
 
+  it("no_access says what the reader's detail names: WhatsApp missing, its contact files, the call log, else Full Disk Access", async () => {
+    let detail: string | undefined;
+    const t = await messagesApi({
+      handlers: {
+        ...READER,
+        chats: () => {
+          throw readerError('no_access', detail);
+        },
+      },
+    });
+    // The reader's own fixed details (jantar-messages-reader.swift); never shown, only told apart.
+    const says: [string | undefined, string][] = [
+      ["ChatStorage.sqlite isn't there: is WhatsApp for Mac installed and signed in?", MESSAGES_SAYS.noWhatsAppHere],
+      ['macOS refused ContactsV2.sqlite to the reader', MESSAGES_SAYS.contacts],
+      ['macOS refused LID.sqlite to the reader', MESSAGES_SAYS.contacts],
+      ['macOS refused the iPhone call log to the reader', MESSAGES_SAYS.phoneLog],
+      ["the iPhone call log isn't on this Mac", MESSAGES_SAYS.phoneLog],
+      ['macOS refused ChatStorage.sqlite to the reader', MESSAGES_SAYS.noAccess],
+      [undefined, MESSAGES_SAYS.noAccess],
+    ];
+    for (const [d, sentence] of says) {
+      detail = d;
+      const r = await ctl(t, 'GET', '/v1/messages/chats');
+      expect([r.statusCode, err(r.body)], d).toEqual([503, { code: 'messages_unavailable', message: sentence }]);
+    }
+  });
+
   it('read by ambiguous name lists candidates', async () => {
     const t = await messagesApi({ handlers: READER });
     for (const r of [await tcp(t, 'GET', '/v1/messages/by-name?name=Mom'), await ctl(t, 'GET', '/v1/messages/by-name?name=Mom')]) {
@@ -443,6 +470,32 @@ describe('media', () => {
     const mac = await ctl(t, 'GET', url);
     expect(mac.statusCode).toBe(200);
     expect(mac.rawPayload.equals(SHRUNK)).toBe(true);
+  });
+
+  it('a device whose byte budget is spent is refused before the reader or jantar-media is asked', async () => {
+    let dir = '';
+    let shrunk = 0;
+    const t = await messagesApi({ handlers: mediaReader(() => dir), shrinker: { ensure: shrinker.ensure, image: async (...a) => (shrunk++, shrinker.image(...a)) } });
+    dir = t.messagesDir;
+    expect(t.api.services.rawBytesBudget.take(`device:${t.phone.deviceId}`, V03_LIMITS.rawBytes.limit).ok).toBe(true);
+    const r = await tcp(t, 'GET', `/v1/messages/media/${GROUP}.3EB0IMG`);
+    expect([r.statusCode, err(r.body).message]).toEqual([429, MESSAGE_FILE_READS_LIMITED]);
+    expect(Number(r.headers['retry-after'])).toBeGreaterThan(0);
+    expect(reader!.calls.filter((c) => c.op === 'media')).toEqual([]);
+    expect(shrunk).toBe(0);
+    // Nothing was read, so nothing is logged.
+    expect((await tcp(t, 'GET', '/v1/messages/reads')).json()).toEqual({ reads: [] });
+  });
+
+  it("a file the reader names outside its spool is 503 with the daemon's own sentence", async () => {
+    let dir = '';
+    const t = await messagesApi({
+      handlers: { ...READER, media: () => ({ file: join(dir, `${'c'.repeat(32)}.jpg`), bytes: JPEG.length, kind: 'image', mime: 'image/jpeg' }) },
+      shrinker,
+    });
+    dir = t.messagesDir;
+    const r = await ctl(t, 'GET', `/v1/messages/media/${GROUP}.3EB0IMG`);
+    expect([r.statusCode, err(r.body)]).toEqual([503, { code: 'messages_unavailable', message: MESSAGES_SAYS.notInSpool }]);
   });
 
   it("an image jantar-media can't shrink is 503 with its own sentence, not the reader's", async () => {

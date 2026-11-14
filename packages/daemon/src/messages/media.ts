@@ -11,9 +11,11 @@
  *   and kind only: its bytes never leave the Mac.
  *
  * A path the reader names outside its spool is refused and never touched.
+ * Each failure carries a MESSAGES_SAYS sentence as its detail (the route
+ * shows it); a job a crash left is removed at start (clearJobs).
  */
 import { constants } from 'node:fs';
-import { copyFile, lstat, mkdtemp, open, realpath, rename, rm, unlink } from 'node:fs/promises';
+import { copyFile, lstat, mkdtemp, open, readdir, realpath, rename, rm, unlink } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { MessageKind } from '@jantar/protocol/messages';
@@ -37,6 +39,14 @@ const JPEG_MAX_BYTES = 8 * 1024 * 1024;
 
 export const spoolDirOf = (messagesDir: string) => join(messagesDir, 'spool');
 export const jobsDirOf = (messagesDir: string) => join(messagesDir, 'jobs');
+
+/** Every job left in <messagesDir>/jobs (a crash between the move and the rm keeps a full-size image there). */
+export async function clearJobs(messagesDir: string): Promise<void> {
+  const jobs = jobsDirOf(messagesDir);
+  const st = await lstat(jobs).catch(() => null);
+  if (!st?.isDirectory()) return;
+  for (const name of await readdir(jobs).catch(() => [])) await rm(join(jobs, name), { recursive: true, force: true }).catch(() => undefined);
+}
 
 /** Whether `file` is a regular file directly in the reader's spool, by its real folder. */
 async function inSpool(file: string, messagesDir: string): Promise<boolean> {
@@ -66,7 +76,7 @@ async function readJpeg(file: string): Promise<Buffer | null> {
 async function shrink(spooled: string, messagesDir: string, shrinker: ImageShrinker): Promise<Buffer> {
   if (!(await shrinker.ensure())) throw new ReaderFailure('busy', MESSAGES_SAYS.noImage);
   const jobs = jobsDirOf(messagesDir);
-  if (!(await ensureDir(messagesDir)) || !(await ensureDir(jobs))) throw new ReaderFailure('busy', 'the image job folder could not be made');
+  if (!(await ensureDir(messagesDir)) || !(await ensureDir(jobs))) throw new ReaderFailure('busy', MESSAGES_SAYS.imageJob);
   const job = await mkdtemp(join(jobs, 'img-'));
   try {
     // Moved, not copied: the spool copy is gone at once (both folders are the reader's state dir).
@@ -84,13 +94,13 @@ async function shrink(spooled: string, messagesDir: string, shrinker: ImageShrin
 
 /** The answer for the reader's spool copy `got`; the copy is deleted whatever happens. */
 export async function mediaAnswer(got: ReaderMedia, o: { messagesDir: string; shrinker: ImageShrinker }): Promise<MessagesMediaAnswer> {
-  if (!(await inSpool(got.file, o.messagesDir))) throw new ReaderFailure('unsupported', "the reader's file isn't in its spool");
+  if (!(await inSpool(got.file, o.messagesDir))) throw new ReaderFailure('unsupported', MESSAGES_SAYS.notInSpool);
   try {
     if (IMAGE_KINDS.has(got.kind)) return { jpeg: await shrink(got.file, o.messagesDir, o.shrinker) };
     return { document: { ...(got.fileName ? { fileName: got.fileName } : {}), bytes: got.bytes, kind: got.kind } };
   } catch (e) {
     // A file system error carries a path: only the fixed sentence goes on.
-    throw e instanceof ReaderFailure ? e : new ReaderFailure('busy', MESSAGES_SAYS.noImage);
+    throw e instanceof ReaderFailure ? e : new ReaderFailure('busy', MESSAGES_SAYS.imageJob);
   } finally {
     await unlink(got.file).catch(() => undefined);
   }

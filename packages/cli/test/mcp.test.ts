@@ -565,10 +565,13 @@ describe('jantar mcp on a terminal: the setup', () => {
       expect(r.out).toBe(setupText(NODE, BIN));
     }
     const { out } = await runMcp([], { tty: true });
+    // jantar mcp install first; the claude mcp add line is the by-hand way, outside cswap.
+    expect(out).toMatch(/^jantar mcp is an MCP server for Claude Code: it talks JSON-RPC on stdin and stdout\.\nAdd it to Claude Code once:\n\n {2}jantar mcp install\n/);
     expect(out).toContain(`\n  claude mcp add --scope user jantar -- "${NODE}" "${BIN}" mcp\n`);
-    expect(out).toMatch(/^jantar mcp is an MCP server for Claude Code: it talks JSON-RPC on stdin and stdout\.\n/);
+    expect(out.indexOf('jantar mcp install')).toBeLessThan(out.indexOf('claude mcp add'));
+    expect(out).toContain('outside cswap (CLAUDE_CONFIG_DIR unset)');
     // cswap copies ~/.claude.json's servers into each profile: no more "once in each profile".
-    expect(out).toContain('That writes ~/.claude.json, and cswap copies it into each profile when it starts.\n');
+    expect(out).toContain('cswap copies into each account when it starts');
     expect(out).not.toContain('run that once in each profile');
     expect(out).toContain('  "mcp__jantar__intel_search", "mcp__jantar__intel_get", "mcp__jantar__todos_here",\n  "mcp__jantar__client_here"\n');
     // The WhatsApp tools ask each time: never on the allow list.

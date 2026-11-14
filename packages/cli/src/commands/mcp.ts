@@ -48,6 +48,7 @@ import { cut, data, dataNote, line } from '@jantar/daemon/chat/text';
 import { loadSettings, resolveBins, stateDirFromEnv } from '@jantar/daemon/config';
 import { planAskRules, readAskRules, setAskRules, type AskRulesState } from '@jantar/daemon/hooks/ask-rules';
 import type { HooksFailure } from '@jantar/daemon/hooks/installer';
+import { CSWAP_SCRUB_ENV, scrubEnv } from '@jantar/daemon/core/exec';
 import { MCP_LINE_MAX, MCP_VERSIONS, createRpcServer, isRpcObject, rpcError, rpcResult, type RpcId } from '@jantar/daemon/mcp/rpc';
 import {
   CLI_NAME,
@@ -194,6 +195,8 @@ interface Tool<S extends z.ZodType = z.ZodType> {
   /** What each argument must be: "<field>: <this>" answers a bad one. */
   fields: Readonly<Record<string, string>>;
   annotations: Readonly<Record<string, boolean>>;
+  /** 0.15: a WhatsApp tool (Messages' own 400 sentences pass through as they are). */
+  whatsapp?: true;
   run(args: z.output<S>, deps: ToolDeps): Promise<ToolAnswer>;
 }
 
@@ -314,21 +317,38 @@ function messageOut(m: Message) {
   };
 }
 
+/** What a fitted page says of the lines it leaves out: `before` only when asking with it reaches every one. */
+type PageCut = { more?: string; before?: string };
+
 /**
  * A chat's page (oldest first) fitted to the budget: the newest kept, the
  * oldest left out first. The cut never splits one millisecond, since the next
  * page asks with `before` = the oldest kept line's time and must reach every
- * line left out.
+ * line left out. When every line that fits shares the millisecond of one
+ * that doesn't (a burst too long to show together), the ones that fit are
+ * shown with no `before`: the text says how many of that moment's lines are
+ * left out, and that asking before it skips them. `older`: the reader has
+ * lines older than the page.
  */
-function fittedPage(messages: readonly Message[], build: (kept: ReturnType<typeof messageOut>[], left: number, oldest: string | undefined) => unknown): string {
+function fittedPage(messages: readonly Message[], older: boolean, build: (kept: ReturnType<typeof messageOut>[], cut: PageCut) => unknown): string {
   const out = messages.map(messageOut);
   const n = out.length;
   let fit = fitBound([...out].reverse(), WHATSAPP_JSON_MAX);
   for (;;) {
     let k = fit;
     while (k > 0 && k < n && messages[n - k]?.at === messages[n - k - 1]?.at) k -= 1;
-    if (k === 0) k = fit;
-    const text = JSON.stringify(build(out.slice(n - k), n - k, messages[n - k]?.at));
+    const burst = k === 0 && fit > 0;
+    if (burst) k = fit;
+    const left = n - k;
+    const oldest = messages[n - k]?.at;
+    let cut: PageCut = {};
+    if (oldest && burst) {
+      const same = messages.slice(0, left).filter((m) => m.at === oldest).length;
+      const before = left > same || older ? ` Older messages: ask with before ${oldest} (it skips those ${same}).` : '';
+      cut = { more: `${same} more messages from ${oldest} (the oldest shown) are left out: too long to show with these.${before}` };
+    } else if (oldest && left > 0) cut = { more: `${left} older messages left out: ask with before`, before: oldest };
+    else if (oldest && older) cut = { more: 'Older messages: ask with before', before: oldest };
+    const text = JSON.stringify(build(out.slice(n - k), cut));
     if (text.length <= WHATSAPP_JSON_MAX || fit === 0) return text;
     fit -= 1;
   }
@@ -554,6 +574,7 @@ const TOOLS: readonly Tool[] = [
     }),
     fields: { query: 'at most 100 characters', waiting_on_me: 'true or false', since: TIME_FIELD, limit: `a whole number from 1 to ${CHATS_MAX}` },
     annotations: READ_ONLY,
+    whatsapp: true,
     async run(a, d) {
       const r = await messagesGet<MessagesChatsResponse>(d, MESSAGES_ROUTES.messagesChats.path, {
         // A blank query is no query (the daemon refuses an empty q).
@@ -595,6 +616,7 @@ const TOOLS: readonly Tool[] = [
     }),
     fields: { chat: 'a chat name or a chat id, 1 to 100 characters', since: TIME_FIELD, before: TIME_FIELD, limit: `a whole number from 1 to ${MESSAGES_LIMITS.readMax}` },
     annotations: READ_ONLY,
+    whatsapp: true,
     async run(a, d) {
       const page = { since: a.since, before: a.before, limit: a.limit };
       const r = MsgChatKeySchema.safeParse(a.chat).success
@@ -607,12 +629,7 @@ const TOOLS: readonly Tool[] = [
         const candidates = r.ambiguous.map((c) => ({ ...chatOut(c), last_at: c.lastAt }));
         return fromWhatsApp(fitted(candidates, (kept) => ({ ambiguous: kept, total: r.total, hint }), WHATSAPP_JSON_MAX));
       }
-      return fromWhatsApp(
-        fittedPage(r.messages, (kept, left, oldest) => {
-          const older = left > 0 ? `${left} older messages left out: ask with before` : r.more ? 'Older messages: ask with before' : undefined;
-          return { chat: chatOut(r.chat), messages: kept, ...(older && oldest ? { more: older, before: oldest } : {}) };
-        }),
-      );
+      return fromWhatsApp(fittedPage(r.messages, r.more, (kept, cut) => ({ chat: chatOut(r.chat), messages: kept, ...cut })));
     },
   }),
   tool({
@@ -634,6 +651,7 @@ const TOOLS: readonly Tool[] = [
       limit: `a whole number from 1 to ${MESSAGES_LIMITS.searchMax}`,
     },
     annotations: READ_ONLY,
+    whatsapp: true,
     async run(a, d) {
       const r = await messagesGet<MessagesSearchResponse>(d, MESSAGES_ROUTES.messagesSearch.path, { q: a.text, chat: a.chat, since: a.since, limit: a.limit });
       const hits = r.hits.map((h) => ({ chat_id: h.chatKey, chat: line(h.chatName), message_id: h.msgKey, at: h.at, ...authorOut(h), snippet: framed(h.msgKey, h.snippet) }));
@@ -649,6 +667,7 @@ const TOOLS: readonly Tool[] = [
     input: z.strictObject({ message_id: MsgKeySchema.describe('The message id messages_read gives, like c0123456789abcdef.3EB0A1B2C3.') }),
     fields: { message_id: 'a message id as messages_read gives it' },
     annotations: READ_ONLY,
+    whatsapp: true,
     async run(a, d) {
       const res = await d.ctl.bytes(buildPath(MESSAGES_ROUTES.messagesMedia, { msgKey: a.message_id }), { headers: callerHeaders(d.caller), timeoutMs: MESSAGES_MEDIA_MS });
       if (res.status === 200 && res.type.startsWith('image/jpeg')) {
@@ -668,6 +687,7 @@ const TOOLS: readonly Tool[] = [
     input: z.strictObject({}),
     fields: {},
     annotations: READ_ONLY,
+    whatsapp: true,
     async run(_a, d) {
       const r = await messagesGet<CallsToReturnResponse>(d, MESSAGES_ROUTES.messagesCalls.path);
       const calls = r.calls.map((c) => ({ id: c.callKey, at: c.at, who: line(c.who), via: c.via, ...(c.chatKey ? { chat_id: c.chatKey } : {}), ...(c.video ? { video: true } : {}) }));
@@ -690,7 +710,7 @@ function badArguments(t: Tool, issue: z.ZodError['issues'][number] | undefined):
 }
 
 /** A call that failed, as the one sentence Claude can act on or pass on. `adds`: the tool writes. */
-function failure(e: unknown, adds: boolean): string {
+function failure(e: unknown, adds: boolean, whatsapp: boolean): string {
   if (e instanceof CtlUnavailableError) {
     // No socket, or nothing listening on it: down. Anything else (ctl.ts's 10 s timeout on a busy Mac) is a daemon
     // that may still have done it, and a retry would add it twice.
@@ -704,6 +724,8 @@ function failure(e: unknown, adds: boolean): string {
     if (e.status === 404 || e.status === 429) return e.message;
     // 0.15: Messages can't read WhatsApp (the reader down, no access, WhatsApp closed): its sentence names the user's fix.
     if (e.status === 503 && e.code === 'messages_unavailable') return e.message;
+    // 0.15: Messages' fixed 400 sentences (a file over 25 MB, a request the reader can't take), as they are.
+    if (whatsapp && e.status === 400) return e.message;
     return `Jantar answered ${e.status}: ${e.message}`;
   }
   return MCP_SAYS.failed;
@@ -750,7 +772,7 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
       try {
         answer = await t.run(parsed.data, deps);
       } catch (e) {
-        answer = refused(failure(e, t.annotations.readOnlyHint !== true));
+        answer = refused(failure(e, t.annotations.readOnlyHint !== true, t.whatsapp === true));
       }
     }
     const content = [{ type: 'text', text: answer.text }, ...(answer.image ? [{ type: 'image', data: answer.image.data, mimeType: answer.image.mimeType }] : [])];
@@ -812,14 +834,19 @@ function processHost(): McpHost {
   };
 }
 
-/** The setup a person reads: the `claude mcp add` line with absolute, double-quoted paths. */
+/** The setup a person reads: `jantar mcp install`, then the `claude mcp add` line by hand, with absolute, double-quoted paths. */
 export function setupText(node: string, bin: string, stateDir?: string): string {
   const env = stateDir === undefined ? '' : `--env "JANTAR_HOME=${stateDir}" `;
   return (
     `${CLI_NAME} mcp is an MCP server for Claude Code: it talks JSON-RPC on stdin and stdout.\n` +
-    `Add it to Claude Code once (it runs with the same node as ${CLI_NAME}):\n\n` +
+    'Add it to Claude Code once:\n\n' +
+    `  ${CLI_NAME} mcp install\n\n` +
+    'That adds a lighter entry (jantar-mcp.mjs) to ~/.claude.json, which cswap copies into each account when it starts,\n' +
+    `and has Claude Code ask before each WhatsApp tool runs. ${CLI_NAME} mcp status shows every account;\n` +
+    `${CLI_NAME} mcp ask on|off switches the asking.\n\n` +
+    `Or add it by hand, with the same node as ${CLI_NAME}. Run this outside cswap (CLAUDE_CONFIG_DIR unset):\n` +
+    "inside an account it writes that account's own file, not ~/.claude.json.\n\n" +
     `  claude mcp add ${env}--scope user jantar -- "${node}" "${bin}" mcp\n\n` +
-    'That writes ~/.claude.json, and cswap copies it into each profile when it starts.\n' +
     'To skip the permission prompt for the read-only tools, add these to\n' +
     '"permissions.allow" in ~/.claude/settings.json:\n' +
     '  "mcp__jantar__intel_search", "mcp__jantar__intel_get", "mcp__jantar__todos_here",\n' +
@@ -827,10 +854,7 @@ export function setupText(node: string, bin: string, stateDir?: string): string 
     'Leave the WhatsApp tools (messages_*, calls_to_return) off that list: they should ask.\n\n' +
     'Every session can read the whole Intel shelf. Todos are only those of the Life\n' +
     "project linked to the session's folder, and client_here names only that folder's client.\n" +
-    `With Messages on (${CLI_NAME} messages on), every session can read your WhatsApp, skipped chats excepted.\n\n` +
-    `Or in one step: ${CLI_NAME} mcp install adds a lighter entry (jantar-mcp.mjs) to ~/.claude.json and\n` +
-    `has Claude Code ask before each WhatsApp tool runs. ${CLI_NAME} mcp status shows every account;\n` +
-    `${CLI_NAME} mcp ask on|off switches the asking.\n`
+    `With Messages on (${CLI_NAME} messages on), every session can read your WhatsApp, skipped chats excepted.\n`
   );
 }
 
@@ -859,10 +883,10 @@ function printSetup(ctx: CliContext, bin: string): number {
 
 /**
  * What points claude at one account's folder (cswap sets them in each of its
- * sessions): left out, so `claude mcp add` writes ~/.claude.json, the file
- * cswap copies into every account.
+ * sessions; core/exec.ts CSWAP_SCRUB_ENV): left out, so `claude mcp add`
+ * writes ~/.claude.json, the file cswap copies into every account.
  */
-export const CLAUDE_ACCOUNT_ENV = ['CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR'] as const;
+export const CLAUDE_ACCOUNT_ENV = CSWAP_SCRUB_ENV;
 /** Claude Code's file of user-scope servers, in the home (and in each account's folder). */
 const CLAUDE_JSON = '.claude.json';
 /** `claude mcp get` starts the server to check it: longer than ctl's 10 s. */
@@ -882,10 +906,14 @@ function wantedEntry(ctx: CliContext, mcpBin: string): McpEntry {
   return { command: ctx.deps.nodePath, args: [mcpBin], env: home ? { [HOME_ENV]: home } : {} };
 }
 
-/** The environment claude runs in: this one without CLAUDE_ACCOUNT_ENV. */
+/**
+ * The environment claude runs in: this one without CLAUDE_ACCOUNT_ENV, nor
+ * Claude Code's own session variables (CLAUDECODE, CLAUDE_CODE_*), as the
+ * primer's primeEnv: install is often run from inside a session.
+ */
 export function claudeEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string | undefined> {
-  const out = { ...env };
-  for (const k of CLAUDE_ACCOUNT_ENV) delete out[k];
+  const out = scrubEnv(env, CLAUDE_ACCOUNT_ENV);
+  for (const k of Object.keys(out)) if (k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_')) delete out[k];
   return out;
 }
 
@@ -911,13 +939,6 @@ export function entryState(text: string | null, want: McpEntry): EntryState {
     JSON.stringify(s.args ?? []) === JSON.stringify(want.args) &&
     env[HOME_ENV] === want.env[HOME_ENV];
   return same ? 'present' : 'different';
-}
-
-/** `claude mcp get`'s answer names the same command line (its Command and Args lines) and JANTAR_HOME. */
-function sameCommandLine(said: string, want: McpEntry): boolean {
-  const field = (name: string) => new RegExp(`^\\s*${name}:[ \\t]*(.*)$`, 'm').exec(said)?.[1]?.trim();
-  const home = new RegExp(`^\\s*${HOME_ENV}=(.*)$`, 'm').exec(said)?.[1]?.trim();
-  return field('Command') === want.command && field('Args') === want.args.join(' ') && home === want.env[HOME_ENV];
 }
 
 /** A file's text, or null when there is none. */
@@ -974,7 +995,9 @@ const ended = (r: { code: number | null; timedOut: boolean; spawnError?: string 
 /**
  * `jantar mcp install`: the slim entry into ~/.claude.json through Claude
  * Code's own `claude mcp add` (an argument array, never a shell), unless the
- * same server is there; checked in the file; then the ask rules.
+ * user scope's entry there is already this one; checked in the file; then
+ * the ask rules. An old entry is removed first; when the add then fails,
+ * the failure says no jantar server is left.
  */
 async function install(ctx: CliContext, mcpBin: string, dryRun: boolean): Promise<number> {
   const fail = (why: string) => {
@@ -994,21 +1017,26 @@ async function install(ctx: CliContext, mcpBin: string, dryRun: boolean): Promis
   const remove = ['mcp', 'remove', '--scope', 'user', MCP_SERVER_NAME];
 
   const got = await run(['mcp', 'get', MCP_SERVER_NAME]);
-  const there = got.code === 0;
-  // The same command line, and in the user scope (a project's own jantar would answer the get too).
-  const same = there && sameCommandLine(got.stdout, want) && entryState(await readText(claudeJson), want) === 'present';
+  const before = entryState(await readText(claudeJson), want);
+  // The user scope's entry is what counts (cswap copies it): already right, nothing is added, whatever the get said
+  // (it starts the server to check it and can time out; a project's own jantar answers it too).
+  const same = before === 'present';
+  const removeFirst = got.code === 0 || before === 'different';
   if (dryRun) {
     if (same) ctx.io.out('Already in ~/.claude.json: nothing to add.\n');
-    else for (const args of there ? [remove, add] : [add]) ctx.io.out(`Would run: ${claude} ${args.join(' ')}\n`);
+    else for (const args of removeFirst ? [remove, add] : [add]) ctx.io.out(`Would run: ${claude} ${args.join(' ')}\n`);
     const code = await askStep(ctx, true, true, 'install');
     ctx.io.out('Dry run: nothing was written.\n');
     return code;
   }
   if (!same) {
     // Another jantar in the user scope goes first (add refuses a name it has); if there is none there, the add says why.
-    if (there) await run(remove);
+    const removed = removeFirst && (await run(remove)).code === 0;
     const added = await run(add);
-    if (added.code !== 0) return fail(`claude mcp add failed (${ended(added)}): ${clip(added.stderr || added.stdout, CLAUDE_SAID_MAX)}`);
+    if (added.code !== 0) {
+      const why = `claude mcp add failed (${ended(added)}): ${clip(added.stderr || added.stdout, CLAUDE_SAID_MAX)}`;
+      return fail(removed ? `${why}\nThe old jantar entry was removed, so Claude Code has no jantar server now: run ${CLI_NAME} mcp install again.` : why);
+    }
   }
   const state = entryState(await readText(claudeJson), want);
   if (state !== 'present') {

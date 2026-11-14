@@ -93,6 +93,7 @@ import { createControlsService } from './controls/index.js';
 import { createLifeService, LIFE_MODULE_BUILDERS } from './life/index.js';
 import { buildLifeService } from './life/service.js';
 import { createIntelService, type IntelOptions } from './intel/index.js';
+import { MediaHelper } from './intel/read/media.js';
 import { createMeetingsService } from './meetings/index.js';
 import { createMessagesService } from './messages/index.js';
 import { createChatService } from './chat/index.js';
@@ -231,13 +232,15 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
       : readOnly
         ? buildLifeService(ctx, lifeDeps, readOnlyLifeBuilders(LIFE_MODULE_BUILDERS))
         : createLifeService(ctx, lifeDeps);
+    // 0.15: one jantar-media helper for Intel and Messages' images, so its first build runs once.
+    const media = new MediaHelper(ctx);
     // v0.8: Intel reads links on the Mac; under --read-only links are saved, never read (they spend quota and fetch pages).
-    const intel: IntelService = off ? off.intel : createIntelService(ctx, { files, usage, ccwLegacy }, { readOnly, ...opts.intel });
+    const intel: IntelService = off ? off.intel : createIntelService(ctx, { files, usage, ccwLegacy }, { readOnly, helper: media, ...opts.intel });
     // v0.5. Meetings are told --read-only, not wrapped: capture and edits are Jantar's own files, summaries spend quota.
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.15. Messages opens messages.db only while it is on; told --read-only, not wrapped: reads and the skip list
     // work, the morning run (it spends quota) never runs.
-    const messages: MessagesService = off ? off.messages : createMessagesService(ctx, { life, usage, ccwLegacy }, { readOnly });
+    const messages: MessagesService = off ? off.messages : createMessagesService(ctx, { life, usage, ccwLegacy }, { readOnly, shrinker: media });
     // v0.10. Chat (replaces Ask) is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
     // Sessions reach it read only: the store's state and transcript pages, never the writer, terminal or hooks.
     // Life's per-device write limit is one budget: the api counts its routes on it, Chat a run's writes.

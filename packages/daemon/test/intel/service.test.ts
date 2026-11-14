@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LIFE_MARKER, appendIntel, intelRecord, writeIntelJsonl } from '@jantar/fixtures';
 import { buildIntelService } from '../../src/intel/service.js';
 import { createIntelService } from '../../src/intel/index.js';
+import type { MediaHelper } from '../../src/intel/read/media.js';
 import { intelEnv, writeAt, type IntelEnv } from './helpers.js';
 
 let env: IntelEnv;
@@ -51,6 +52,12 @@ describe('the switch', () => {
   it('createIntelService is the factory the daemon wires', () => {
     expect(typeof createIntelService).toBe('function');
     expect(typeof buildIntelService).toBe('function');
+  });
+
+  it("uses the jantar-media helper it is given (the daemon's one, shared with Messages)", async () => {
+    const shared = { gap: () => null } as unknown as MediaHelper;
+    env = await intelEnv({ service: { read: { helper: shared } }, start: false });
+    expect(env.intel.helper).toBe(shared);
   });
 });
 

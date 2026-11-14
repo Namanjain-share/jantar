@@ -240,6 +240,19 @@ describe('jantar doctor', () => {
     expect(check(report, 'sockets').status).toBe('fail');
   });
 
+  it("warns when only the Messages reader's socket path is too long for macOS, with Messages on", async () => {
+    // A state dir of 85 bytes: run/ctl.sock and run/hooks.sock fit in 103, run/messages-reader.sock doesn't.
+    const pad = 85 - home.root.length - 1;
+    expect(pad).toBeGreaterThan(0);
+    const state = join(home.root, 'x'.repeat(pad));
+    await mkdir(state, { recursive: true, mode: 0o700 });
+    await writeFile(join(state, 'config.json'), JSON.stringify({ messages: { enabled: true } }), { mode: 0o600 });
+    const deps = testDeps({ locations: await fakePackages(home.root), bins: { pgrep: PGREP }, handlers: [onCommand(PGREP, { code: 1 })] });
+    const report = await doctorReport(contextFor({ env: { ...home.env, JANTAR_HOME: state } }, { deps }).ctx);
+    expect(check(report, 'sockets')).toMatchObject({ status: 'warn', fix: 'point JANTAR_HOME at a shorter directory' });
+    expect(check(report, 'sockets').detail).toContain(join(state, 'run', 'messages-reader.sock'));
+  });
+
   it('tells our daemon apart from another program on the port', async () => {
     const taken = await run({ portFree: async () => false, httpJson: async () => null });
     expect(check(taken.report, 'port')).toMatchObject({ status: 'fail' });

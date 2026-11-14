@@ -9,10 +9,14 @@
  *   a name or a number), the newest READS_KEEP kept;
  * - the skip list lives in messages.db and its 0600 mirror (skip.json, what
  *   the reader enforces) is written at open and after every change; only
- *   the Mac's CLI removes a skip;
+ *   the Mac's CLI removes a skip; a new messages.db keeps the keys skip.json
+ *   lists, a mirror deleted or edited outside is written again before the
+ *   next read, and a change that fails leaves the mirror as the table is;
  * - media: an image comes back shrunk by jantar-media (stubbed), anything
  *   else by name and size, and the reader's spool copy is gone either way;
- * - callsToReturn leaves out calls returned by a later message or call;
+ *   a job left from a crash goes at start;
+ * - callsToReturn leaves out calls returned by a later message, an outgoing
+ *   call or a later answered call;
  * - with the real reader (where Swift builds it): the skip list the daemon
  *   writes is the one the reader enforces, and media comes through its spool.
  */
@@ -33,6 +37,7 @@ import { buildMessagesService, type ImageShrinker } from '../../src/messages/ind
 import { ReaderFailure, createReaderClient } from '../../src/messages/reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from '../../src/messages/reader-protocol.js';
 import { MESSAGES_SAYS } from '../../src/messages/says.js';
+import { SKIP_KEPT_NAME } from '../../src/messages/skip.js';
 import { readerError, startFakeReader, type FakeHandlers, type FakeReader } from './fake-reader.js';
 import { makeWhatsAppFixture } from './fixture.js';
 import { buildReader, whatsAppRunning } from './reader-build.js';
@@ -109,7 +114,7 @@ interface Setup {
 }
 
 /** The part on a test context (FakeClock at NOW, Messages on), the reader installed from this source, and a fake reader when `handlers` are given. */
-async function setup(o: { handlers?: FakeHandlers; shrinker?: ImageShrinker; dbFile?: string; installed?: boolean } = {}): Promise<Setup> {
+async function setup(o: { handlers?: FakeHandlers; shrinker?: ImageShrinker; dbFile?: string; installed?: boolean; prepare?: (paths: Paths) => void } = {}): Promise<Setup> {
   const paths: Paths = { ...resolvePaths({ env: { HOME: dir }, userHome: dir, home: join(dir, 'j') }), messagesReaderSock: join(dir, 'r.sock') };
   const ctx = createTestContext({ paths, clock: new FakeClock(NOW), settings: SettingsSchema.parse({ messages: { enabled: true } }) });
   if (o.installed !== false) {
@@ -117,6 +122,7 @@ async function setup(o: { handlers?: FakeHandlers; shrinker?: ImageShrinker; dbF
     writeFileSync(paths.messagesReaderBin, '', { mode: 0o700 });
     writeFileSync(`${paths.messagesReaderBin}.key`, readerSourceKey(readFileSync(join(paths.assetsDir, READER_SOURCE), 'utf8')));
   }
+  o.prepare?.(paths);
   const reader = o.handlers ? await startFakeReader(paths.messagesReaderSock, o.handlers) : null;
   if (reader) cleanups.push(() => reader.close());
   const svc = buildMessagesService(
@@ -282,6 +288,77 @@ describe('the skip list', () => {
     // Only the mirror beside the installed reader: no temp file left.
     expect(readdirSync(t.paths.messagesDir).sort()).toEqual(['bin', 'skip.json']);
   });
+
+  /** A reader that shows any chat it is asked for, as `name`. */
+  const anyChat: FakeHandlers = { read: (a) => ({ chat: chat(String(a.chatKey), 'Asha Test'), messages: [], more: false }) };
+  const mirrorOf = (t: Setup) => JSON.parse(readFileSync(join(t.paths.messagesDir, 'skip.json'), 'utf8')) as unknown;
+
+  it('a reset messages.db keeps skip.json keys', async () => {
+    const t = await setup({ dbFile: join(dir, 'messages.db'), handlers: anyChat });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    await t.svc.stop();
+    // The owner moved messages.db aside (its broken sentence says to) and a new, empty one opens.
+    // A key that isn't one is never taken.
+    writeFileSync(join(t.paths.messagesDir, 'skip.json'), JSON.stringify({ version: 1, chatKeys: [ASHA, 'not a key'] }));
+    const fresh = await setup({ dbFile: join(dir, 'messages-new.db') });
+    expect(fresh.svc.skip.list()).toEqual([{ chatKey: ASHA, name: SKIP_KEPT_NAME, kind: 'dm', addedAt: NOW }]);
+    expect(mirrorOf(fresh)).toEqual({ version: 1, chatKeys: [ASHA] });
+    expect((await fresh.svc.status()).skipped).toBe(1);
+    // It is a skip like any other: the Mac removes it.
+    expect(fresh.svc.skip.remove(ASHA, CLI)).toEqual({ ok: true, value: true });
+    expect(mirrorOf(fresh)).toEqual({ version: 1, chatKeys: [] });
+  });
+
+  it('skip.json deleted or edited outside the daemon is written again before the next read, and by status', async () => {
+    const seen: unknown[] = [];
+    let mirror = '';
+    let skipped = 0;
+    const t = await setup({
+      handlers: {
+        ...anyChat,
+        chats: () => {
+          // What the reader would enforce for this read.
+          seen.push(existsSync(mirror) ? JSON.parse(readFileSync(mirror, 'utf8')) : null);
+          return { chats: [], total: 0 };
+        },
+        status: () => ({ ...READY, skipped }),
+      },
+    });
+    mirror = join(t.paths.messagesDir, 'skip.json');
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    rmSync(mirror);
+    await t.svc.chats({ limit: 30 }, { via: 'cli' });
+    writeFileSync(mirror, JSON.stringify({ version: 1, chatKeys: [] }));
+    await t.svc.chats({ limit: 30 }, { via: 'cli' });
+    expect(seen).toEqual([
+      { version: 1, chatKeys: [ASHA] },
+      { version: 1, chatKeys: [ASHA] },
+    ]);
+    // status: the reader counts another list than the table's.
+    writeFileSync(mirror, JSON.stringify({ version: 1, chatKeys: [] }));
+    skipped = 0;
+    await t.svc.status();
+    expect(JSON.parse(readFileSync(mirror, 'utf8'))).toEqual({ version: 1, chatKeys: [ASHA] });
+    expect(statSync(mirror).mode & 0o777).toBe(0o600);
+  });
+
+  it('a skip change whose commit fails leaves skip.json as messages.db is', async () => {
+    const t = await setup({ handlers: anyChat });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    const raw = (t.svc as unknown as { db: { raw: { exec(sql: string): void } } }).db.raw;
+    const exec = raw.exec.bind(raw);
+    raw.exec = (sql: string) => {
+      if (sql === 'COMMIT') throw new Error('disk I/O error');
+      exec(sql);
+    };
+    // The mirror was written inside the transaction: it must follow the rollback.
+    expect(t.svc.skip.remove(ASHA, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
+    expect(mirrorOf(t)).toEqual({ version: 1, chatKeys: [ASHA] });
+    expect(await t.svc.skip.add(GROUP, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
+    expect(mirrorOf(t)).toEqual({ version: 1, chatKeys: [ASHA] });
+  });
 });
 
 describe('media', () => {
@@ -335,7 +412,43 @@ describe('media', () => {
     writeFileSync(outside, JPEG);
     const t = await setup({ handlers: { media: () => ({ file: outside, bytes: JPEG.length, kind: 'image', mime: 'image/jpeg' }) } });
     await expect(t.svc.media(`${GROUP}.3EB0IMG`, { via: 'cli' })).rejects.toBeInstanceOf(ReaderFailure);
+    // Its own sentence, never "this WhatsApp version" or "busy".
+    await expect(t.svc.media(`${GROUP}.3EB0IMG`, { via: 'cli' })).rejects.toMatchObject({ detail: MESSAGES_SAYS.notInSpool });
     expect(readFileSync(outside)).toEqual(JPEG);
+  });
+
+  it("an image job folder that can't be made says so, not that jantar-media needs its tools", async () => {
+    let spooled = '';
+    const t = await setup({
+      shrinker: { ensure: async () => true, image: async () => ({ ok: false, why: 'failed' }) },
+      // A file where the jobs folder goes.
+      prepare: (p) => {
+        mkdirSync(p.messagesDir, { recursive: true, mode: 0o700 });
+        writeFileSync(join(p.messagesDir, 'jobs'), '');
+      },
+      handlers: {
+        media: () => {
+          const spool = join(t.paths.messagesDir, 'spool');
+          mkdirSync(spool, { recursive: true, mode: 0o700 });
+          spooled = join(spool, `a${'0'.repeat(31)}.jpg`);
+          writeFileSync(spooled, JPEG, { mode: 0o600 });
+          return { file: spooled, bytes: JPEG.length, kind: 'image', mime: 'image/jpeg' };
+        },
+      },
+    });
+    await expect(t.svc.media(`${GROUP}.3EB0IMG`, { via: 'cli' })).rejects.toMatchObject({ code: 'busy', detail: MESSAGES_SAYS.imageJob });
+    expect(existsSync(spooled)).toBe(false);
+  });
+
+  it('a job left by a crash is gone at start', async () => {
+    const t = await setup({
+      prepare: (p) => {
+        const job = join(p.messagesDir, 'jobs', 'img-left0');
+        mkdirSync(job, { recursive: true, mode: 0o700 });
+        writeFileSync(join(job, 'in.jpg'), JPEG);
+      },
+    });
+    expect(readdirSync(join(t.paths.messagesDir, 'jobs'))).toEqual([]);
   });
 });
 
@@ -344,15 +457,14 @@ describe('calls to return', () => {
     const ashaMissed = call(1, { at: '2026-11-13T09:30:00.000Z', who: 'Asha Test', chatKey: ASHA });
     const raviWa = call(2, { at: '2026-11-13T10:00:00.000Z', who: 'Ravi Test', chatKey: RAVI });
     const raviPhone = call(3, { at: '2026-11-13T11:00:00.000Z', who: 'Ravi Test', chatKey: RAVI, via: 'phone' });
-    // Mom's missed call was returned by a call; a number nobody knows was never returned.
+    // Mom's missed call was returned by a call.
     const momMissed = call(4, { at: '2026-11-13T12:00:00.000Z', who: 'Mom', chatKey: MOM });
     const momBack = call(5, { at: '2026-11-13T12:30:00.000Z', who: 'Mom', chatKey: MOM, incoming: false, missed: false, durationS: 60 });
-    const answered = call(6, { at: '2026-11-13T13:00:00.000Z', who: 'Ravi Test', chatKey: RAVI, missed: false, durationS: 30 });
     const old = call(7, { at: '2026-11-10T09:00:00.000Z', who: 'Ravi Test', chatKey: RAVI });
     const t = await setup({
       handlers: {
         waCalls: () => ({ calls: [old, ashaMissed, raviWa, momMissed, momBack] }),
-        phoneCalls: () => ({ calls: [raviPhone, answered] }),
+        phoneCalls: () => ({ calls: [raviPhone] }),
         lastFromMe: (a) => {
           expect([...(a.chatKeys as string[])].sort()).toEqual([ASHA, MOM, RAVI].sort());
           return { [ASHA]: '2026-11-13T09:40:00.000Z', [RAVI]: '2026-11-13T09:10:00.000Z', [MOM]: null };
@@ -365,6 +477,25 @@ describe('calls to return', () => {
     // The last 3 days only.
     expect(t.reader!.calls.find((c) => c.op === 'waCalls')!.args).toEqual({ since: '2026-11-11T03:00:00.000Z' });
     expect(t.svc.reads(1)).toEqual([{ at: NOW, via: 'mcp', pid: 9, op: 'calls', count: 2 }]);
+  });
+
+  it('a later answered call counts as returned', async () => {
+    const raviWa = call(2, { at: '2026-11-13T10:00:00.000Z', who: 'Ravi Test', chatKey: RAVI });
+    const raviPhone = call(3, { at: '2026-11-13T11:00:00.000Z', who: 'Ravi Test', chatKey: RAVI, via: 'phone' });
+    // He rang again and the owner picked up: they spoke.
+    const answered = call(6, { at: '2026-11-13T13:00:00.000Z', who: 'Ravi Test', chatKey: RAVI, missed: false, durationS: 30 });
+    // Neel (no chat): answered once before he missed, then a call he made that nobody picked up; neither returns it.
+    const neelAnswered = call(8, { at: '2026-11-13T08:00:00.000Z', who: 'Neel Test', missed: false, durationS: 40 });
+    const neelMissed = call(9, { at: '2026-11-13T12:15:00.000Z', who: 'Neel Test' });
+    const neelAgain = call(10, { at: '2026-11-13T12:20:00.000Z', who: 'Neel Test' });
+    const t = await setup({
+      handlers: {
+        waCalls: () => ({ calls: [neelAnswered, raviWa, neelMissed, neelAgain] }),
+        phoneCalls: () => ({ calls: [raviPhone, answered] }),
+        lastFromMe: () => ({ [RAVI]: null }),
+      },
+    });
+    expect((await t.svc.callsToReturn({ via: 'cli' })).calls.map((c) => c.callKey)).toEqual([neelAgain.callKey, neelMissed.callKey]);
   });
 
   it('a call log macOS keeps from the reader leaves WhatsApp calls', async () => {

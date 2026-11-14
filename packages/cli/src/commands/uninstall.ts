@@ -1,7 +1,9 @@
 /**
  * jantar uninstall: stop and remove the daemon's service (the LaunchAgent;
  * v0.6, on a server: the systemd user unit, or the Windows task's lines).
- * Keeps ~/.jantar (devices, audit log, settings) unless --purge is given.
+ * 0.15, on a Mac: the Messages reader's LaunchAgent goes too (KeepAlive, and
+ * maybe Full Disk Access; launchd would retry it every 10 s). Keeps
+ * ~/.jantar (devices, audit log, settings) unless --purge is given.
  */
 import { rm } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
@@ -10,6 +12,7 @@ import { parseArgs } from '../args.js';
 import { EXIT, defineCommand, type CliContext } from '../command.js';
 import { guardRealPath } from '../lib/guard.js';
 import { settingsMentionHook } from '../lib/hooks-files.js';
+import { READER_LABEL, bootoutAgent, plistPath, removePlist } from '../lib/launchd.js';
 import { removeService } from '../lib/service.js';
 
 const FLAGS = {
@@ -56,6 +59,16 @@ export default defineCommand(
         );
         return EXIT.failed;
       }
+    }
+
+    if (ctx.deps.platform === 'darwin') {
+      const out = await bootoutAgent(ctx.deps.exec, ctx.deps.uid, READER_LABEL);
+      if (!out.ok) {
+        ctx.io.err(`jantar uninstall: launchctl bootout failed for the Messages reader: ${out.reason}\n`);
+        return EXIT.failed;
+      }
+      const plist = plistPath(ctx.paths, READER_LABEL);
+      if (await removePlist(plist)) ctx.io.out(`Messages reader: ${out.detail ?? 'stopped'}, removed ${plist}\n`);
     }
 
     const removed = await removeService(ctx);

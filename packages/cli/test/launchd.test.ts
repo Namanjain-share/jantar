@@ -17,7 +17,7 @@ import uninstall, { purgeTargetOk } from '../src/commands/uninstall.js';
 import { CtlUnavailableError, type CtlClient } from '../src/ctl.js';
 import { EXIT } from '../src/command.js';
 import { memoryIo } from '../src/io.js';
-import { LAUNCHCTL, isNotLoaded, plistFor, plistPath, renderPlist, xmlEscape } from '../src/lib/launchd.js';
+import { LAUNCHCTL, READER_LABEL, isNotLoaded, plistFor, plistPath, renderPlist, xmlEscape } from '../src/lib/launchd.js';
 import { argsOf, contextFor, fakePackages, testDeps } from './helpers.js';
 
 const BASE = {
@@ -235,6 +235,24 @@ describe('jantar install / uninstall (synthetic HOME, fake launchctl)', () => {
     expect(existsSync(home.jantarHome)).toBe(true);
     expect(argsOf(deps.exec.calls, LAUNCHCTL).at(-1)).toEqual(['bootout', `gui/501/${LAUNCHD_LABEL}`]);
     expect(un.io.stdout).toContain('Kept');
+  });
+
+  it('uninstall removes the reader agent', async () => {
+    const { ctx, deps } = await setup();
+    expect(await install.run(['--no-doctor'], ctx)).toBe(EXIT.ok);
+    // jantar messages setup's agent: KeepAlive, and maybe Full Disk Access.
+    const reader = plistPath(ctx.paths, READER_LABEL);
+    await writeFile(reader, plistFor({ label: READER_LABEL, program: ctx.paths.messagesReaderBin, args: [], logs: { stdout: '/synthetic/o.log', stderr: '/synthetic/e.log' } }));
+    const un = contextFor(home, { deps });
+    expect(await uninstall.run([], un.ctx)).toBe(EXIT.ok);
+    expect(existsSync(reader)).toBe(false);
+    expect(argsOf(deps.exec.calls, LAUNCHCTL)).toContainEqual(['bootout', `gui/501/${READER_LABEL}`]);
+    expect(un.io.stdout).toContain(`Messages reader: unloaded, removed ${reader}`);
+
+    // Without one: nothing said of it.
+    const again = contextFor(home, { deps });
+    expect(await uninstall.run([], again.ctx)).toBe(EXIT.ok);
+    expect(again.io.stdout).not.toContain('Messages reader');
   });
 
   it('uninstall --purge asks (or needs --yes) and deletes only the state dir', async () => {

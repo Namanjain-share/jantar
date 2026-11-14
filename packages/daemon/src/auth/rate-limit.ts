@@ -86,7 +86,9 @@ export interface BudgetOptions {
 /**
  * A sliding-window budget of units per key (e.g. raw file bytes per device
  * per 10 minutes). `take` records an amount only when it still fits, so a
- * refused request costs nothing.
+ * refused request costs nothing; `peek` asks the same without taking (a
+ * route that must do its work before it knows the amount refuses a spent
+ * budget first).
  */
 export class SlidingWindowBudget {
   private readonly used = new Map<string, { at: number; amount: number }[]>();
@@ -94,6 +96,18 @@ export class SlidingWindowBudget {
 
   constructor(private readonly opts: BudgetOptions) {
     this.maxKeys = opts.maxKeys ?? 10_000;
+  }
+
+  peek(key: string, amount: number): RateLimitResult {
+    const now = this.opts.clock.now();
+    const since = now - this.opts.windowMs;
+    const list = (this.used.get(key) ?? []).filter((e) => e.at > since);
+    const total = list.reduce((n, e) => n + e.amount, 0);
+    if (total + amount > this.opts.limit) {
+      const oldest = list[0]?.at ?? now;
+      return { ok: false, retryAfterMs: Math.max(1, oldest + this.opts.windowMs - now) };
+    }
+    return { ok: true, remaining: this.opts.limit - total - amount };
   }
 
   take(key: string, amount: number): RateLimitResult {

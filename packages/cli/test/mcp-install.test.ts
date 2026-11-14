@@ -3,10 +3,13 @@
  * (bin/jantar-mcp.mjs → mcp-main.ts), on a synthetic HOME with cswap
  * profiles. `claude` is a fake exec handler (nothing runs it for real): it
  * gets an argument array, never a shell, and an environment without the
- * account folder cswap gives a session. The ask rules go into the shared
- * settings file through the hooks installer's write (a backup, the profile
- * links kept); status only reads. The slim entry serves stdin itself and
- * never loads the command index; anything else goes to `jantar mcp`.
+ * account folder cswap gives a session or Claude Code's own session
+ * variables. An entry already right in ~/.claude.json is never added again;
+ * an old one removed before a failed add is said. The ask rules go into the
+ * shared settings file through the hooks installer's write (a backup, the
+ * profile links kept); status only reads. The slim entry serves stdin
+ * itself and never loads the command index; anything else goes to
+ * `jantar mcp`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { lstat, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
@@ -105,6 +108,7 @@ describe('jantar mcp install, status, ask', () => {
       SYNTHETIC_KEEP: 'kept',
     });
     expect(r.err).toBe('');
+    expect(r.err).toBe('');
     expect(r.code).toBe(EXIT.ok);
     // Exactly two runs of the claude that resolveBins found, each an argument array (no shell, no quoting).
     expect(r.calls.map((c) => c.file)).toEqual([home.bins.claude, home.bins.claude]);
@@ -126,6 +130,49 @@ describe('jantar mcp install, status, ask', () => {
     expect(r.out).toContain('+      "mcp__jantar__messages_chats",');
     expect(r.out).toMatch(/Backed up the previous file to .*settings\.json\.jantar-backup-/);
     expect(r.out.endsWith(SAID)).toBe(true);
+  });
+
+  it("mcp install drops CLAUDECODE and CLAUDE_CODE_* from claude's env", async () => {
+    // Run from inside a Claude Code session (the owner's, or the setup session's Bash).
+    const r = await run(['install'], [notThere, addWrites], {
+      CLAUDECODE: '1',
+      CLAUDE_CODE_ENTRYPOINT: 'cli',
+      CLAUDE_CODE_SSE_PORT: '12345',
+      CLAUDE_CONFIG_DIR: join(home.paths.cswapProfiles, 'x'),
+      CLAUDE_PROJECT_DIR: '/synthetic/project',
+    });
+    expect(r.code).toBe(EXIT.ok);
+    expect(r.calls).toHaveLength(2);
+    for (const c of r.calls) {
+      const names = Object.keys(c.opts.env ?? {});
+      expect(names.filter((k) => k === 'CLAUDECODE' || k.startsWith('CLAUDE_CODE_') || k === 'CLAUDE_CONFIG_DIR')).toEqual([]);
+      // Not every CLAUDE_ name: only what points claude at a session or an account.
+      expect(c.opts.env?.CLAUDE_PROJECT_DIR).toBe('/synthetic/project');
+    }
+  });
+
+  it('a removed old entry and a failed add say the old entry is gone', async () => {
+    writeClaudeJson(claudeJson, { command: '/synthetic/old/node', args: ['/synthetic/old/jantar.mjs', 'mcp'] });
+    const r = await run(['install'], [
+      onCommand('claude', { code: 0, stdout: getOutput('/synthetic/old/node', ['/synthetic/old/jantar.mjs', 'mcp']) }, ['mcp', 'get']),
+      onCommand('claude', () => (writeClaudeJson(claudeJson), { code: 0 }), ['mcp', 'remove']),
+      onCommand('claude', { code: 1, timedOut: true }, ['mcp', 'add']),
+    ]);
+    expect(r.code).toBe(EXIT.failed);
+    expect(r.err).toContain('claude mcp add failed (timed out)');
+    expect(r.err).toContain('The old jantar entry was removed, so Claude Code has no jantar server now: run jantar mcp install again.');
+  });
+
+  it('the right entry already in ~/.claude.json skips the add, even when claude mcp get fails', async () => {
+    writeClaudeJson(claudeJson, { command: NODE, args: [MCP_BIN] });
+    // get starts the server to check it, and can time out.
+    const slow = onCommand('claude', { code: 1, timedOut: true }, ['mcp', 'get']);
+    const r = await run(['install'], [slow, addWrites]);
+    expect(r.err).toBe('');
+    expect(r.code).toBe(EXIT.ok);
+    expect(claudeArgs(r.calls)).toEqual([['mcp', 'get', 'jantar']]);
+    expect(r.out).toContain('Already in ~/.claude.json');
+    expect((await settings()).permissions.ask).toEqual([...MESSAGES_ASK_RULES]);
   });
 
   it('install with JANTAR_HOME passes it to the server, right after add', async () => {

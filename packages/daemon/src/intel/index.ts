@@ -15,6 +15,7 @@
  */
 import type { LookupFunction } from 'node:net';
 import type { Factories, IntelService } from '../contracts.js';
+import type { MediaHelper } from './read/media.js';
 import type { PwModule } from './read/tiers/browser.js';
 import { buildIntelService } from './service.js';
 
@@ -37,6 +38,8 @@ export interface IntelBrowserSeam {
 export interface IntelOptions {
   /** jantard --read-only: links are saved failed with the readOnly reason; nothing is read. */
   readOnly?: boolean;
+  /** 0.15: the daemon's one jantar-media helper, shared with Messages (one build, never two at once). Default: its own. */
+  helper?: MediaHelper;
   net?: IntelNetSeam;
   browser?: IntelBrowserSeam;
 }

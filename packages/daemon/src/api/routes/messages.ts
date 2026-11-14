@@ -23,7 +23,8 @@
  *   refuses anyone but the CLI too);
  * - messagesMedia answers the shrunk JPEG with meetingShot's headers and,
  *   for a device, takes its bytes from s.rawBytesBudget (shared with Files
- *   and Meetings); anything else is 415 not_an_image, by name and size;
+ *   and Meetings), refusing a spent budget before the reader is asked;
+ *   anything else is 415 not_an_image, by name and size;
  * - writes reply `{ ok: true }` (Run now: the run's report) and audit their
  *   target id only (a chat key, a draft or run id), never a name or text;
  *   GETs are not audited.
@@ -41,6 +42,7 @@ import {
   type MorningRunBody,
   type SkipAddBody,
 } from '@jantar/protocol/messages';
+import type { RateLimitResult } from '../../auth/rate-limit.js';
 import type { ReadBy } from '../../contracts.js';
 import { MESSAGES_SAYS, ReaderFailure, readerSays } from '../../messages/index.js';
 import { ApiError } from '../errors.js';
@@ -73,7 +75,7 @@ const OWN_SENTENCES: ReadonlySet<string> = new Set(Object.values(MESSAGES_SAYS))
 
 /** A reader failure as the API error: the owner's fix (503), else the caller's 404 or 400. */
 function readerFailure(e: ReaderFailure, notFound: string, badRequest: string): ApiError {
-  const fix = readerSays(e.code);
+  const fix = readerSays(e.code, e.detail);
   if (fix !== null) return new ApiError('messages_unavailable', e.detail !== undefined && OWN_SENTENCES.has(e.detail) ? e.detail : fix);
   return e.code === 'bad_request' ? new ApiError('invalid_request', badRequest) : new ApiError('not_found', notFound);
 }
@@ -107,6 +109,11 @@ export function readByOf(c: Call): ReadBy {
   const pid = Number(header(c, MESSAGES_CALLER_HEADERS.pid));
   const folder = header(c, MESSAGES_CALLER_HEADERS.folder);
   return { via: 'mcp', ...(Number.isSafeInteger(pid) && pid > 0 ? { pid } : {}), ...(folder ? { folder: decoded(folder) } : {}) };
+}
+
+/** messagesMedia's 429 when the device's raw byte budget says no. */
+function spent(budget: RateLimitResult): void {
+  if (!budget.ok) throw new ApiError('rate_limited', MESSAGE_FILE_READS_LIMITED, { 'retry-after': String(Math.max(1, Math.ceil(budget.retryAfterMs / 1000))) });
 }
 
 /** A chat as this caller sees it: a 1:1's number on the owner's answers over TCP only. */
@@ -152,12 +159,12 @@ export const MESSAGES_ROUTE_IMPLS: RouteTable = {
 
   messagesMedia: {
     handle: async (c: Call<MsgParams>, s): Promise<RawReply> => {
+      const device = c.auth.transport === 'tcp' ? actorName(c.auth) : null;
+      // A spent budget is refused before the reader copies the file and jantar-media shrinks it (the read isn't logged).
+      if (device !== null) spent(s.rawBytesBudget.peek(device, 1));
       const got = await reading(() => s.deps.messages.media(c.params.msgKey, readByOf(c)), MESSAGES_SAYS.noFile, MESSAGES_SAYS.tooBig);
       if (!('jpeg' in got)) throw new ApiError('not_an_image', notAnImage(got.document));
-      if (c.auth.transport === 'tcp') {
-        const budget = s.rawBytesBudget.take(actorName(c.auth), got.jpeg.length);
-        if (!budget.ok) throw new ApiError('rate_limited', MESSAGE_FILE_READS_LIMITED, { 'retry-after': String(Math.max(1, Math.ceil(budget.retryAfterMs / 1000))) });
-      }
+      if (device !== null) spent(s.rawBytesBudget.take(device, got.jpeg.length));
       return {
         kind: 'raw',
         type: 'image/jpeg',

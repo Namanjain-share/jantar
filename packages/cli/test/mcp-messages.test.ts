@@ -243,6 +243,8 @@ describe('messages_read', () => {
     const opens = [...flat.matchAll(/<data source="whatsapp"/g)].map((m) => m.index);
     const closes = [...flat.matchAll(/<\/data>/g)].map((m) => m.index);
     expect(opens.length).toBe(closes.length);
+    // Both lines that carry it are there (the sneaky one and Ravi's), so the checks below check something.
+    expect([...flat.matchAll(new RegExp(INJECTION, 'g'))]).toHaveLength(2);
     for (const at of [...flat.matchAll(new RegExp(INJECTION, 'g'))].map((m) => m.index)) {
       const open = Math.max(...opens.filter((o) => o < at));
       const close = Math.min(...closes.filter((c) => c > at));
@@ -279,6 +281,27 @@ describe('messages_read', () => {
     expect(page.messages).toHaveLength(3);
     expect(page.more).toBe('Older messages: ask with before');
     expect(page.before).toBe(ASHA_READ.messages[0]?.at);
+  });
+
+  it('a one-millisecond burst never sets a before that skips lines', async () => {
+    // The newest 200 lines share one millisecond and can't all fit: the next page by before would miss the rest.
+    const burstAt = '2026-11-13T09:00:00.000Z';
+    const older = Array.from({ length: 3 }, (_, i) => message({ at: `2026-11-13T08:0${i}:00.000Z` }));
+    const burst = Array.from({ length: 200 }, (_, i) => message({ at: burstAt, kind: 'image', text: undefined, caption: `${i} ${'y'.repeat(300)}` }));
+    const r = await callTool(server(daemon({ 'GET /v1/messages/by-name': ok(readOf([...older, ...burst], { more: true })) })), 'messages_read', { chat: 'Asha Test' });
+    expect(r.text.length).toBeLessThanOrEqual(MCP_RESULT_MAX);
+    const body = dataAnswer(r.text) as { messages: { id: string; at: string }[]; more: string; before?: string };
+    const kept = body.messages.length;
+    expect(kept).toBeGreaterThan(0);
+    expect(kept).toBeLessThan(200);
+    expect(body.messages.every((m) => m.at === burstAt)).toBe(true);
+    expect(body.messages.map((m) => m.id)).toEqual(burst.slice(200 - kept).map((m) => m.msgKey));
+    // No before: it would skip the burst's other lines. The text says plainly what was left out and why.
+    expect(body.before).toBeUndefined();
+    expect(body.more).toBe(
+      `${200 - kept} more messages from ${burstAt} (the oldest shown) are left out: too long to show with these. ` +
+        `Older messages: ask with before ${burstAt} (it skips those ${200 - kept}).`,
+    );
   });
 
   it('refuses bad arguments with one sentence and calls nothing', async () => {
@@ -374,6 +397,13 @@ describe('failures', () => {
       const ctl = daemon({ [route]: fail('messages_unavailable', DOWN, 503) });
       expect(await callTool(server(ctl), name, args), name).toEqual({ text: DOWN, isError: true });
     }
+  });
+
+  it("an image over 25 MB: the daemon's 400 sentence as it is, not as an HTTP answer", async () => {
+    const big = `${GROUP}.3EB0AA07`;
+    const TOO_BIG = 'That file is over 25 MB, too large to show.';
+    const ctl = daemon({ [`GET /v1/messages/media/${big}`]: fail('invalid_request', TOO_BIG, 400) });
+    expect(await callTool(server(ctl), 'messages_media', { message_id: big })).toEqual({ text: TOO_BIG, isError: true });
   });
 
   it("Messages off: the daemon's 403 sentence, as the user's to act on; the Mac down is the usual sentence", async () => {

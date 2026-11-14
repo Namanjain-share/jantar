@@ -236,16 +236,19 @@ async function checkStateDir(i: DoctorInput): Promise<DoctorCheck> {
 
 function checkSocketPaths(i: DoctorInput): DoctorCheck {
   if (isPipePath(i.paths.ctlSock)) return { id: 'sockets', title: 'Socket paths', status: 'ok', detail: 'named pipes (Windows)' };
-  const long = [i.paths.hooksSock, i.paths.ctlSock].filter((p) => !socketPathOk(p));
+  // 0.15: with Messages on, on a Mac, the reader's too (its name is the longest); only Messages needs it, so it warns.
+  const reader = i.platform === 'darwin' && i.settings.settings.messages.enabled ? [i.paths.messagesReaderSock] : [];
+  const long = [i.paths.hooksSock, i.paths.ctlSock, ...reader].filter((p) => !socketPathOk(p));
+  const names = reader.length ? '{hooks,ctl,messages-reader}' : '{hooks,ctl}';
   return long.length
     ? {
         id: 'sockets',
         title: 'Socket paths',
-        status: 'fail',
+        status: long.every((p) => reader.includes(p)) ? 'warn' : 'fail',
         detail: `${long.join(', ')} ${long.length === 1 ? 'is' : 'are'} longer than macOS allows for a Unix socket path (103 bytes)`,
         fix: 'point JANTAR_HOME at a shorter directory',
       }
-    : { id: 'sockets', title: 'Socket paths', status: 'ok', detail: `${i.paths.runDir}/{hooks,ctl}.sock` };
+    : { id: 'sockets', title: 'Socket paths', status: 'ok', detail: `${i.paths.runDir}/${names}.sock` };
 }
 
 async function checkBuild(i: DoctorInput): Promise<DoctorCheck> {
@@ -1067,7 +1070,9 @@ async function messagesReaderCheck(i: DoctorInput, probe: DaemonProbe): Promise<
   }
   const r = st.reader;
   if (r.state === 'ok') {
-    const phone = st.phone.readable ? 'the iPhone call log reads too' : 'the iPhone call log needs Full Disk Access on the reader (optional)';
+    const phone = st.phone.readable
+      ? 'the iPhone call log reads too'
+      : "the iPhone call log doesn't read: Full Disk Access on the reader isn't granted (optional), or this Mac has no iPhone call log";
     return { ...base, status: 'ok', detail: `answers${r.detail ? ` (${r.detail})` : ''}; ${phone}` };
   }
   const detail = `${r.state.replace('_', ' ')}${r.detail ? `: ${r.detail}` : ''}`;

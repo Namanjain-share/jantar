@@ -143,7 +143,7 @@ export class IntelShelfService implements IntelService {
     this.chrome = new ChromeLeases(ctx.clock);
     this.browser = new BrowserTier({ env: ctx.env, ...(read.browser ? { executablePath: read.browser.executablePath } : {}), ...(read.browser?.load ? { load: read.browser.load } : {}) });
     this.ytdlp = new YtDlp(ctx);
-    this.helper = new MediaHelper(ctx);
+    this.helper = read.helper ?? new MediaHelper(ctx);
     const pipeline: PipelineDeps = {
       ctx,
       guard: this.guard,

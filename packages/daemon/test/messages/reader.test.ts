@@ -43,6 +43,7 @@ import {
   makeWhatsAppFixture,
   type FixturePaths,
 } from './fixture.js';
+import { MESSAGES_SAYS, readerSays } from '../../src/messages/says.js';
 import { READER_ASSET, buildReader, whatsAppRunning } from './reader-build.js';
 import {
   digitsOf,
@@ -151,7 +152,10 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
   it('a missing container is not found, and reads say so', async () => {
     const r = await start({ fixture: { ...paths, container: join(dir, 'nowhere') } });
     expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp).toMatchObject({ found: false, schemaOk: false, newestAt: null });
-    expect(await r.call('chats', { limit: 50 })).toMatchObject({ ok: false, error: 'no_access' });
+    const failed = await r.call('chats', { limit: 50 });
+    expect(failed).toMatchObject({ ok: false, error: 'no_access' });
+    // The daemon tells it apart by the reader's detail: no WhatsApp here, not Full Disk Access.
+    expect(readerSays('no_access', failed.ok ? undefined : failed.detail)).toBe(MESSAGES_SAYS.noWhatsAppHere);
   });
 
   it('chats leaves out status, newsletter and broadcast', async () => {
@@ -508,7 +512,9 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
       const status = ReaderStatusSchema.parse(await r.ok('status'));
       expect(status.whatsapp).toMatchObject({ found: true, schemaOk: true, contactsOk: false, newestAt: FIXTURE_NEWEST_AT });
       // Never read without it: a skipped person's other id could show.
-      expect(await r.call('chats', { limit: 50 })).toMatchObject({ ok: false, error: 'no_access' });
+      const failed = await r.call('chats', { limit: 50 });
+      expect(failed).toMatchObject({ ok: false, error: 'no_access' });
+      expect(readerSays('no_access', failed.ok ? undefined : failed.detail)).toBe(MESSAGES_SAYS.contacts);
 
       chmodSync(contacts, mode);
       expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp.contactsOk).toBe(true);

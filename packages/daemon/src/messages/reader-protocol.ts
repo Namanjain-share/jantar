@@ -175,9 +175,11 @@ export type ReaderMedia = z.infer<typeof ReaderMediaSchema>;
 /**
  * Calls from `since`, oldest first (the newest 500 at most). `who`: the
  * address book's name, else the chat's or push name, else the number
- * ("+91 99900 00002"). `missed`: an incoming call nobody picked up. A
- * skipped person's calls never come. phoneCalls is `no_access` until the
- * reader has Full Disk Access.
+ * ("+91 99900 00002"); a call with several people and no group names them
+ * all, joined with ", " (sorted by id) and has no `chatKey`. `missed`: an
+ * incoming call nobody picked up. A skipped person's calls never come (the
+ * owner's own ids aside: skipping "Message yourself" hides none of theirs).
+ * phoneCalls is `no_access` until the reader has Full Disk Access.
  */
 export const ReaderCallsSchema = z.object({ calls: z.array(CallSchema) });
 export type ReaderCalls = z.infer<typeof ReaderCallsSchema>;

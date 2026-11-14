@@ -43,6 +43,7 @@ import {
   makeWhatsAppFixture,
   type FixturePaths,
 } from './fixture.js';
+import { MESSAGES_SAYS, readerSays } from '../../src/messages/says.js';
 import { buildReader, whatsAppRunning } from './reader-build.js';
 import { digitsOf, filesUnder, keyOf, sha256, startReader, userJid, writeAsWhatsApp, writeSkip, type Running } from './reader-harness.js';
 
@@ -469,6 +470,10 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
       attempt.run(32, 20, at('16:03:00'), 0, 'FXCALL20C', null, null);
       expect((await later()).map((c) => c.callKey)).toEqual(calls.map((c) => c.callKey));
 
+      // The owner's own "Message yourself" chat skipped: the owner starts every outgoing call, which still come.
+      writeSkip(r.state, [k(FIXTURE_OWNER.phone)]);
+      expect(await later()).toEqual(calls);
+
       // A skipped group's calls never come; nor do a skipped person's, on the call or starting a group's.
       writeSkip(r.state, [k(paths.jids.group)]);
       expect((await later()).map((c) => c.at)).toEqual(['2026-11-13T16:00:00.000Z', '2026-11-13T17:00:00.000Z', '2026-11-13T19:00:00.000Z']);
@@ -485,13 +490,17 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     chmodSync(locked, 0o000);
     try {
       const r = await start({ fixture: { ...paths, phoneDb: locked } });
-      expect(await r.call('phoneCalls', { since: FIXTURE_SINCE })).toMatchObject({ ok: false, error: 'no_access' });
+      const refused = await r.call('phoneCalls', { since: FIXTURE_SINCE });
+      expect(refused).toMatchObject({ ok: false, error: 'no_access' });
+      expect(readerSays('no_access', refused.ok ? undefined : refused.detail)).toBe(MESSAGES_SAYS.phoneLog);
       expect(ReaderStatusSchema.parse(await r.ok('status')).phone.readable).toBe(false);
       // WhatsApp's own calls don't need it.
       expect(ReaderCallsSchema.parse(await r.ok('waCalls', { since: FIXTURE_SINCE })).calls).toHaveLength(2);
 
       const none = await start({ fixture: { ...paths, phoneDb: join(dir, 'nowhere.storedata') }, state: join(dir, 'state2') });
-      expect(await none.call('phoneCalls', { since: FIXTURE_SINCE })).toMatchObject({ ok: false, error: 'no_access' });
+      const missing = await none.call('phoneCalls', { since: FIXTURE_SINCE });
+      expect(missing).toMatchObject({ ok: false, error: 'no_access' });
+      expect(readerSays('no_access', missing.ok ? undefined : missing.detail)).toBe(MESSAGES_SAYS.phoneLog);
     } finally {
       chmodSync(locked, 0o600);
     }
