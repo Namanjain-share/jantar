@@ -19,8 +19,10 @@
  * four people: the owner (listed under both ids, as on the real Mac),
  * Asha (by @lid), Ravi and Neel.
  *
- * Call tables, ContactsV2 and LID.sqlite follow WhatsApp's naming, but
- * their columns were not checked on the real Mac in Task 0.
+ * CallHistory.sqlite has the real Mac's call tables and columns (checked
+ * 14 Nov): one aggregate row per call, its attempts, and the other people
+ * on it, who hang off the aggregate. ContactsV2 and LID.sqlite follow
+ * WhatsApp's naming, but their columns were not checked on the real Mac.
  */
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -61,7 +63,7 @@ export const WA_SESSION = { dm: 0, group: 1, broadcast: 2, status: 3, community:
 export const WA_TYPE = { text: 0, image: 1, system: 6, deleted: 14 } as const;
 /** ZGROUPEVENTTYPE of Group One's one system line (the value is the fixture's own). */
 export const WA_GROUP_EVENT = 2;
-/** WhatsApp call outcome and missed reason (the fixture's own values). */
+/** WhatsApp's call outcome and missed reason (the fixture's own values; the reader reads neither). */
 export const WA_CALL = { outcomeMissed: 1, missedNoAnswer: 1 } as const;
 
 export const FIXTURE_TEXT = {
@@ -167,10 +169,24 @@ const MESSAGES: FixtureMessage[] = [
   { chat: 'group', at: FIXTURE_NEWEST_AT, fromMe: false, member: 'neel', stanza: '3EB0FX0706', type: WA_TYPE.system, event: WA_GROUP_EVENT },
 ];
 
-/** Missed incoming WhatsApp calls: Asha's is returned (the owner wrote at 09:40), Ravi's is not. */
+/**
+ * Missed incoming WhatsApp calls: Asha's is returned (the owner wrote at
+ * 09:40), Ravi's is not. Asha rang twice (two attempts, one call) from her
+ * @lid, as WhatsApp names call participants now; Ravi's call is under his
+ * number. Attempts are numbered apart from their calls, so a reader that
+ * hangs participants off an attempt names the wrong person.
+ */
 const WA_CALLS = [
-  { at: at('09:30'), jid: JIDS.asha, id: 'FXCALL01' },
-  { at: at('10:00'), jid: JIDS.ravi, id: 'FXCALL02' },
+  {
+    at: at('09:30'),
+    who: JIDS.ashaLid,
+    creator: JIDS.ashaLid,
+    attempts: [
+      { at: at('09:30'), id: 'FXCALL01' },
+      { at: '2026-11-13T09:30:40.000Z', id: 'FXCALL01B' },
+    ],
+  },
+  { at: at('10:00'), who: JIDS.ravi, creator: null, attempts: [{ at: at('10:00'), id: 'FXCALL02' }] },
 ];
 
 /** Mom 1 is in the address book, Mom 2 is not (her name comes from the chat). */
@@ -266,18 +282,27 @@ const CHAT_STORAGE: Record<string, TableDef> = {
   ZWAMESSAGEINFO: { entity: 'WAMessageInfo', cols: { ZMESSAGE: 'INTEGER', ZRECEIPTINFO: 'BLOB' } },
 };
 
+/** The real Mac's CallHistory.sqlite (spike/RESULTS.md, 14 Nov). */
 const WA_CALL_HISTORY: Record<string, TableDef> = {
+  /** One row per call. */
   ZWAAGGREGATECALLEVENT: {
     entity: 'WAAggregateCallEvent',
-    cols: { ZMISSEDREASON: 'INTEGER', ZVIDEO: 'INTEGER', ZCREATORJID: 'VARCHAR', ZGROUPJID: 'VARCHAR' },
+    cols: { ZINCOMING: 'INTEGER', ZMISSED: 'INTEGER', ZMISSEDREASON: 'INTEGER', ZVIDEO: 'INTEGER', ZFIRSTDATE: 'TIMESTAMP', ZLINKTOKEN: 'VARCHAR' },
   },
+  /** A call's attempts (Z1CALLEVENTS: its aggregate). */
   ZWACDCALLEVENT: {
     entity: 'WACDCallEvent',
-    cols: { ZOUTCOME: 'INTEGER', ZVIDEO: 'INTEGER', Z1CALLEVENTS: 'INTEGER', ZDATE: 'TIMESTAMP', ZDURATION: 'FLOAT', ZCALLIDSTRING: 'VARCHAR' },
+    cols: {
+      Z1CALLEVENTS: 'INTEGER', ZDATE: 'TIMESTAMP', ZDURATION: 'FLOAT', ZOUTCOME: 'INTEGER', ZCALLIDSTRING: 'VARCHAR',
+      ZGROUPJIDSTRING: 'VARCHAR', ZGROUPCALLCREATORUSERJIDSTRING: 'VARCHAR',
+    },
+    indexes: { ZWACDCALLEVENT_Z1CALLEVENTS_INDEX: ['Z1CALLEVENTS'] },
   },
+  /** The other people on a call (Z1PARTICIPANTS: its aggregate, not an attempt). */
   ZWACDCALLEVENTPARTICIPANT: {
     entity: 'WACDCallEventParticipant',
-    cols: { ZOUTCOME: 'INTEGER', Z1PARTICIPANTS: 'INTEGER', ZJIDSTRING: 'VARCHAR' },
+    cols: { Z1PARTICIPANTS: 'INTEGER', ZJIDSTRING: 'VARCHAR', ZOUTCOME: 'INTEGER' },
+    indexes: { ZWACDCALLEVENTPARTICIPANT_Z1PARTICIPANTS_INDEX: ['Z1PARTICIPANTS'] },
   },
 };
 
@@ -437,18 +462,29 @@ function writeChatStorage(path: string, spec: FixtureSpec): void {
 
 function writeWaCalls(path: string, spec: FixtureSpec): void {
   const store = new Store(path, WA_CALL_HISTORY, spec.dropColumn);
+  let attemptPk = 0;
   WA_CALLS.forEach((c, i) => {
     const pk = i + 1;
-    store.insert('ZWAAGGREGATECALLEVENT', pk, { ZMISSEDREASON: WA_CALL.missedNoAnswer, ZVIDEO: 0, ZCREATORJID: c.jid, ZGROUPJID: null });
-    store.insert('ZWACDCALLEVENT', pk, {
-      ZOUTCOME: WA_CALL.outcomeMissed,
+    store.insert('ZWAAGGREGATECALLEVENT', pk, {
+      ZINCOMING: 1,
+      ZMISSED: 1,
+      ZMISSEDREASON: WA_CALL.missedNoAnswer,
       ZVIDEO: 0,
-      Z1CALLEVENTS: pk,
-      ZDATE: appleSeconds(c.at),
-      ZDURATION: 0,
-      ZCALLIDSTRING: c.id,
+      ZFIRSTDATE: appleSeconds(c.at),
+      ZLINKTOKEN: null,
     });
-    store.insert('ZWACDCALLEVENTPARTICIPANT', pk, { ZOUTCOME: WA_CALL.outcomeMissed, Z1PARTICIPANTS: pk, ZJIDSTRING: c.jid });
+    for (const a of c.attempts) {
+      store.insert('ZWACDCALLEVENT', ++attemptPk, {
+        Z1CALLEVENTS: pk,
+        ZDATE: appleSeconds(a.at),
+        ZDURATION: 0,
+        ZOUTCOME: WA_CALL.outcomeMissed,
+        ZCALLIDSTRING: a.id,
+        ZGROUPJIDSTRING: null,
+        ZGROUPCALLCREATORUSERJIDSTRING: c.creator,
+      });
+    }
+    store.insert('ZWACDCALLEVENTPARTICIPANT', pk, { Z1PARTICIPANTS: pk, ZJIDSTRING: c.who, ZOUTCOME: WA_CALL.outcomeMissed });
   });
   store.close();
 }

@@ -11,7 +11,9 @@
  * - media: a copy (0600) in <state>/spool, never the original; old copies swept;
  * - waCalls and phoneCalls: who (address book, else the number), the 1:1's
  *   key, missed and incoming; a skipped person's calls never come; the
- *   iPhone call log is `no_access` when macOS refuses it.
+ *   iPhone call log is `no_access` when macOS refuses it. WhatsApp's calls
+ *   follow the real Mac's CallHistory.sqlite: one call per aggregate row
+ *   (a redial is another attempt), its people hang off the aggregate.
  * Skipped where Swift can't build the reader (not macOS, no Command Line Tools).
  */
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -30,7 +32,17 @@ import {
   ReaderStatusSchema,
   type ReaderNewSince,
 } from '../../src/messages/reader-protocol.js';
-import { FIXTURE_MEDIA, FIXTURE_NEWEST_AT, FIXTURE_OWNER, FIXTURE_SINCE, FIXTURE_TEXT, appleSeconds, makeWhatsAppFixture, type FixturePaths } from './fixture.js';
+import {
+  FIXTURE_MEDIA,
+  FIXTURE_NEEL,
+  FIXTURE_NEWEST_AT,
+  FIXTURE_OWNER,
+  FIXTURE_SINCE,
+  FIXTURE_TEXT,
+  appleSeconds,
+  makeWhatsAppFixture,
+  type FixturePaths,
+} from './fixture.js';
 import { buildReader, whatsAppRunning } from './reader-build.js';
 import { digitsOf, filesUnder, keyOf, sha256, startReader, userJid, writeAsWhatsApp, writeSkip, type Running } from './reader-harness.js';
 
@@ -370,6 +382,7 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     const missed = { incoming: true, missed: true, video: false, durationS: 0 };
 
     const wa = ReaderCallsSchema.parse(await r.ok('waCalls', { since: FIXTURE_SINCE })).calls;
+    // Asha rang twice from her @lid: one call.
     expect(wa).toMatchObject([
       { at: '2026-11-13T09:30:00.000Z', who: 'Asha Test', chatKey: asha, via: 'whatsapp', ...missed },
       { at: '2026-11-13T10:00:00.000Z', who: 'Ravi Test', chatKey: ravi, via: 'whatsapp', ...missed },
@@ -395,6 +408,75 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     writeSkip(r.state, [ravi, asha]);
     expect(ReaderCallsSchema.parse(await r.ok('waCalls', { since: FIXTURE_SINCE })).calls).toEqual([]);
     expect(ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls.map((c) => c.who)).toEqual(['+91 99900 00009']);
+  });
+
+  it('waCalls reads the real layout: participants hang off the aggregate', async () => {
+    // WhatsApp names call participants by @lid; Ravi's chat is under his number.
+    const raviLid = '88800000000002@lid';
+    const lid = new DatabaseSync(join(paths.container, 'LID.sqlite'));
+    try {
+      lid.prepare('INSERT INTO ZWAZACCOUNT (Z_PK, Z_ENT, Z_OPT, ZIDENTIFIER, ZPHONENUMBER) VALUES (10, 1, 1, ?, ?)').run(raviLid, digitsOf(paths.jids.ravi));
+    } finally {
+      lid.close();
+    }
+    // Each call's attempts carry another call's row id, so hanging the
+    // participants off an attempt would swap who is on which call.
+    const at = (hhmm: string) => appleSeconds(`2026-11-13T${hhmm}.000Z`);
+    const db = new DatabaseSync(join(paths.container, 'CallHistory.sqlite'));
+    const attempt = db.prepare(
+      'INSERT INTO ZWACDCALLEVENT (Z_PK, Z_ENT, Z_OPT, Z1CALLEVENTS, ZDATE, ZDURATION, ZOUTCOME, ZCALLIDSTRING, ZGROUPJIDSTRING, ZGROUPCALLCREATORUSERJIDSTRING) VALUES (?, 2, 1, ?, ?, ?, 0, ?, ?, ?)',
+    );
+    try {
+      const call = db.prepare(
+        'INSERT INTO ZWAAGGREGATECALLEVENT (Z_PK, Z_ENT, Z_OPT, ZINCOMING, ZMISSED, ZMISSEDREASON, ZVIDEO, ZFIRSTDATE, ZLINKTOKEN) VALUES (?, 1, 1, ?, ?, 0, ?, ?, NULL)',
+      );
+      const person = db.prepare('INSERT INTO ZWACDCALLEVENTPARTICIPANT (Z_PK, Z_ENT, Z_OPT, Z1PARTICIPANTS, ZJIDSTRING, ZOUTCOME) VALUES (?, 3, 1, ?, ?, 0)');
+      // 20: Ravi's missed call, rung twice.
+      call.run(20, 1, 1, 0, at('16:00:00'));
+      attempt.run(30, 20, at('16:00:00'), 0, 'FXCALL20A', null, null);
+      attempt.run(31, 20, at('16:01:00'), 0, 'FXCALL20B', null, null);
+      person.run(20, 20, raviLid);
+      // 30: the owner's video call to Asha, picked up on the second try; its first time is only on its attempts.
+      call.run(30, 0, 0, 1, null);
+      attempt.run(20, 30, at('17:00:00'), 4, 'FXCALL30A', null, FIXTURE_OWNER.lid);
+      attempt.run(21, 30, at('17:02:00'), 125.5, 'FXCALL30B', null, FIXTURE_OWNER.lid);
+      person.run(30, 30, paths.jids.ashaLid);
+      // 40: a group call Ravi started, answered.
+      call.run(40, 1, 0, 0, at('18:00:00'));
+      attempt.run(50, 40, at('18:00:00'), 300, 'FXCALL40A', paths.jids.group, raviLid);
+      person.run(41, 40, paths.jids.ashaLid);
+      person.run(42, 40, FIXTURE_NEEL);
+      // 50: Asha and Ravi together, no group.
+      call.run(50, 1, 1, 0, at('19:00:00'));
+      attempt.run(40, 50, at('19:00:00'), 0, 'FXCALL50A', null, paths.jids.ashaLid);
+      person.run(50, 50, paths.jids.ashaLid);
+      person.run(51, 50, raviLid);
+
+      const r = await start();
+      const k = (jid: string) => keyOf(r.state, jid);
+      const later = async () => ReaderCallsSchema.parse(await r.ok('waCalls', { since: '2026-11-13T15:00:00.000Z' })).calls;
+      const calls = await later();
+      expect(calls).toEqual([
+        { callKey: expect.stringMatching(CALL_KEY), at: '2026-11-13T16:00:00.000Z', who: 'Ravi Test', chatKey: k(paths.jids.ravi), via: 'whatsapp', incoming: true, missed: true, video: false, durationS: 0 },
+        { callKey: expect.stringMatching(CALL_KEY), at: '2026-11-13T17:00:00.000Z', who: 'Asha Test', chatKey: k(paths.jids.ashaLid), via: 'whatsapp', incoming: false, missed: false, video: true, durationS: 125.5 },
+        { callKey: expect.stringMatching(CALL_KEY), at: '2026-11-13T18:00:00.000Z', who: 'Group One', chatKey: k(paths.jids.group), via: 'whatsapp', incoming: true, missed: false, video: false, durationS: 300 },
+        { callKey: expect.stringMatching(CALL_KEY), at: '2026-11-13T19:00:00.000Z', who: 'Asha Test, Ravi Test', via: 'whatsapp', incoming: true, missed: true, video: false, durationS: 0 },
+      ]);
+      expect(new Set(calls.map((c) => c.callKey)).size).toBe(calls.length);
+      expect(JSON.stringify(calls)).not.toMatch(/@s\.whatsapp\.net|@lid|@g\.us|FXCALL/);
+
+      // Another attempt joins its call: still one call, the same key.
+      attempt.run(32, 20, at('16:03:00'), 0, 'FXCALL20C', null, null);
+      expect((await later()).map((c) => c.callKey)).toEqual(calls.map((c) => c.callKey));
+
+      // A skipped group's calls never come; nor do a skipped person's, on the call or starting a group's.
+      writeSkip(r.state, [k(paths.jids.group)]);
+      expect((await later()).map((c) => c.at)).toEqual(['2026-11-13T16:00:00.000Z', '2026-11-13T17:00:00.000Z', '2026-11-13T19:00:00.000Z']);
+      writeSkip(r.state, [k(paths.jids.ravi)]);
+      expect((await later()).map((c) => c.who)).toEqual(['Asha Test']);
+    } finally {
+      db.close();
+    }
   });
 
   it('phoneCalls without access says no_access', async () => {

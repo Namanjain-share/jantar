@@ -158,8 +158,6 @@ let EXT_BY_KIND: [String: String] = ["image": "jpg", "video": "mp4", "gif": "mp4
 let MIME_DEFAULT = "application/octet-stream"
 /// The most calls in one answer (the newest).
 let CALLS_MAX = 500
-/// ZWACDCALLEVENT.ZOUTCOME of a call nobody picked up (the fixture's value: checked on the real Mac, Task 14).
-let WA_OUTCOME_MISSED = 1
 /// ZCALLRECORD.ZCALLTYPE of a FaceTime video call.
 let PHONE_CALL_VIDEO = 8
 /// A number's last digits, which name it however it was dialled (with +91, a 0 or neither).
@@ -622,10 +620,12 @@ let CHAT_TABLES: [(String, [String])] = [
 ]
 let CONTACT_TABLES: [(String, [String])] = [("ZWAADDRESSBOOKCONTACT", ["ZFULLNAME", "ZWHATSAPPID", "ZLID"])]
 let LID_TABLES: [(String, [String])] = [("ZWAZACCOUNT", ["ZIDENTIFIER", "ZPHONENUMBER"])]
-/// WhatsApp's CallHistory.sqlite: a call (event), the run of calls it belongs to (aggregate), who was on it.
+/// WhatsApp's CallHistory.sqlite, as on the real Mac: a call (aggregate, one
+/// row per call), its attempts (Z1CALLEVENTS -> the call), and the other
+/// people on it (Z1PARTICIPANTS -> the call, not an attempt).
 let WA_CALL_TABLES: [(String, [String])] = [
-  ("ZWAAGGREGATECALLEVENT", ["Z_PK", "ZMISSEDREASON", "ZVIDEO", "ZCREATORJID", "ZGROUPJID"]),
-  ("ZWACDCALLEVENT", ["Z_PK", "ZOUTCOME", "ZVIDEO", "Z1CALLEVENTS", "ZDATE", "ZDURATION", "ZCALLIDSTRING"]),
+  ("ZWAAGGREGATECALLEVENT", ["Z_PK", "ZINCOMING", "ZMISSED", "ZVIDEO", "ZFIRSTDATE"]),
+  ("ZWACDCALLEVENT", ["Z_PK", "Z1CALLEVENTS", "ZDATE", "ZDURATION", "ZCALLIDSTRING", "ZGROUPJIDSTRING", "ZGROUPCALLCREATORUSERJIDSTRING"]),
   ("ZWACDCALLEVENTPARTICIPANT", ["Z1PARTICIPANTS", "ZJIDSTRING"]),
 ]
 /// The iPhone call log (CallHistory.storedata).
@@ -1779,43 +1779,51 @@ final class Reader {
     (w.dmsByPerson[p] ?? []).lazy.map { w.sessions[$0] }.first { $0.shown && !hide.hides($0, w) }?.key
   }
 
-  /// WhatsApp calls from `since`, oldest first: one per call (a run of
-  /// calls is several). Incoming when someone else started it; a 1:1's
-  /// other side names it and gives its chat key, a group call its group.
-  /// A skipped person's calls and a skipped group's never come.
+  /// WhatsApp calls from `since`, oldest first: one per call (its aggregate
+  /// row; a redial is another attempt of the same call), at its first time,
+  /// as long as its longest attempt. Incoming, missed and video are
+  /// WhatsApp's own flags. The other people on it name it: one gives its
+  /// 1:1's chat key, several (no group) are listed; a group call is its
+  /// group's. A call with a skipped person on it (or starting a group's)
+  /// and a skipped group's never come.
   func waCalls(since: Int64) throws -> CallsOut {
     let (w, hide) = try load()
     guard let db = try calls.get() else { return CallsOut(calls: []) }
+    // The key is the first attempt's call id: a later redial doesn't change it.
     let q = try db.prepare("""
-      SELECT e.Z_PK, e.ZDATE, e.ZDURATION, e.ZOUTCOME, e.ZVIDEO, e.ZCALLIDSTRING, a.ZMISSEDREASON, a.ZVIDEO, a.ZCREATORJID, a.ZGROUPJID,
-             (SELECT group_concat(pt.ZJIDSTRING, ' ') FROM ZWACDCALLEVENTPARTICIPANT pt WHERE pt.Z1PARTICIPANTS = e.Z_PK)
-      FROM ZWACDCALLEVENT e LEFT JOIN ZWAAGGREGATECALLEVENT a ON a.Z_PK = e.Z1CALLEVENTS
-      WHERE e.ZDATE >= ? AND e.ZDATE * 1000 >= ?
-      ORDER BY e.ZDATE DESC LIMIT ?
-      """).bind(indexBound(since), since, CALLS_MAX)
+      SELECT * FROM (
+        SELECT a.Z_PK AS pk, a.ZINCOMING, a.ZMISSED, a.ZVIDEO,
+               coalesce(a.ZFIRSTDATE, (SELECT min(e.ZDATE) FROM ZWACDCALLEVENT e WHERE e.Z1CALLEVENTS = a.Z_PK)) AS at,
+               (SELECT max(e.ZDURATION) FROM ZWACDCALLEVENT e WHERE e.Z1CALLEVENTS = a.Z_PK),
+               (SELECT e.ZCALLIDSTRING FROM ZWACDCALLEVENT e WHERE e.Z1CALLEVENTS = a.Z_PK AND e.ZCALLIDSTRING <> ''
+                ORDER BY e.ZDATE, e.Z_PK LIMIT 1),
+               (SELECT max(e.ZGROUPJIDSTRING) FROM ZWACDCALLEVENT e WHERE e.Z1CALLEVENTS = a.Z_PK),
+               (SELECT group_concat(e.ZGROUPCALLCREATORUSERJIDSTRING, ' ') FROM ZWACDCALLEVENT e WHERE e.Z1CALLEVENTS = a.Z_PK),
+               (SELECT group_concat(p.ZJIDSTRING, ' ') FROM ZWACDCALLEVENTPARTICIPANT p WHERE p.Z1PARTICIPANTS = a.Z_PK)
+        FROM ZWAAGGREGATECALLEVENT a)
+      WHERE at * 1000 >= ?
+      ORDER BY at DESC, pk DESC LIMIT ?
+      """).bind(since, CALLS_MAX)
     var out: [CallOut] = []
     while try q.step() {
-      let creator = nonEmpty(q.text(8))
-      let incoming = creator.map { !w.isOwner($0) } ?? false
-      if let creator, hide.persons.contains(w.person(creator)) { continue }
+      let ids = { (i: Int32) in (q.text(i) ?? "").split(separator: " ").map(String.init) }
+      if ids(8).contains(where: { hide.persons.contains(w.person($0)) }) { continue }
+      // Each person once (either id), by id so `who` reads the same every time.
+      let people = Set(ids(9).filter { !w.isOwner($0) }.map { w.person($0) }).sorted()
       let who: String
-      let chatKey: String?
-      if let group = nonEmpty(q.text(9)) {
+      var chatKey: String?
+      if let group = nonEmpty(q.text(7)) {
         guard let i = w.byKey[key(group)], w.sessions[i].shown, !hide.hides(w.sessions[i], w) else { continue }
         who = w.sessions[i].name
         chatKey = w.sessions[i].key
       } else {
-        let others = (q.text(10) ?? "").split(separator: " ").map(String.init).filter { !w.isOwner($0) }
-        guard let other = incoming ? creator : others.first else { continue }
-        let p = w.person(other)
-        if hide.persons.contains(p) { continue }
-        who = personName(p, w)
-        chatKey = dmKey(p, w, hide)
+        guard !people.isEmpty, !people.contains(where: { hide.persons.contains($0) }) else { continue }
+        who = people.map { personName($0, w) }.joined(separator: ", ")
+        if people.count == 1 { chatKey = dmKey(people[0], w, hide) }
       }
-      let id = nonEmpty(q.text(5)) ?? "row \(q.int(0))"
-      out.append(CallOut(callKey: callKey("whatsapp \(id)"), at: isoApple(q.double(1)), who: who, chatKey: chatKey, via: "whatsapp",
-                         incoming: incoming, missed: incoming && (Int(q.int(3)) == WA_OUTCOME_MISSED || q.int(6) != 0),
-                         video: q.int(4) == 1 || q.int(7) == 1, durationS: max(0, q.double(2))))
+      let id = nonEmpty(q.text(6)) ?? "call \(q.int(0))"
+      out.append(CallOut(callKey: callKey("whatsapp \(id)"), at: isoApple(q.double(4)), who: who, chatKey: chatKey, via: "whatsapp",
+                         incoming: q.int(1) == 1, missed: q.int(2) == 1, video: q.int(3) == 1, durationS: max(0, q.double(5))))
     }
     return CallsOut(calls: out.reversed())
   }
