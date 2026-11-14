@@ -5,15 +5,17 @@
  * over its stdin and stdout the way Claude Code does, with
  * CLAUDE_PROJECT_DIR set to a synthetic folder.
  *
- * 1. The handshake and tools/list (six tools); intel_add saves a capture
- *    via claude with the folder kept on the Mac; intel_search finds it.
+ * 1. The handshake and tools/list (six tools, then 0.15's five WhatsApp
+ *    ones); intel_add saves a capture via claude with the folder kept on
+ *    the Mac; intel_search finds it.
  * 2. todos_here before any project is linked: project null. A project is
  *    linked to the folder through the device API (the phone's way); then
  *    todo_add adds to it and todos_here shows it (lane L's folder routes).
  * 3. Out of scope (S11): a tool that would complete, delete or reach
  *    another module is unknown (-32602); a folder or project the model
  *    names is refused and adds nothing; another folder's project never
- *    shows; a switch off at the Mac is the user's to turn on.
+ *    shows; a switch off at the Mac is the user's to turn on (Messages,
+ *    off by default, included).
  * 4. S10: every line on stdout is one JSON-RPC message; the server exits 0
  *    when stdin ends.
  *
@@ -136,13 +138,25 @@ describe.skipIf(!built)('jantar mcp: the real executable against jantard', () =>
     await d?.stop();
   }, perfBudgetMs(30_000));
 
-  it('1. the handshake, six tools, intel_add via claude and intel_search finds it', async () => {
+  it('1. the handshake, eleven tools, intel_add via claude and intel_search finds it', async () => {
     const init = await mcp.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'example-client', version: '1.0.0' } });
     expect(init.result).toMatchObject({ protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'jantar' } });
     mcp.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
     expect((await mcp.request('server/discover', {})).error?.code).toBe(-32601);
     const list = await mcp.request('tools/list');
-    expect((list.result?.tools as { name: string }[]).map((t) => t.name)).toEqual(['intel_search', 'intel_get', 'intel_add', 'todos_here', 'client_here', 'todo_add']);
+    expect((list.result?.tools as { name: string }[]).map((t) => t.name)).toEqual([
+      'intel_search',
+      'intel_get',
+      'intel_add',
+      'todos_here',
+      'client_here',
+      'todo_add',
+      'messages_chats',
+      'messages_read',
+      'messages_search',
+      'messages_media',
+      'calls_to_return',
+    ]);
 
     const added = await mcp.tool('intel_add', { title: 'Example zephyr toolkit', url: 'https://example.com/zephyr', tags: ['example'] });
     expect(added.isError, added.text).toBe(false);
@@ -220,6 +234,11 @@ describe.skipIf(!built)('jantar mcp: the real executable against jantard', () =>
       expect(off.text).toMatch(/^The user turned this off; only they turn it back on\. Tell them: .*jantar intel on/);
     } finally {
       await callDaemon(ctl, 'PATCH', '/v1/settings', { intel: { enabled: true } });
+    }
+    // 0.15 Messages, off by default: its tools are listed and say so, the reader never reached.
+    for (const [name, args] of [['messages_chats', {}], ['messages_read', { chat: 'Group One' }], ['calls_to_return', {}]] as const) {
+      const wa = await mcp.tool(name, args);
+      expect(wa, name).toEqual({ text: 'The user turned this off; only they turn it back on. Tell them: Messages is off. At the Mac: jantar messages on', isError: true });
     }
   }, perfBudgetMs(60_000));
 

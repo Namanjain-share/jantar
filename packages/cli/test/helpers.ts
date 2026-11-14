@@ -35,7 +35,8 @@ export function fail(code: ErrorCode, message: string, status: number): CtlRespo
  * A CtlClient answering from `routes` ("GET /v1/state" -> handler); a path
  * with a query string falls back to its route without one. `down` = no daemon.
  * v0.5: `bytes(path)` answers from the same "GET <path>" routes: a Buffer
- * body comes back as image/jpeg, anything else as JSON (an error).
+ * body comes back as image/jpeg, anything else as JSON (an error); its
+ * options are recorded like a request's.
  */
 export function fakeCtl(routes: Record<string, Handler | CtlResponse> = {}, opts: { down?: boolean } = {}) {
   const calls: CtlCall[] = [];
@@ -51,8 +52,8 @@ export function fakeCtl(routes: Record<string, Handler | CtlResponse> = {}, opts
       if (!r) return fail('not_found', `no fake route ${method} ${path}`, 404) as CtlResponse<T>;
       return (typeof r === 'function' ? await r(call) : r) as CtlResponse<T>;
     },
-    async bytes(path: string): Promise<CtlBytesResponse> {
-      const res = await client.request('GET', path);
+    async bytes(path: string, o: Pick<CtlRequestOptions, 'timeoutMs' | 'headers'> = {}): Promise<CtlBytesResponse> {
+      const res = await client.request('GET', path, undefined, o);
       if (Buffer.isBuffer(res.body)) return { status: res.status, type: 'image/jpeg', body: res.body };
       return { status: res.status, type: 'application/json', body: Buffer.from(JSON.stringify(res.body)) };
     },

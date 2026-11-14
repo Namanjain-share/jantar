@@ -32,6 +32,8 @@ export class CtlUnavailableError extends Error {
 export interface CtlRequestOptions {
   idempotencyKey?: string;
   timeoutMs?: number;
+  /** v0.15: extra request headers (`jantar mcp` names its caller for Messages' read log); they never replace the client's own. */
+  headers?: Readonly<Record<string, string>>;
 }
 
 /** v0.5: a GET whose answer is bytes (a meeting's screenshot). An error still comes as JSON: `type` says which. */
@@ -46,7 +48,7 @@ export interface CtlClient {
   readonly socketPath: string;
   request<T = unknown>(method: string, path: string, body?: unknown, opts?: CtlRequestOptions): Promise<CtlResponse<T>>;
   /** v0.5: GET `path` and take the reply as bytes (rawResponse routes). */
-  bytes(path: string, opts?: Pick<CtlRequestOptions, 'timeoutMs'>): Promise<CtlBytesResponse>;
+  bytes(path: string, opts?: Pick<CtlRequestOptions, 'timeoutMs' | 'headers'>): Promise<CtlBytesResponse>;
 }
 
 export function isErrorBody(b: unknown): b is ErrorBody {
@@ -85,7 +87,7 @@ export function createCtlClient(socketPath: string): CtlClient {
     request<T>(method: string, path: string, body?: unknown, opts: CtlRequestOptions = {}) {
       return new Promise<CtlResponse<T>>((resolve, reject) => {
         const payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
-        const headers: Record<string, string> = { accept: 'application/json', host: 'jantar.local' };
+        const headers: Record<string, string> = { ...opts.headers, accept: 'application/json', host: 'jantar.local' };
         if (payload) {
           headers['content-type'] = 'application/json';
           headers['content-length'] = String(payload.length);
@@ -114,9 +116,9 @@ export function createCtlClient(socketPath: string): CtlClient {
         req.end();
       });
     },
-    bytes(path: string, opts: Pick<CtlRequestOptions, 'timeoutMs'> = {}) {
+    bytes(path: string, opts: Pick<CtlRequestOptions, 'timeoutMs' | 'headers'> = {}) {
       return new Promise<CtlBytesResponse>((resolve, reject) => {
-        const headers = { accept: '*/*', host: 'jantar.local' };
+        const headers = { ...opts.headers, accept: '*/*', host: 'jantar.local' };
         const req = httpRequest({ socketPath, method: 'GET', path, headers, timeout: opts.timeoutMs ?? 30_000 }, (res) => {
           const chunks: Buffer[] = [];
           res.on('data', (c: Buffer) => chunks.push(c));
