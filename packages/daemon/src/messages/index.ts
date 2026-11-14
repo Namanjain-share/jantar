@@ -10,7 +10,8 @@
  * skip.ts the skip list and its mirror; media.ts a message's file; says.ts
  * the sentences; morning/ the morning run (collect.ts its batch, budget.ts
  * what fits, input.ts what the model reads, run.ts the Claude run and its
- * pictures, apply.ts the answer into Life and messages.db, and its Undo).
+ * pictures, apply.ts the answer into Life and messages.db, and its Undo,
+ * timer.ts when it runs on its own).
  */
 import type { DaemonContext, Factories, MessagesService } from '../contracts.js';
 import { buildMessagesService, type MessagesDeps, type MessagesOptions } from './service.js';

@@ -240,7 +240,7 @@ export async function startDaemon(opts: DaemonOptions = {}): Promise<RunningDaem
     const meetings: MeetingsService = off ? off.meetings : createMeetingsService(ctx, { life, usage, ccwLegacy }, { readOnly });
     // v0.15. Messages opens messages.db only while it is on; told --read-only, not wrapped: reads and the skip list
     // work, the morning run (it spends quota) never runs.
-    const messages: MessagesService = off ? off.messages : createMessagesService(ctx, { life, usage, ccwLegacy }, { readOnly, shrinker: media });
+    const messages: MessagesService = off ? off.messages : createMessagesService(ctx, { life, usage, ccwLegacy, notifiers }, { readOnly, shrinker: media });
     // v0.10. Chat (replaces Ask) is told --read-only too: its taps are Life writes (allowed), its runs spend quota (never).
     // Sessions reach it read only: the store's state and transcript pages, never the writer, terminal or hooks.
     // Life's per-device write limit is one budget: the api counts its routes on it, Chat a run's writes.

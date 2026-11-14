@@ -17,7 +17,19 @@
  *   read and by status(); a change that fails rewrites it from the table it
  *   rolled back to.
  * - A job left in <messagesDir>/jobs by a crash goes at start.
- * - The morning run answers 501 (NotImplementedError) until it is built.
+ * - The morning run (MorningApi): one at a time (409), never under
+ *   --read-only (it spends quota), its reads checked like any other
+ *   (needReads). It collects what the reader has since the cursor, cuts it
+ *   to the budget, runs Claude with no tools, and applies the answer
+ *   (morning/: collect, budget, input, run, apply). Each run's report is in
+ *   messages.db (a dry run's without its preview); the cursor moves only
+ *   after a run that went well and wasn't dry. A run the reader or Claude
+ *   fails is stored failed with a fixed sentence; nothing new makes no
+ *   Claude run. A timer or Run now run that made anything sends one push,
+ *   counts only. Every chat sent to Claude is in the read log (`morning`).
+ * - The morning timer (morning/timer.ts) runs while messages.db is open
+ *   (never under --read-only), at the morning time in the Life zone; a time
+ *   or zone change rearms it, and a timer run that went well marks its day.
  * - Reads need messages.db open (each is logged there: via, the MCP
  *   caller's pid and folder, the op, the chat key, a count) and answer the
  *   reader's data or throw its ReaderFailure; one that finds messages.db
@@ -30,12 +42,17 @@
  */
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
+import { instantAt, isValidTimeZone } from '@jantar/life-core';
 import { MESSAGES_LIMITS, type Settings } from '@jantar/protocol';
 import {
   ChatKeySchema,
+  DraftSchema,
+  MessagesPrefsSchema,
   type Call,
   type CallsToReturnResponse,
   type Chat,
+  type Draft,
+  type DraftState,
   type MessagesAmbiguous,
   type MessagesChatsQuery,
   type MessagesChatsResponse,
@@ -43,7 +60,12 @@ import {
   type MessagesReadResponse,
   type MessagesSearchQuery,
   type MessagesSearchResponse,
+  type MessagesPrefs,
   type MessagesStatus,
+  type MessagesTodayResponse,
+  type MorningPreview,
+  type MorningRun,
+  type MorningTrigger,
   type ReadLogEntry,
 } from '@jantar/protocol/messages';
 import { ApiError } from '../api/errors.js';
@@ -57,15 +79,39 @@ import type {
   MessagesMediaAnswer,
   MessagesService,
   MorningApi,
+  Notifier,
   ReadBy,
   Unsubscribe,
   UsageSource,
 } from '../contracts.js';
-import { notBuilt } from '../core/not-implemented.js';
+import { newId } from '../core/ids.js';
+import type { ClaudeFail } from '../intel/read/claude.js';
 import { MediaHelper } from '../intel/read/media.js';
-import { READS_KEEP, addRead, lastRunAt, listReads, openMessagesDb, readPrefs, type MessagesDb } from './db.js';
+import { createLifeSend, morningPush, pushNotice, type LifeSend } from '../life/push.js';
+import { CONTROL, LINE_END } from '../rewrite/guards.js';
+import {
+  LAST_DAY_KEY,
+  READS_KEEP,
+  addRead,
+  failRunning,
+  lastRunAt,
+  listReads,
+  newestRun,
+  openMessagesDb,
+  putRun,
+  readCursor,
+  readPrefs,
+  writeCursor,
+  writePrefs,
+  type MessagesDb,
+} from './db.js';
 import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
-import { missedCalls } from './morning/collect.js';
+import { CALLBACK_TITLE, applyMorning, undoMorning, type ApplyResult } from './morning/apply.js';
+import { budget } from './morning/budget.js';
+import { collect, missedCalls, type Batch } from './morning/collect.js';
+import { OWNER_NAME, morningInput } from './morning/input.js';
+import { morningImages, pickImages, runMorning } from './morning/run.js';
+import { MorningTimer, type WhatsAppReady } from './morning/timer.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from './reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
 import { MESSAGES_SAYS, readerSays } from './says.js';
@@ -77,6 +123,8 @@ export interface MessagesDeps {
   /** The morning run's Claude account. */
   usage: UsageSource;
   ccwLegacy: CcwLegacySource;
+  /** The morning push goes to the Web Push one only (life/push.ts). */
+  notifiers?: readonly Notifier[];
 }
 
 export interface MessagesOptions {
@@ -88,6 +136,8 @@ export interface MessagesOptions {
   dbFile?: string;
   /** Default reader-client.ts READER_TIMEOUT_MS. */
   readerTimeoutMs?: number;
+  /** How the morning push goes out (default: Web Push through deps.notifiers, life/push.ts); tests pass a spy. */
+  send?: LifeSend;
 }
 
 const DAY_MS = 86_400_000;
@@ -105,6 +155,50 @@ function errorKind(e: unknown): string {
 }
 
 const chatKeyOf = (msgKey: string) => msgKey.slice(0, msgKey.indexOf('.'));
+
+/** Today's drafts and call-backs, at most. */
+const TODAY_MAX = 50;
+/** A run report's per-chat list of what the budget left out, at most (its count has them all). */
+const REPORT_DROPPED_MAX = 50;
+const NO_COUNTS: MorningRun['counts'] = { chats: 0, messages: 0, calls: 0, todos: 0, replies: 0, callbacks: 0, dropped: 0 };
+const NO_PREVIEW: MorningPreview = { todos: [], callbacks: [], replies: [], dropped: [] };
+
+/** A failed Claude run's sentence. */
+const CLAUDE_SAYS: Record<ClaudeFail, string> = {
+  noClaude: MESSAGES_SAYS.morningNoClaude,
+  noAccount: MESSAGES_SAYS.morningNoAccount,
+  unreadable: MESSAGES_SAYS.morningUnreadable,
+  notIsolated: MESSAGES_SAYS.morningNotIsolated,
+  stopped: MESSAGES_SAYS.morningStopped,
+  tooLong: MESSAGES_SAYS.morningTooLong,
+};
+
+/** A run that threw: the reader's sentence for what the owner can fix, else the general one. */
+function morningFailSays(e: unknown): string {
+  return (e instanceof ReaderFailure ? readerSays(e.code, e.detail) : null) ?? MESSAGES_SAYS.morningFailed;
+}
+
+/** What a dry run would make, for the CLI's table: no ids, no number. */
+function previewOf(a: ApplyResult): MorningPreview {
+  return {
+    todos: a.todos.map((t) => ({ title: t.title })),
+    callbacks: a.callbacks.map((c) => ({ who: c.who, ...(c.at ? { at: c.at } : {}) })),
+    replies: a.replies.map((d) => ({ chatName: d.chatName, theyAsked: d.theyAsked, draft: d.draft })),
+    dropped: a.dropped,
+  };
+}
+
+interface DraftRow {
+  id: string;
+  run_id: string;
+  chat_key: string;
+  chat_name: string;
+  phone: string | null;
+  they_asked: string;
+  draft: string;
+  at: string;
+  state: string;
+}
 
 class MessagesShell implements MessagesService {
   readonly skip: MessagesService['skip'];
@@ -126,6 +220,12 @@ class MessagesShell implements MessagesService {
   private readonly dbFile: string;
   private readonly shrinker: ImageShrinker;
   readonly readOnly: boolean;
+  private readonly send: LifeSend;
+  private readonly timer: MorningTimer;
+  /** Options claude refused that the morning run can do without (this daemon's life). */
+  private readonly learned = new Set<string>();
+  /** The morning run going (one at a time). */
+  private going: { id: string; abort: AbortController } | null = null;
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -142,7 +242,23 @@ class MessagesShell implements MessagesService {
       add: (chatKey, actor) => this.skipAdd(chatKey, actor),
       remove: (chatKey, actor) => this.skipRemove(chatKey, actor),
     };
-    this.morning = notBuilt<MorningApi>('The morning run');
+    this.send = opts.send ?? createLifeSend(ctx, deps.notifiers ?? []);
+    this.timer = new MorningTimer(ctx.clock, this.log, {
+      tz: () => this.zone(),
+      at: () => (this.db ? readPrefs(this.db).morningAt : null),
+      lastDay: () => this.db?.meta(LAST_DAY_KEY) ?? null,
+      ready: () => this.whatsAppReady(),
+      run: (stale, day) => this.timerRun(stale, day),
+    });
+    this.morning = {
+      prefs: () => readPrefs(this.need().db),
+      setPrefs: (p, actor) => this.setPrefs(p, actor),
+      run: (o) => this.morningRun(o.trigger),
+      today: () => this.today(),
+      setDraft: (id, state, actor) => this.setDraft(id, state, actor),
+      undo: (runId, actor) => this.undo(runId, actor),
+      last: () => newestRun(this.need().db, false),
+    };
   }
 
   async start(): Promise<void> {
@@ -364,6 +480,202 @@ class MessagesShell implements MessagesService {
     return OK;
   }
 
+  // ---------------------------------------------------------------- the morning run
+
+  /** The Life zone (Life's own; its setting, else the Mac's, while Life isn't there). */
+  private zone(): string {
+    try {
+      const tz = this.deps.life.status().timezone;
+      if (tz) return tz;
+    } catch {
+      // Life not built: the setting, else the Mac's zone.
+    }
+    const s = this.ctx.settings.get().life.timezone;
+    return s && isValidTimeZone(s) ? s : (Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UTC');
+  }
+
+  /** The timer's question: WhatsApp open and quiet (no -wal: its database is closed, nothing reads yet). */
+  private async whatsAppReady(): Promise<WhatsAppReady> {
+    const w = (await this.reader.call('status', {})).whatsapp;
+    const wal = w.walMtime === null ? Number.NaN : Date.parse(w.walMtime);
+    return { running: w.found && w.schemaOk && w.running, walQuietMs: Number.isNaN(wal) ? 0 : Math.max(0, this.ctx.clock.now() - wal) };
+  }
+
+  /** The timer's run: the day is marked once a run went well; a refusal (a Run now going, Messages off) is logged. */
+  private async timerRun(stale: boolean, day: string): Promise<void> {
+    let run: MorningRun;
+    try {
+      run = await this.morningRun('timer', stale);
+    } catch (e) {
+      this.log.warn('messages: the morning run did not start', { event: 'messages.morning', error: errorKind(e) });
+      return;
+    }
+    if (run.state === 'ok') this.db?.setMeta(LAST_DAY_KEY, day);
+  }
+
+  /** messages.db is still the one the run started with; else the run's answer is dropped. */
+  private live(db: MessagesDb): void {
+    if (this.db !== db) throw new ApiError('messages_unavailable', this.brokenReason ?? MESSAGES_SAYS.off);
+  }
+
+  /**
+   * One run (see the file comment). `timerStale`: the timer's say on
+   * WhatsApp's freshness; otherwise stale when WhatsApp isn't running.
+   */
+  private async morningRun(trigger: MorningTrigger, timerStale?: boolean): Promise<MorningRun> {
+    const { db } = this.need();
+    if (this.readOnly) throw new ApiError('forbidden', MESSAGES_SAYS.morningReadOnly);
+    if (this.going) throw new ApiError('conflict', MESSAGES_SAYS.morningBusy);
+    this.needReads();
+    const going = { id: newId(), abort: new AbortController() };
+    this.going = going;
+    try {
+      const base: MorningRun = { id: going.id, at: this.ctx.clock.iso(), trigger, state: 'running', stale: false, newestAt: null, counts: NO_COUNTS, dropped: [], todoIds: [] };
+      putRun(db, base);
+      let run: MorningRun;
+      try {
+        run = await this.morningPass(db, base, timerStale, going.abort.signal);
+      } catch (e) {
+        this.live(db);
+        if (!(e instanceof ReaderFailure)) this.log.error('messages: the morning run failed', { event: 'messages.morning', error: errorKind(e) });
+        run = { ...base, state: 'failed', why: morningFailSays(e) };
+      }
+      putRun(db, run);
+      const c = run.counts;
+      this.log.info('messages: a morning run', { event: 'messages.morning', runId: run.id, trigger, state: run.state, stale: run.stale, ...c });
+      if (run.state === 'ok' && trigger !== 'dry' && c.todos + c.replies + c.callbacks > 0) {
+        void pushNotice(this.ctx, this.send, morningPush({ todos: c.todos, replies: c.replies, callbacks: c.callbacks }));
+      }
+      return run;
+    } finally {
+      if (this.going === going) this.going = null;
+    }
+  }
+
+  private async morningPass(db: MessagesDb, base: MorningRun, timerStale: boolean | undefined, signal: AbortSignal): Promise<MorningRun> {
+    const dry = base.trigger === 'dry';
+    const st = await this.reader.call('status', {});
+    this.live(db);
+    const now = new Date(this.ctx.clock.now());
+    const tz = this.zone();
+    const batch = await collect(this.reader, readCursor(db), now);
+    this.live(db);
+    const { kept, dropped } = budget(batch);
+    const head: MorningRun = {
+      ...base,
+      stale: timerStale ?? !st.whatsapp.running,
+      newestAt: st.whatsapp.newestAt ?? batch.newestAt,
+      counts: {
+        ...NO_COUNTS,
+        chats: kept.chats.length,
+        messages: kept.chats.reduce((n, c) => n + c.messages.length, 0),
+        calls: kept.calls.length,
+        dropped: dropped.reduce((n, d) => n + d.left, 0),
+      },
+      dropped: dropped.slice(0, REPORT_DROPPED_MAX),
+    };
+    // Nothing new: no Claude run.
+    if (kept.chats.length === 0 && kept.calls.length === 0) return this.ranWell(db, batch, { ...head, state: 'ok', ...(dry ? { preview: NO_PREVIEW } : {}) });
+    const { text, refs } = morningInput(kept, { now, tz, ownerName: OWNER_NAME });
+    const images = await morningImages(pickImages(kept, refs), { reader: this.reader, messagesDir: this.ctx.paths.messagesDir, shrinker: this.shrinker, log: this.log });
+    this.live(db);
+    // What goes to Claude, in the read log: each chat and the calls.
+    for (const c of kept.chats) this.logRead('morning', { via: 'morning' }, c.chat.chatKey, c.messages.length + c.earlier.length);
+    if (kept.calls.length > 0) this.logRead('morning', { via: 'morning' }, undefined, kept.calls.length);
+    const r = await runMorning({ ctx: this.ctx, usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy, log: this.log, learned: this.learned }, { text, images }, signal);
+    this.live(db);
+    if (!r.ok) return { ...head, state: 'failed', why: CLAUDE_SAYS[r.why] };
+    const applied = applyMorning(r.answer, refs, kept, { life: this.deps.life, db, now, tz, prefs: readPrefs(db), runId: base.id, dryRun: dry });
+    const summary = r.answer.summary.replace(LINE_END, '\n').replace(CONTROL, '').trim();
+    return this.ranWell(db, batch, {
+      ...head,
+      state: 'ok',
+      counts: { ...head.counts, todos: applied.todos.length, replies: applied.replies.length, callbacks: applied.callbacks.length },
+      todoIds: applied.todos.flatMap((t) => (t.id ? [t.id] : [])),
+      ...(summary ? { summary } : {}),
+      ...(dry ? { preview: previewOf(applied) } : {}),
+    });
+  }
+
+  /** A run that went well: the cursor moves on (a dry run's never does). */
+  private ranWell(db: MessagesDb, batch: Batch, run: MorningRun): MorningRun {
+    if (run.trigger !== 'dry') writeCursor(db, batch.cursor);
+    return run;
+  }
+
+  private setPrefs(p: Partial<MessagesPrefs>, actor: Actor): LifeResult {
+    const { db } = this.need();
+    const sent = Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined));
+    const next = MessagesPrefsSchema.safeParse({ ...readPrefs(db), ...sent });
+    if (!next.success) return { ok: false, code: 'invalid_request', reason: MESSAGES_SAYS.badPrefs };
+    writePrefs(db, next.data);
+    this.timer.rearm();
+    this.log.info('messages: the morning times changed', { by: actor.kind, morning: next.data.morningAt !== null, callback: next.data.callbackAt !== null });
+    return OK;
+  }
+
+  /** The newest run (not a dry one), the open reply drafts and the call-back todos still open, newest first. */
+  private today(): MessagesTodayResponse {
+    const { db } = this.need();
+    const rows = db.prepare("SELECT id, run_id, chat_key, chat_name, phone, they_asked, draft, at, state FROM drafts WHERE state = 'open' ORDER BY at DESC, rowid DESC LIMIT ?").all(TODAY_MAX) as unknown as DraftRow[];
+    const drafts = rows.flatMap((r): Draft[] => {
+      const d = DraftSchema.safeParse({
+        id: r.id,
+        runId: r.run_id,
+        chatKey: r.chat_key,
+        chatName: r.chat_name,
+        ...(r.phone !== null ? { phone: r.phone } : {}),
+        theyAsked: r.they_asked,
+        draft: r.draft,
+        at: r.at,
+        state: r.state,
+      });
+      return d.success ? [d.data] : [];
+    });
+    return { run: newestRun(db, true), drafts, callbacks: this.callbacks(db) };
+  }
+
+  /** The call-back todos the morning made that are still open in Life (who: the title after CALLBACK_TITLE; at: when it rings). */
+  private callbacks(db: MessagesDb): MessagesTodayResponse['callbacks'] {
+    const ids = (db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND target_id IS NOT NULL ORDER BY rowid DESC").all() as { target_id: string }[]).map((r) => r.target_id);
+    if (ids.length === 0) return [];
+    let open;
+    try {
+      open = this.deps.life.todos.listTodos({ done: false });
+    } catch {
+      return [];
+    }
+    if (!open.ok) return [];
+    const byId = new Map(open.value.todos.map((t) => [t.id, t]));
+    const tz = this.zone();
+    const out: MessagesTodayResponse['callbacks'] = [];
+    for (const id of ids) {
+      const t = byId.get(id);
+      if (!t) continue;
+      const who = t.title.startsWith(CALLBACK_TITLE) ? t.title.slice(CALLBACK_TITLE.length) : t.title;
+      out.push({ todoId: id, who, ...(t.due?.time ? { at: instantAt(t.due.day, t.due.time, tz).toISOString() } : {}) });
+      if (out.length >= TODAY_MAX) break;
+    }
+    return out;
+  }
+
+  private setDraft(id: string, state: DraftState, actor: Actor): LifeResult {
+    const { db } = this.need();
+    const r = db.prepare('UPDATE drafts SET state = ? WHERE id = ?').run(state, id);
+    if (Number(r.changes) === 0) return { ok: false, code: 'not_found', reason: MESSAGES_SAYS.noDraft };
+    this.log.info('messages: a reply draft changed', { draftId: id, state, by: actor.kind });
+    return OK;
+  }
+
+  private undo(runId: string, actor: Actor): LifeResult {
+    const { db } = this.need();
+    if (this.going?.id === runId) return { ok: false, code: 'conflict', reason: MESSAGES_SAYS.morningBusy };
+    const r = undoMorning({ life: this.deps.life, db }, runId, actor);
+    if (!r.ok) return r;
+    this.log.info('messages: a morning run was undone', { runId, removed: r.value.removed, dismissed: r.value.dismissed, by: actor.kind });
+    return OK;
+  }
+
   // ---------------------------------------------------------------- messages.db
 
   /** messages.db and the skip list, open; else ApiError messages_unavailable (broken, or Messages off). */
@@ -442,6 +754,15 @@ class MessagesShell implements MessagesService {
     this.skipStore = createSkipStore(r.db, this.ctx.paths.messagesDir);
     // Before any read: the reader enforces what the daemon lists.
     this.mirror();
+    try {
+      // Runs the daemon stopped during.
+      const stopped = failRunning(r.db, MESSAGES_SAYS.morningRestarted);
+      if (stopped > 0) this.log.warn('messages: morning runs stopped by a restart', { count: stopped });
+    } catch (e) {
+      this.log.error('messages: the morning runs were not read', { error: errorKind(e) });
+    }
+    // The morning run spends quota: never on its own under --read-only.
+    if (!this.readOnly) this.timer.start();
   }
 
   /**
@@ -466,6 +787,8 @@ class MessagesShell implements MessagesService {
   }
 
   private close(): void {
+    this.timer.stop();
+    this.going?.abort.abort();
     this.reader.close();
     this.mirrored = false;
     this.mirrorStamp = null;
@@ -477,6 +800,8 @@ class MessagesShell implements MessagesService {
   }
 
   private onSettings(next: Settings, prev: Settings): void {
+    // The Life zone moved the morning time: once Life has taken the change (its own subscriber).
+    if (next.life.timezone !== prev.life.timezone) queueMicrotask(() => this.timer.rearm());
     if (next.messages.enabled === prev.messages.enabled) return;
     if (next.messages.enabled) this.open();
     else this.close();

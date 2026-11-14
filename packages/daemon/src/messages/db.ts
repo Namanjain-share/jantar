@@ -19,9 +19,18 @@
  * text but a draft's quote of what they asked, never a WhatsApp id.
  */
 import { basename } from 'node:path';
-import { DEFAULT_MESSAGES_PREFS, MessagesPrefsSchema, ReadLogEntrySchema, type MessagesPrefs, type ReadLogEntry } from '@jantar/protocol/messages';
+import {
+  DEFAULT_MESSAGES_PREFS,
+  MessagesPrefsSchema,
+  MorningRunSchema,
+  ReadLogEntrySchema,
+  type MessagesPrefs,
+  type MorningRun,
+  type ReadLogEntry,
+} from '@jantar/protocol/messages';
 import type { LifeDb } from '../contracts.js';
 import { openCheckedDb, type LifeMigration, type LifeOpenResult } from '../life/db.js';
+import { ReaderCursorSchema, type ReaderCursor } from './reader-protocol.js';
 
 /** What every messages route but the status answers (503 messages_unavailable) while messages.db will not open. */
 export const MESSAGES_BROKEN_REASON =
@@ -36,6 +45,10 @@ export const READS_KEEP = 5_000;
 const FOLDER_MAX = 255;
 /** The `settings` row with the morning and call-back times (MessagesPrefs as JSON). */
 const PREFS_KEY = 'prefs';
+/** meta: where the morning feed got to (ReaderCursor as JSON), moved only by a run that went well. */
+export const CURSOR_KEY = 'morning.cursor';
+/** meta: the newest day (Life zone) the morning timer's run went well on. */
+export const LAST_DAY_KEY = 'morning.last_day';
 
 export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
   {
@@ -160,6 +173,70 @@ export function readPrefs(db: MessagesDb): MessagesPrefs {
   } catch {
     return { ...DEFAULT_MESSAGES_PREFS };
   }
+}
+
+/** The morning and call-back times, as they are now. */
+export function writePrefs(db: MessagesDb, prefs: MessagesPrefs): void {
+  db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value').run(PREFS_KEY, JSON.stringify(prefs));
+}
+
+/** Where the morning feed got to, or null (the first run, or a mark that doesn't check). */
+export function readCursor(db: MessagesDb): ReaderCursor | null {
+  const raw = db.meta(CURSOR_KEY);
+  if (!raw) return null;
+  try {
+    const c = ReaderCursorSchema.safeParse(JSON.parse(raw));
+    return c.success ? c.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeCursor(db: MessagesDb, cursor: ReaderCursor): void {
+  db.setMeta(CURSOR_KEY, JSON.stringify(cursor));
+}
+
+/** A run's report, written or replaced by its id (a preview is never kept). */
+export function putRun(db: MessagesDb, run: MorningRun): void {
+  const kept: MorningRun = { ...run };
+  delete kept.preview;
+  db.prepare('INSERT INTO runs (id, at, trigger, state, json) VALUES (?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET state = excluded.state, json = excluded.json').run(
+    run.id,
+    run.at,
+    run.trigger,
+    run.state,
+    JSON.stringify(kept),
+  );
+}
+
+/** The newest run's report (`real`: not a dry run), or null; a report that doesn't check counts as none. */
+export function newestRun(db: MessagesDb, real: boolean): MorningRun | null {
+  const sql = `SELECT json FROM runs ${real ? "WHERE trigger <> 'dry' " : ''}ORDER BY at DESC, rowid DESC LIMIT 1`;
+  const row = db.prepare(sql).get() as { json: string } | undefined;
+  if (!row) return null;
+  try {
+    const r = MorningRunSchema.safeParse(JSON.parse(row.json));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Runs still `running` (the daemon stopped during them) become failed with `why`. */
+export function failRunning(db: MessagesDb, why: string): number {
+  const rows = db.prepare("SELECT id, json FROM runs WHERE state = 'running'").all() as { id: string; json: string }[];
+  for (const row of rows) {
+    let run: MorningRun | null = null;
+    try {
+      const r = MorningRunSchema.safeParse(JSON.parse(row.json));
+      run = r.success ? r.data : null;
+    } catch {
+      run = null;
+    }
+    if (run) putRun(db, { ...run, state: 'failed', why });
+    else db.prepare("UPDATE runs SET state = 'failed' WHERE id = ?").run(row.id);
+  }
+  return rows.length;
 }
 
 /** When the newest morning run that wasn't a dry run started, or null. */

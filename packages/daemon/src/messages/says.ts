@@ -56,6 +56,18 @@ export const MESSAGES_SAYS = {
   badAsk: "The reader couldn't take that request.",
   // The morning run.
   noRun: 'No such morning run.',
+  noDraft: 'No such reply draft.',
+  badPrefs: 'A time is HH:MM, or none to turn it off.',
+  morningBusy: 'A morning run is going. Wait for it to finish.',
+  morningReadOnly: 'The morning run is off while Jantar is read-only.',
+  morningNoClaude: 'The morning run needs Claude Code on this Mac.',
+  morningNoAccount: 'No Claude account has room for the morning run right now. Try again later.',
+  morningUnreadable: "Claude's answer couldn't be used, so nothing was made. Try again.",
+  morningNotIsolated: 'The morning run stopped: Claude could not run in its safe mode on this Mac. Check it at the Mac: jantar doctor',
+  morningStopped: 'The morning run was stopped before it finished.',
+  morningTooLong: 'Claude took too long to answer. Try again.',
+  morningRestarted: 'The morning run stopped before it finished: Jantar restarted, or Messages was turned off.',
+  morningFailed: "The morning run didn't work. Try again.",
 } as const;
 
 /**

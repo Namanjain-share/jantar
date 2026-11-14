@@ -27,7 +27,11 @@
  *   chats (add) or the skip list (remove), exact names first; one that
  *   matches several chats, or more chats than one list holds, lists them
  *   and exits 2, never one picked.
- * - `morning [--now | --dry-run]`: the morning pass now (Task 12's run).
+ * - `morning [--now | --dry-run]`: the morning pass now, and what it made
+ *   (counts, the chats left out for size); a dry run also prints what it
+ *   would make as a table (todo titles, who to call back and when, each
+ *   draft's first 60 characters, what it would leave out) and writes
+ *   nothing. Other people's words: the data note first.
  *
  * Everything goes over ctl.sock, where a 1:1's number is never sent; the
  * daemon logs each read as the CLI's.
@@ -51,6 +55,7 @@ import {
   type MessagesSearchResponse,
   type MessagesSkipList,
   type MessagesStatus,
+  type MorningPreview,
   type MorningRun,
 } from '@jantar/protocol/messages';
 import { UsageError, parseArgs, type ParsedArgs } from '../args.js';
@@ -619,6 +624,31 @@ async function skip(ctx: CliContext, rest: readonly string[]): Promise<number> {
 
 // ------------------------------------------------------------------ morning
 
+/** Why a dry run would leave an item of Claude's answer out (or its time off). */
+const LEFT_OUT: Record<MorningPreview['dropped'][number]['why'], string> = {
+  unknown_ref: "it cites a message the run didn't have",
+  duplicate: 'an earlier run made it',
+  limit: "Life's open-todo limit",
+  time_not_stated: 'its message states no time',
+};
+/** The table's widest kind ("call-back"). */
+const KIND_WIDTH = 9;
+const TITLE_MAX = 100;
+const WHO_MAX = 60;
+const DRAFT_SHOWN = 60;
+
+/** A dry run's table: what it would make and what it would leave out, cleaned. */
+function previewTable(p: MorningPreview, zone: string): string {
+  const row = (kind: string, text: string) => `  ${kind.padEnd(KIND_WIDTH)}  ${text}\n`;
+  const rows = [
+    ...p.todos.map((t) => row('todo', clip(t.title, TITLE_MAX))),
+    ...p.callbacks.map((c) => row('call-back', `${clip(c.who, WHO_MAX)}, ${c.at ? when(c.at, zone) : 'no time'}`)),
+    ...p.replies.map((d) => row('reply', `${clip(d.chatName, WHO_MAX)}: ${clip(d.draft, DRAFT_SHOWN)}`)),
+  ];
+  const left = p.dropped.map((x) => row(x.why === 'time_not_stated' ? 'no time' : 'left out', `${x.kind} ${x.ref}: ${LEFT_OUT[x.why]}`));
+  return `What it would make:\n${rows.length ? rows.join('') : '  nothing\n'}${left.join('')}`;
+}
+
 async function morning(ctx: CliContext, flags: Flags): Promise<number> {
   const dry = flags['dry-run'] === true;
   if (flags.now && dry) throw new UsageError('give --now or --dry-run, not both');
@@ -632,12 +662,15 @@ async function morning(ctx: CliContext, flags: Flags): Promise<number> {
     timeoutMs: MORNING_TIMEOUT_MS,
   });
   const c = run.counts;
+  // Chat names and the model's words are other people's.
+  if (run.preview || run.dropped.length > 0) ctx.io.out(WHATSAPP_NOTE);
   ctx.io.out(
     `Morning run ${run.state}${run.why ? `: ${clean(run.why)}` : ''}. ${plural(c.todos, 'todo')}, ${c.replies} replies waiting, ${plural(c.callbacks, 'call-back')}` +
       ` (read ${plural(c.chats, 'chat')}, ${plural(c.messages, 'message')}, ${plural(c.calls, 'call')}).\n`,
   );
   if (run.stale) ctx.io.out(`WhatsApp's data was not fresh: its newest message is from ${run.newestAt ? ago(run.newestAt, now) : 'unknown'}.\n`);
   for (const d of run.dropped) ctx.io.out(`Left out for size: ${clip(d.chatName, 60)}, ${d.left} of ${d.kept + d.left} messages.\n`);
+  if (run.preview) ctx.io.out(previewTable(run.preview, zoneOf(ctx)));
   if (dry) ctx.io.out('Dry run: nothing was written.\n');
   return EXIT.ok;
 }

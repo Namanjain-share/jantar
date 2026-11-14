@@ -2557,7 +2557,12 @@ export type ReadBy = { via: ReadVia; pid?: number; folder?: string };
 /** A message's file: an image shrunk by jantar-media to a JPEG with no metadata, or anything else by name, size and kind only. */
 export type MessagesMediaAnswer = { jpeg: Buffer } | { document: { fileName?: string; bytes: number; kind: MessageKind } };
 
-/** The morning run (messages/morning/). One run at a time; refused under --read-only. */
+/**
+ * The morning run (messages/morning/). One run at a time (ApiError conflict); refused under --read-only
+ * (forbidden). `run` answers the report, failed with a fixed sentence when the reader or Claude failed (a dry
+ * run's with its preview); `today` the newest run that wasn't dry, open drafts and open call-backs; `last` the
+ * newest run of any kind.
+ */
 export interface MorningApi {
   prefs(): MessagesPrefs;
   setPrefs(p: Partial<MessagesPrefs>, actor: Actor): LifeResult;
@@ -2972,8 +2977,11 @@ export interface Factories {
   intel: Factory<IntelService, { files: FilesService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
   /** v0.5 (WP0's shell; the builders are WP-MS's and WP-SU's). `life`: projects and todos; `usage` and `ccwLegacy`: the summary's account. */
   meetings: Factory<MeetingsService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
-  /** v0.15 (messages/index.ts createMessagesService also takes `{ readOnly }`). `life`: the morning run's todos; `usage` and `ccwLegacy`: its account. */
-  messages: Factory<MessagesService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource }>;
+  /**
+   * v0.15 (messages/index.ts createMessagesService also takes `{ readOnly }`). `life`: the morning run's todos; `usage` and
+   * `ccwLegacy`: its account; `notifiers`: its push (Web Push only).
+   */
+  messages: Factory<MessagesService, { life: LifeService; usage: UsageSource; ccwLegacy: CcwLegacySource; notifiers: Notifier[] }>;
   /**
    * v0.10 (spec 0.10 B7.4). Only these: Life, Intel's list, get, read,
    * remove, reread and jobs, Meetings' library, summaries, status and

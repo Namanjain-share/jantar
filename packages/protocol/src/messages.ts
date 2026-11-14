@@ -280,9 +280,33 @@ export type MorningTrigger = z.infer<typeof MorningTriggerSchema>;
 export const MorningRunStateSchema = z.enum(['ok', 'failed', 'running']);
 export type MorningRunState = z.infer<typeof MorningRunStateSchema>;
 /**
+ * What a dry run would have made (nothing was written): todo titles, who
+ * each call-back is for and when it rings, the reply drafts (no number: the
+ * CLI reads it over ctl.sock), and each item of the answer left out, by kind,
+ * its ref and why.
+ */
+export const MorningPreviewSchema = z.object({
+  todos: z.array(z.object({ title: z.string() })),
+  callbacks: z.array(z.object({ who: z.string(), at: IsoDateSchema.optional() })),
+  replies: z.array(z.object({ chatName: z.string(), theyAsked: z.string(), draft: z.string() })),
+  dropped: z.array(z.object({
+    kind: z.enum(['todo', 'reply', 'callback']),
+    ref: z.string(),
+    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'time_not_stated']),
+  })),
+});
+export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
+
+/**
  * One run's report. `stale`: WhatsApp wasn't running or synced in time, so
- * it read what the Mac had (`newestAt`). `dropped`: per chat, the messages
- * kept and left out for the budget.
+ * it read what the Mac had (`newestAt`: WhatsApp's newest message). `why`: a
+ * failed run's fixed sentence. `counts`: the chats, new messages and missed
+ * calls the model read, what it made (a dry run: would make), and `dropped`
+ * the new messages left out for the budget; `dropped` (the list): per chat,
+ * the messages kept and left out, most left out first. `summary`: the
+ * model's (other people's words: the phone shows it, a push never does).
+ * `todoIds`: the todos made (not the call-backs). `preview`: a dry run's
+ * answer only, never stored.
  */
 export const MorningRunSchema = z.object({
   id: LifeIdSchema,
@@ -295,6 +319,8 @@ export const MorningRunSchema = z.object({
   counts: z.object({ chats: count, messages: count, calls: count, todos: count, replies: count, callbacks: count, dropped: count }),
   dropped: z.array(z.object({ chatName: z.string(), kept: count, left: count })),
   todoIds: z.array(LifeIdSchema),
+  summary: z.string().max(600).optional(),
+  preview: MorningPreviewSchema.optional(),
 });
 export type MorningRun = z.infer<typeof MorningRunSchema>;
 /** POST /v1/messages/morning/run. `dryRun`: show what it would make, write nothing, keep the cursor. */

@@ -48,6 +48,8 @@ import { lineBody, type RefMap } from './input.js';
 export const WHATSAPP_PROJECT = { name: 'WhatsApp', emoji: '💬' } as const;
 /** messages.db meta: the WhatsApp project's id. */
 export const PROJECT_KEY = 'project_id';
+/** A call-back todo's title before its person (Today finds who it is for by it). */
+export const CALLBACK_TITLE = 'Call back ';
 /** A line that states a time: "5pm", "5 pm", "17:30", "5 baje". */
 export const TIME_STATED = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}:\d{2}\b|\bbaje\b/i;
 /** A todo's notes quote its line up to this many characters. */
@@ -240,7 +242,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const day = hit && c.day_stated && c.day_stated >= today ? c.day_stated : today;
     const who = whoOf(call, hit, c.who);
     const why = multiLine(c.why, NOTES_MAX);
-    const made = todo(src, 'callback', { title: oneLine(`Call back ${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
+    const made = todo(src, 'callback', { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
     if (!made) {
       drop('callback', c.ref, 'limit');
       continue;
