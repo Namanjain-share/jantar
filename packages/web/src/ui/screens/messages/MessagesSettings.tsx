@@ -10,7 +10,8 @@
  *   SKIP LIST   SkipList.tsx (add here; remove at the Mac only)
  *   LAST RUN    when and how it ran, how fresh WhatsApp was, what it read
  *               and made, what it couldn't read, and what was left out
- *               for size, per chat
+ *               for size: missed calls per person, then per chat, and how
+ *               many more past the report's list
  *   READ LOG    ReadLog.tsx
  *
  * Cards in columns from a pane of 640, rails below. A time is saved with
@@ -248,10 +249,11 @@ function LastRun({
                 <li key={i} className="flex items-baseline gap-8 border-b border-line px-16 py-8">
                   <span className="min-w-0 flex-1 break-words type-row text-ink">{d.chatName}</span>
                   <span className="flex-none type-mono text-ink-3">
-                    {d.kept.toLocaleString()} kept · {d.left.toLocaleString()} left out
+                    {d.kept.toLocaleString()} kept · {d.call ? plural(d.left, 'missed call') : d.left.toLocaleString()} left out
                   </span>
                 </li>
               ))}
+              {run.droppedMore ? <li className="border-b border-line px-16 py-8 type-small text-ink-3">and {run.droppedMore.toLocaleString()} more</li> : null}
             </ul>
           </>
         ) : null}

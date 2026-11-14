@@ -52,6 +52,11 @@ test('a run report keeps which calls it could not read, and a Life refusal apart
   expect(MorningRunSchema.parse({ ...run, trigger: 'now', lifeRefused: 'life_refused' }).lifeRefused).toBe('life_refused');
   expect(MorningRunSchema.safeParse({ ...run, lifeRefused: 'duplicate' }).success).toBe(false);
   expect(MorningRunSchema.parse(run)).not.toHaveProperty('lifeRefused');
+  // What was left out: a person's missed calls marked as calls, and how many more past the list.
+  const dropped = [{ chatKey: 'cababababababab01', chatName: 'Ravi Test', kept: 1, left: 2, call: true }, { chatName: 'Neel Test', kept: 0, left: 3 }];
+  expect(MorningRunSchema.parse({ ...run, dropped, droppedMore: 7 })).toMatchObject({ dropped, droppedMore: 7 });
+  expect(MorningRunSchema.safeParse({ ...run, dropped: [{ ...dropped[0], call: false }] }).success).toBe(false);
+  expect(MorningRunSchema.safeParse({ ...run, droppedMore: -1 }).success).toBe(false);
 });
 test('messages is a Mac-only group and a feature', () => {
   expect(MAC_ONLY_SETTING_GROUPS).toContain('messages');

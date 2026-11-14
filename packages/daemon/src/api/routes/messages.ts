@@ -90,7 +90,7 @@ async function reading<T>(fn: () => Promise<T>, notFound: string = MESSAGES_SAYS
   }
 }
 
-function header(c: Call, name: string): string | undefined {
+function header(c: Pick<Call, 'req'>, name: string): string | undefined {
   const v = c.req.headers[name];
   return typeof v === 'string' && v !== '' ? v : undefined;
 }
@@ -104,7 +104,7 @@ function decoded(v: string): string {
 }
 
 /** Who reads (the read log): the phone over TCP; on ctl.sock `jantar mcp` when its headers say so, else the CLI. */
-export function readByOf(c: Call): ReadBy {
+export function readByOf(c: Pick<Call, 'auth' | 'req'>): ReadBy {
   if (c.auth.transport !== 'ctl') return { via: 'phone' };
   if (header(c, MESSAGES_CALLER_HEADERS.via) !== 'mcp') return { via: 'cli' };
   const pid = Number(header(c, MESSAGES_CALLER_HEADERS.pid));
@@ -229,8 +229,8 @@ export const MESSAGES_ROUTE_IMPLS: RouteTable = {
   },
 
   messagesMorningRun: {
-    // The run reads through the reader: its failures answer as a read's do. Audited by the run's id.
-    handle: (c: Call<NoParams, unknown, MorningRunBody>, s) => reading(() => s.deps.messages.morning.run({ trigger: c.body.dryRun ? 'dry' : 'now' })),
+    // The run reads through the reader: its failures answer as a read's do, and its chats are in the read log under the caller. Audited by the run's id.
+    handle: (c: Call<NoParams, unknown, MorningRunBody>, s) => reading(() => s.deps.messages.morning.run({ trigger: c.body.dryRun ? 'dry' : 'now', by: readByOf(c) })),
     audit: lifeAudit,
   },
 

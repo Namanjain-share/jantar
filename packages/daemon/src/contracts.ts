@@ -2561,13 +2561,13 @@ export type MessagesMediaAnswer = { jpeg: Buffer } | { document: { fileName?: st
 /**
  * The morning run (messages/morning/). One run at a time (ApiError conflict); refused under --read-only
  * (forbidden). `run` answers the report, failed with a fixed sentence when the reader or Claude failed (a dry
- * run's with its preview); `today` the newest run that wasn't dry, open drafts and open call-backs; `last` the
- * newest run of any kind.
+ * run's with its preview); `by`: who started it, for the read log (default the morning run itself). `today`
+ * the newest run that wasn't dry, open drafts and open call-backs; `last` the newest run of any kind.
  */
 export interface MorningApi {
   prefs(): MessagesPrefs;
   setPrefs(p: Partial<MessagesPrefs>, actor: Actor): LifeResult;
-  run(opts: { trigger: MorningTrigger }): Promise<MorningRun>;
+  run(opts: { trigger: MorningTrigger; by?: ReadBy }): Promise<MorningRun>;
   today(): MessagesTodayResponse;
   setDraft(id: string, state: DraftState, actor: Actor): LifeResult;
   undo(runId: string, actor: Actor): LifeResult;

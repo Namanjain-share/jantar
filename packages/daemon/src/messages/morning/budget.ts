@@ -28,7 +28,10 @@
  *      the place of a new line.
  * - `kept` holds the chats in that order, each line oldest first with the
  *   chat's `left` (a 1:1 still waiting also with `waitsOn`, from all of its
- *   lines); `dropped` every chat with new lines left out, most first.
+ *   lines); `dropped` everything left out: first the missed calls, per
+ *   person (`call`), then every chat with new lines left out, or a 1:1
+ *   still waiting with lines it waits on left out (counted of those), most
+ *   first. A report lists REPORT_DROPPED_MAX of them (droppedReport).
  *
  * The estimate counts each line in input.ts's markup at its longest (ids,
  * times, attributes), its name and text escaped as input.ts writes them (a
@@ -47,18 +50,31 @@ export const BYTES_PER_TOKEN = 3;
 export const HEADER_TOKENS = 150;
 /** A waiting 1:1's newest lines since the owner's last, at most, kept for each one before any gets more. */
 export const WAITING_FIRST = 5;
+/** A run report's list of what was left out, at most (`droppedMore`: how many more). */
+export const REPORT_DROPPED_MAX = 50;
 
 /** About how many tokens `s` costs: its UTF-8 bytes / BYTES_PER_TOKEN, rounded up. */
 export function estimateTokens(s: string): number {
   return Math.ceil(Buffer.byteLength(s, 'utf8') / BYTES_PER_TOKEN);
 }
 
-/** A chat left out, in part or whole: its new lines kept and left out. */
+/**
+ * A chat left out, in part or whole: its new lines kept and left out (a 1:1
+ * still waiting with nothing new: the lines it waits on). `call`: a
+ * person's missed calls instead (`chatKey`: their 1:1, when they have one).
+ */
 export interface Dropped {
-  chatKey: string;
+  chatKey?: string;
   chatName: string;
   kept: number;
   left: number;
+  call?: true;
+}
+
+/** A report's list: the first REPORT_DROPPED_MAX, and how many more when there are. */
+export function droppedReport(dropped: readonly Dropped[]): { dropped: Dropped[]; droppedMore?: number } {
+  const more = dropped.length - REPORT_DROPPED_MAX;
+  return { dropped: dropped.slice(0, REPORT_DROPPED_MAX), ...(more > 0 ? { droppedMore: more } : {}) };
 }
 
 // input.ts's markup at its longest, for the estimate.
@@ -138,10 +154,18 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
   };
 
   const calls: BatchCall[] = [];
+  // Each person's missed calls, kept and left out (a person: their 1:1, else the name shown).
+  const callers = new Map<string, Dropped>();
   for (const c of batch.calls) {
     if (c.returned) continue;
-    if (!fits(callTokens(c))) break;
-    calls.push(c);
+    const who = c.chatKey ?? `who:${c.who}`;
+    const d = callers.get(who) ?? { ...(c.chatKey ? { chatKey: c.chatKey } : {}), chatName: c.who, kept: 0, left: 0, call: true as const };
+    callers.set(who, d);
+    // Once one doesn't fit, none after it does.
+    if (fits(callTokens(c))) {
+      calls.push(c);
+      d.kept += 1;
+    } else d.left += 1;
   }
   const dms = plans.filter((p) => isDm(p.bc.chat));
   const groups = plans.filter((p) => !isDm(p.bc.chat));
@@ -174,8 +198,15 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
     const left = p.pool.length - p.firstNew - messages.length;
     const waitsOn = quiet(p) ? { waitsOn: p.pool.slice(openFrom(p.pool)).map((m) => m.msgKey) } : {};
     if (p.shown) chats.push({ ...p.bc, messages, earlier, left, ...waitsOn });
-    if (left > 0) dropped.push({ chatKey: p.bc.chat.chatKey, chatName: p.bc.chat.name, kept: messages.length, left });
+    const owner = { chatKey: p.bc.chat.chatKey, chatName: p.bc.chat.name };
+    if (left > 0) dropped.push({ ...owner, kept: messages.length, left });
+    else if (quiet(p)) {
+      // Nothing new: the lines it waits on (of its last dmContext) left out; all of them, a person dropped whole.
+      const from = Math.max(openFrom(p.pool), p.pool.length - L.dmContext);
+      const keptWaiting = at.filter((i) => i >= from).length;
+      if (p.pool.length - from > keptWaiting) dropped.push({ ...owner, kept: keptWaiting, left: p.pool.length - from - keptWaiting });
+    }
   }
   dropped.sort((a, b) => b.left - a.left);
-  return { kept: { ...batch, chats, calls }, dropped };
+  return { kept: { ...batch, chats, calls }, dropped: [...[...callers.values()].filter((d) => d.left > 0), ...dropped] };
 }

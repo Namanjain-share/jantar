@@ -2465,9 +2465,11 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   to a session with a shell. `jantar mcp ask off` removes it.
 - **The read log is advisory.** Each read is logged in messages.db with
   who asked (`mcp` with the session's pid and folder name, `cli`, `phone`
-  or `morning`), the chat's key and a count, never text. The `mcp` mark
-  and its pid and folder are headers the caller sends: anything on the
-  control socket can leave them out or make them up.
+  or `morning`), the chat's key and a count, never text. A Run now or dry
+  run's chats are logged under whoever started it; `morning` is the
+  timer's own run. The `mcp` mark and its pid and folder are headers the
+  caller sends: anything on the control socket can leave them out or make
+  them up.
 
 ### The skip list
 
@@ -2493,9 +2495,11 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   then the open todos and call-backs made from it leave Life, as Undo
   removes them (a done one stays the owner's). Today leaves out a skipped
   chat's drafts and call-backs whatever happened before. A skip while a
-  morning run is going stops that run: it is stored failed and makes
-  nothing. Items made from a skipped person's lines in a group came from
-  the group, so they stay until removed in Life.
+  morning run is going stops that run when it read that chat (or a call
+  with that person): it is stored failed and makes nothing. A run that
+  read only a skipped person's lines in a group goes on, and items made
+  from such lines came from the group, so they stay until removed in
+  Life.
 - **It fails closed.** Reads are refused until `skip.json` has been
   written since messages.db opened; a `skip.json` that won't parse makes
   the reader refuse reads. One that won't open or breaks the reader's

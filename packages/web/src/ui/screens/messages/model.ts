@@ -155,7 +155,8 @@ export function readWords(e: ReadLogEntry, names: ReadonlyMap<string, string>): 
   }
 }
 
-/** The read-log row's second line: "Fri 13 Nov 07:30 · Claude session · example-app". */
+/** The read-log row's second line: "Fri 13 Nov 07:30 · Claude session · example-app" (a morning run someone started: "Morning run (Terminal)"). */
 export function readWho(e: ReadLogEntry, tz?: string | null): string {
-  return [whenText(e.at, tz, { date: true }), VIA_WORD[e.via], e.folder].filter(Boolean).join(' · ');
+  const who = e.op === 'morning' && e.via !== 'morning' ? `${VIA_WORD.morning} (${VIA_WORD[e.via]})` : VIA_WORD[e.via];
+  return [whenText(e.at, tz, { date: true }), who, e.folder].filter(Boolean).join(' · ');
 }

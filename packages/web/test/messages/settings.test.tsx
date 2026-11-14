@@ -120,6 +120,19 @@ describe('Messages: Settings', () => {
     expect(within(left).getByText('6 kept · 4,994 left out')).toBeTruthy();
   });
 
+  it('what was left out lists missed calls by person, and says how many more the list leaves out', async () => {
+    const dropped = [
+      { chatKey: IDS.ravi, chatName: 'Ravi Test', kept: 1, left: 2, call: true as const },
+      { chatKey: IDS.asha, chatName: 'Asha Test', kept: 0, left: 4 },
+    ];
+    open(messagesApi({ 'GET /v1/messages/today': today({ run: run({ counts: { chats: 0, messages: 0, calls: 1, todos: 0, replies: 0, callbacks: 0, dropped: 4 }, dropped, droppedMore: 7 }) }) }));
+    const report = await section('Last run');
+    const left = await within(report).findByRole('list', { name: 'Left out for size' });
+    expect(within(left).getByText('1 kept · 2 missed calls left out')).toBeTruthy();
+    expect(within(left).getByText('0 kept · 4 left out')).toBeTruthy();
+    expect(within(left).getByText('and 7 more')).toBeTruthy();
+  });
+
   it('the read log names the chat, who read it, from which folder, and how many', async () => {
     const api = messagesApi({
       'GET /v1/messages/reads': {
@@ -128,6 +141,8 @@ describe('Messages: Settings', () => {
           readEntry({ at: '2026-01-15T08:00:00.000Z', via: 'morning', pid: undefined, folder: undefined, op: 'morning', chatKey: IDS.group, count: 12 }),
           readEntry({ at: '2026-01-14T19:00:00.000Z', via: 'phone', pid: undefined, folder: undefined, op: 'search', chatKey: undefined, count: 2 }),
           readEntry({ at: '2026-01-14T18:00:00.000Z', via: 'cli', pid: undefined, folder: undefined, op: 'read', chatKey: IDS.ravi, count: 50 }),
+          // A dry run from the Terminal: the morning's read, under who asked.
+          readEntry({ at: '2026-01-14T17:00:00.000Z', via: 'cli', pid: undefined, folder: undefined, op: 'morning', chatKey: IDS.asha, count: 5 }),
         ],
       },
       'GET /v1/messages/chats': { chats: [{ chatKey: IDS.group, name: 'Group One', kind: 'group', lastAt: '2026-01-15T07:00:00.000Z', unread: 0, lastFromMe: false, archived: false, members: 4 }, { chatKey: IDS.asha, name: 'Asha Test', kind: 'dm', lastAt: '2026-01-15T07:00:00.000Z', unread: 0, lastFromMe: false, archived: false }], total: 2 },
@@ -136,7 +151,7 @@ describe('Messages: Settings', () => {
     const log = await within(await section('Read log')).findByRole('list', { name: 'Read log' });
     const rows = await waitFor(() => {
       const r = within(log).getAllByRole('listitem');
-      expect(r.map((li) => li.querySelector('[data-chat]')?.textContent)).toEqual(['Asha Test', 'Group One', 'Search', 'Ravi Test']);
+      expect(r.map((li) => li.querySelector('[data-chat]')?.textContent)).toEqual(['Asha Test', 'Group One', 'Search', 'Ravi Test', 'Asha Test']);
       return r;
     });
     expect(rows[0]!.textContent).toContain('3 messages');
@@ -146,6 +161,7 @@ describe('Messages: Settings', () => {
     expect(rows[2]!.textContent).toContain('Phone');
     // Ravi is skipped now: his name comes from the skip list.
     expect(rows[3]!.textContent).toContain('Terminal');
+    expect(rows[4]!.textContent).toContain('Wed 14 Jan 17:00 · Morning run (Terminal)');
     // The names were asked for once.
     expect(requested(api, 'GET', '/v1/messages/chats')).toEqual([expect.objectContaining({ query: { limit: 200 } })]);
   });

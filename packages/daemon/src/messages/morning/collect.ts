@@ -61,7 +61,8 @@ export type BatchCall = Call & { returned: boolean };
 /**
  * Chats newest first, calls oldest first. `newestAt`: the newest line's
  * time (null with none); `waCalls`, `phone`: WhatsApp's calls, the iPhone
- * call log were read.
+ * call log were read; `wroteAt`: by chat key, when the owner last wrote
+ * there as far as the run knows (lastFromMe, or his newest line in it).
  */
 export interface Batch {
   chats: BatchChat[];
@@ -71,6 +72,7 @@ export interface Batch {
   newestAt: string | null;
   waCalls: boolean;
   phone: boolean;
+  wroteAt: Record<string, string>;
 }
 
 /** Lines asked for in one newSince call: well inside the reader's 2 s deadline. */
@@ -256,6 +258,13 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
   // The newest line is the newest new one.
   const fresh = [...chats.values()].filter((g) => g.messages.length > 0).map((g) => latest(g.messages));
   const newest = fresh.length ? fresh.reduce((a, b) => (b.ms > a.ms ? b : a)) : null;
+  const wroteAt: Record<string, string> = {};
+  for (const [k, at] of Object.entries(wrote)) if (typeof at === 'string') wroteAt[k] = at;
+  for (const g of chats.values()) {
+    const mine = latest(g.messages.filter((m) => m.fromMe && isContent(m)));
+    const known = wroteAt[g.chat.chatKey];
+    if (mine.at && (known === undefined || mine.ms > Date.parse(known))) wroteAt[g.chat.chatKey] = mine.at;
+  }
 
   return {
     chats: out.map((o) => o.bc),
@@ -265,10 +274,11 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
     newestAt: newest?.at ?? null,
     waCalls: wa.read,
     phone: iphone.read,
+    wroteAt,
   };
 }
 
-/** The newest of `lines` (not empty), by time. */
+/** The newest of `lines` by time (none: at -Infinity, ''). */
 function latest(lines: readonly Message[]): { ms: number; at: string } {
   let best = { ms: -Infinity, at: '' };
   for (const m of lines) {

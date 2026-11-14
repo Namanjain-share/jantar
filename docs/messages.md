@@ -148,9 +148,10 @@ command line or the morning run.
   leave Waiting on you, the open todos and call-backs made from it leave
   Life (as Undo removes them; one you already did stays), and a run that
   read it loses its summary and its line in the report. A skip while a
-  morning run is going stops that run: it makes nothing, and you run it
-  again. A todo made from a skipped person's line in a group came from
-  the group, so it stays: remove it in Life.
+  morning run is going stops that run if it read that chat (or a missed
+  call from that person): it makes nothing, and you run it again. A todo
+  made from a skipped person's line in a group came from the group, so it
+  stays: remove it in Life.
 - Status updates, channels and broadcast lists are never read, skipped or
   not.
 
@@ -217,9 +218,12 @@ Settings). At that time it waits for WhatsApp to be open and synced
 (quiet for 2 minutes), for up to 6 hours; after that it runs anyway, and
 the report says how fresh WhatsApp's data was. If the Mac slept through
 the time, it runs once on waking, within those 6 hours; a day it slept
-through entirely is skipped. The timer runs it once a day at most. **Run
-now** on the phone and `jantar messages morning --now` run it any time,
-and `--dry-run` shows what it would make.
+through entirely is skipped. The timer runs it once a day at most. A
+morning time you set after it has passed today starts tomorrow. If a Run
+now or a dry run is going at that time, it runs a minute after that one
+ends. After you change Life's time zone, the next morning in the new zone
+runs. **Run now** on the phone and `jantar messages morning --now` run it
+any time, and `--dry-run` shows what it would make.
 
 **What it reads.** Everything since the last run, never more than 72
 hours back (the first run: the last 24 hours), minus skipped chats,
@@ -238,7 +242,9 @@ pictures, shrunk. About 50,000 tokens at most, filled in this order:
 6. busy groups (200 new lines or more, 100 people or more, or archived): a
    count, and the lines around your mentions only.
 
-What didn't fit is listed per chat in the run's report.
+What didn't fit is listed in the run's report: missed calls by person,
+then each chat (a person still waiting, by the lines they wait on). The
+list stops at 50 and says how many more.
 
 **The run.** One Claude Code run on your account, the way Jantar's other
 headless runs pick one (Sonnet at medium effort, Haiku if Sonnet can't),
@@ -254,16 +260,21 @@ dropped.
   "17:30", "at 5", "5 baje", "5 बजे"; with no day named, on the message's
   own day); otherwise it is due that day with no time. A time that
   had already passed when the run made it is dropped (the todo keeps its
-  day), since it could never ring. It stops cleanly at Life's limit of
-  open todos.
+  day), since it could never ring: "by 5pm" in yesterday's message is
+  yesterday's. It stops cleanly at Life's limit of open todos.
 - **Call-backs**: a todo "Call back {name}" for today (or a later day the
-  message names), at the time the message states, else at your call-back
-  time (11:00 unless you change it or turn it off: then no time). If that
-  time had already passed when the run made it (a run late in the day,
-  Run now after lunch, a morning time after the call-back time), it rings
-  at the next quarter hour instead.
+  message names), at the time the message states (with no day named, on
+  the message's own day), else at your call-back time (11:00 unless you
+  change it or turn it off: then no time). If that time had already
+  passed when the run made it (a run late in the day, Run now after
+  lunch, a morning time after the call-back time, a message from
+  yesterday), it rings at the next quarter hour instead. One per person:
+  while a call-back for someone is still open, a new missed call from
+  them makes no second one.
 - **Reply drafts**, under Waiting on you: who, what they asked, and a
-  short reply in the chat's own language and tone.
+  short reply in the chat's own language and tone. One per chat: a newer
+  draft replaces the older one, and a draft goes at the next run once you
+  have written to that chat in WhatsApp.
 - **One push**: "Morning: 6 todos, 3 replies waiting, 2 call-backs".
   Counts only, because it shows on the lock screen. A run that made
   nothing sends none. While you have Jantar's notifications muted, the
@@ -300,7 +311,8 @@ on a phone), on devices paired with control.
   removing says the Mac's command), the last run's report with what was
   left out per chat, and the read log: when, by what (a Claude session
   and its folder, the Terminal, the phone or the morning run), which chat
-  and how many messages.
+  and how many messages. A Run now or dry run's reads are under whoever
+  started it ("Morning run (Terminal)").
 
 ## What Messages keeps
 

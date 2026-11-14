@@ -9,7 +9,8 @@
  * - a name two chats share answers the candidates and how many matched;
  * - a 1:1's number is on the owner's answers over TCP, never on ctl.sock's;
  * - who read: the phone, the CLI, or `jantar mcp` with its caller's pid and
- *   folder (its headers count on ctl.sock only);
+ *   folder (its headers count on ctl.sock only); a Run now or dry run's
+ *   chats are logged under its caller too;
  * - removing a skip: refused over TCP, done over ctl.sock;
  * - media: an image as image/jpeg with meetingShot's headers, counted on the
  *   device's raw byte budget; anything else is 415 with its name and size;
@@ -42,8 +43,10 @@ import { MESSAGE_FILE_READS_LIMITED, notAnImage } from '../../src/api/routes/mes
 import { resolvePaths } from '../../src/config.js';
 import type { LifeResult, LifeService, MessagesService, MorningApi } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
+import { createFakeExec, type ExecHandler } from '../../src/core/testing.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
 import { MESSAGES_BROKEN_REASON, MESSAGES_SAYS, buildMessagesService, type ImageShrinker } from '../../src/messages/index.js';
+import { READER_VERSION } from '../../src/messages/reader-protocol.js';
 import { readerError, startFakeReader, type FakeHandlers, type FakeReader } from '../messages/fake-reader.js';
 import { LOOPBACK_HOST, LOOPBACK_ORIGIN, NONE, OWNER_HOST, OWNER_ORIGIN, PEOPLE_HOST, PEOPLE_ORIGIN, call as callAs, makeFixture } from '../people/isolation-fixture.js';
 import { h, makeApi, pairCookie, type TestApi } from './fakes.js';
@@ -193,8 +196,12 @@ interface Setup {
   seen: string[];
 }
 
-/** A daemon with Messages on (unless `on: false`), its part on messages.db in memory, a fake reader when `handlers` are given, and a control phone. */
-async function messagesApi(o: { handlers?: FakeHandlers; on?: boolean; dbFile?: (dir: string) => string; shrinker?: ImageShrinker } = {}): Promise<Setup> {
+/**
+ * A daemon with Messages on (unless `on: false`), its part on messages.db in memory, a fake reader when `handlers`
+ * are given, and a control phone. Its morning run records what it was asked, unless `claude` is given: then it is
+ * the real one, on that fake claude.
+ */
+async function messagesApi(o: { handlers?: FakeHandlers; on?: boolean; dbFile?: (dir: string) => string; shrinker?: ImageShrinker; claude?: ExecHandler } = {}): Promise<Setup> {
   // A short folder: the reader's socket path must stay under 104 bytes.
   base = realpathSync(mkdtempSync(join(tmpdir(), 'jr-')));
   chmodSync(base, 0o700);
@@ -205,11 +212,16 @@ async function messagesApi(o: { handlers?: FakeHandlers; on?: boolean; dbFile?: 
   const dbFile = o.dbFile?.(base) ?? ':memory:';
   const shrinker = o.shrinker ?? notBuilt<ImageShrinker>('not used here');
   const built = await makeApi({
-    ctx: { paths, clock: new FakeClock(NOW), settings: SettingsSchema.parse({ messages: { enabled: o.on !== false } }) },
+    ctx: {
+      paths,
+      clock: new FakeClock(NOW),
+      settings: SettingsSchema.parse({ messages: { enabled: o.on !== false } }),
+      ...(o.claude ? { exec: createFakeExec(o.claude), accountsMode: 'single' as const } : {}),
+    },
     deps: (ctx, fakes) => {
       const life = notBuilt<LifeService>('not used here');
       const part = buildMessagesService(ctx, { life, usage: fakes.usage, ccwLegacy: fakes.ccwLegacy }, { dbFile, shrinker });
-      messages = withMorning(part, fakeMorning(seen));
+      messages = o.claude ? part : withMorning(part, fakeMorning(seen));
       return { messages };
     },
   });
@@ -612,6 +624,41 @@ describe('the audit', () => {
     expect([r.statusCode, err(r.body).message]).toEqual([429, ASK_WRITES_LIMITED]);
     expect(t.seen).toEqual([]);
     expect((await ctl(t, 'POST', '/v1/messages/morning/run', {})).statusCode).toBe(200);
+  });
+
+  it("a Run now or dry run's chats are in the read log under its caller: the CLI, a session, the phone", async () => {
+    const quiet = JSON.stringify({ summary: 'Quiet night.', todos: [], replies: [], callbacks: [] });
+    const claude: ExecHandler = (c) =>
+      c.file.endsWith('claude')
+        ? { stdout: `${JSON.stringify({ type: 'system', subtype: 'init', tools: [], mcp_servers: [] })}\n${JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: quiet })}\n` }
+        : undefined;
+    const handlers: FakeHandlers = {
+      ...READER,
+      status: () => ({
+        whatsapp: { found: true, running: true, schemaOk: true, contactsOk: true, newestAt: NOW, walMtime: NOW },
+        phone: { readable: false },
+        skipped: 0,
+        skipOk: true,
+        version: READER_VERSION,
+      }),
+      newSince: () => ({ chats: [{ chat: ASHA_CHAT, messages: [line(ASHA, 1, DECK)], earlier: [] }], nextCursor: { pk: 7, at: NOW }, truncated: false, reset: false }),
+    };
+    const t = await messagesApi({ handlers, claude });
+    const dry = await ctl(t, 'POST', '/v1/messages/morning/run', { dryRun: true });
+    expect([dry.statusCode, (dry.json() as MorningRun).state]).toEqual([200, 'ok']);
+    const mcp = { [MESSAGES_CALLER_HEADERS.via]: 'mcp', [MESSAGES_CALLER_HEADERS.pid]: '4242', [MESSAGES_CALLER_HEADERS.folder]: 'demo' };
+    expect((await ctl(t, 'POST', '/v1/messages/morning/run', { dryRun: true }, mcp)).statusCode).toBe(200);
+    expect((await tcp(t, 'POST', '/v1/messages/morning/run', {})).statusCode).toBe(200);
+    const reads = MessagesReadsResponseSchema.parse((await tcp(t, 'GET', '/v1/messages/reads?limit=20')).json()).reads;
+    // Newest first: the phone's Run now, the session's dry run, the CLI's; each the chat and the calls.
+    expect(reads.map((r) => [r.via, r.op, r.chatKey ?? 'calls', r.pid ?? null, r.folder ?? null])).toEqual([
+      ['phone', 'morning', 'calls', null, null],
+      ['phone', 'morning', ASHA, null, null],
+      ['mcp', 'morning', 'calls', 4242, 'demo'],
+      ['mcp', 'morning', ASHA, 4242, 'demo'],
+      ['cli', 'morning', 'calls', null, null],
+      ['cli', 'morning', ASHA, null, null],
+    ]);
   });
 
   it("the morning's screens answer through the part: today, prefs", async () => {

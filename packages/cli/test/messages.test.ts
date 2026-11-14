@@ -509,7 +509,7 @@ describe('jantar messages', () => {
       expect(draft).toBe(`  reply      Asha Test: ${RUN.preview!.replies[0]!.draft.slice(0, 59)}…`);
       expect(lines).toContain("  left out   todo m999: it cites a message the run didn't have");
       expect(lines).toContain('  no time    todo m3: its message states no time');
-      expect(lines).toContain("  left out   callback k1: Life wouldn't take it (is Life on?)");
+      expect(lines).toContain("  left out   callback k1: Life wouldn't take it (are Life's Todos on?)");
       // A time that had passed by the run: a call-back rings soon, a todo keeps its day.
       expect(lines).toContain('  late       callback k2: its time had passed, so it rings at the next quarter hour');
       expect(lines).toContain('  late       todo m4: its time had passed, so it keeps its day only');
@@ -549,6 +549,20 @@ describe('jantar messages', () => {
       expect(again.io.stdout).not.toContain("wasn't read");
     });
 
+    it('morning lists what was left out for size: missed calls, chats, and how many more', async () => {
+      const dropped: MorningRun['dropped'] = [
+        { chatKey: 'cababababababab01', chatName: 'Ravi Test', kept: 1, left: 2, call: true },
+        { chatKey: 'cababababababab02', chatName: 'Asha Test', kept: 0, left: 4 },
+      ];
+      const ctl = fakeCtl({ 'POST /v1/messages/morning/run': ok({ ...RUN, trigger: 'now', preview: undefined, dropped, droppedMore: 7 }) });
+      const { ctx, io } = contextFor(home, { ctl, paths });
+      expect(await messages.run(['morning', '--now'], ctx), io.stderr).toBe(EXIT.ok);
+      const lines = io.stdout.split('\n');
+      expect(lines).toContain('Left out for size: Ravi Test, 2 of 3 missed calls.');
+      expect(lines).toContain('Left out for size: Asha Test, 4 of 4 messages.');
+      expect(lines).toContain('Left out for size: 7 more chats or callers, not listed.');
+    });
+
     it('morning says why Life took no more todos', async () => {
       const said = async (lifeRefused?: 'limit' | 'life_refused') => {
         const ctl = fakeCtl({ 'POST /v1/messages/morning/run': ok({ ...RUN, trigger: 'now', preview: undefined, ...(lifeRefused ? { lifeRefused } : {}) }) });
@@ -557,7 +571,7 @@ describe('jantar messages', () => {
         return io.stdout;
       };
       expect(await said('limit')).toContain("Life's open-todo limit was reached, so some todos and call-backs weren't made.");
-      expect(await said('life_refused')).toContain("Life wouldn't take the todos (is Life on?), so some todos and call-backs weren't made.");
+      expect(await said('life_refused')).toContain("Life wouldn't take the todos (are Life's Todos on?), so some todos and call-backs weren't made.");
       expect(await said()).not.toContain("weren't made");
     });
   });

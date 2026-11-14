@@ -17,25 +17,34 @@
  *   waiting with nothing new gets no second draft: any line it waits on
  *   drafted before is a duplicate, even one budget() left out this time
  *   (its `waitsOn`).
+ * - One of each per person: a call-back for someone (their 1:1) who has one
+ *   open in Life, made by this run or an earlier one, is a `duplicate`; so
+ *   is a second draft for a chat in one answer. A new draft for a chat
+ *   dismisses its older open ones (it replaces them).
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
  *   when the cited line states one (TIME_STATED), else the todo keeps its
- *   day (`time_not_stated`); a time with no day is today's. At most
- *   todosPerRun.
+ *   day (`time_not_stated`). At most todosPerRun.
  * - Call-backs are todos "Call back {who}" (who: the call's or the line's
  *   sender, never the model's words but for the owner's own line in a
  *   group), due today or the day the line states, at the time it states,
  *   else at the call-back time (none: a day only).
- * - A time already past when the run applies would never ring (Life rings a
- *   new due time only when it is ahead): a call-back rings at the next
- *   quarter hour instead, a todo keeps its day only; both `time_passed`.
+ * - A stated time with no day is on the cited line's own day (the prompt's
+ *   rule too).
+ * - A time already past when the answer is applied (`applyAt`: Claude can
+ *   take minutes) would never ring (Life rings a new due time only when it
+ *   is ahead): a call-back rings at the next quarter hour instead, a todo
+ *   keeps its day only; both `time_passed`.
  * - Life's first refusal stops every todo and call-back after it: `limit`
  *   for its open-todo limit, `life_refused` for any other (Life closed, the
  *   project gone), also the result's `lifeRefused` for the run's report.
+ *   With Life's Todos off (`todosOn` false) none is made: `life_refused`.
  *   Drafts aren't Life's: they go on.
  * - Replies are drafts (state open; a 1:1's number for Open in WhatsApp, a
- *   group none; `at`: when the cited line was written).
+ *   group none; `at`: when the cited line was written). A draft whose chat
+ *   the owner has written to since is dismissed before a run applies
+ *   (dismissAnswered).
  * - A dry run writes nothing (no project, todo, draft or `made` row) and
  *   answers the same, without ids.
  *
@@ -62,8 +71,11 @@ export const WHATSAPP_PROJECT = { name: 'WhatsApp', emoji: '💬' } as const;
 export const PROJECT_KEY = 'project_id';
 /** A call-back todo's title before its person (Today finds who it is for by it). */
 export const CALLBACK_TITLE = 'Call back ';
-/** A line that states a time: "5pm", "5 pm", "17:30", "at 5", "5 baje", "5 बजे". */
-export const TIME_STATED = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}:\d{2}\b|\bat\s+\d{1,2}\b|\bbaje\b|बजे/i;
+/**
+ * A line that states a time: "5pm", "5 pm", "17:30", "at 5", "5 baje", "5 बजे"; never "at 50%". ("At 3 options"
+ * still counts: accepted, since only a time the model also invents gets through.)
+ */
+export const TIME_STATED = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}:\d{2}\b|\bat\s+\d{1,2}\b(?!\s*%)|\bbaje\b|बजे/i;
 /** A todo's notes quote its line up to this many characters. */
 export const QUOTE_MAX = 200;
 /** Life's caps (protocol TodoTitleSchema, LongNotesSchema). */
@@ -86,12 +98,17 @@ export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | '
 export interface ApplyDeps {
   life: Pick<LifeService, 'todos'>;
   db: MessagesDb;
+  /** When the run started: its day is `today`. */
   now: Date;
+  /** When the answer is applied (read just before): what a due time must be ahead of to ring. */
+  applyAt: Date;
   /** The Life zone. */
   tz: string;
   prefs: MessagesPrefs;
   runId: string;
   dryRun: boolean;
+  /** Life's Todos is on (settings.life.todos); off: no todo or call-back is made. */
+  todosOn: boolean;
 }
 
 /** A reply draft as made (a dry run's has no id). */
@@ -194,8 +211,10 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     return byKey.get(key) ?? (forReply ? (waitedOn.get(key) ?? null) : null);
   };
   const today = dayKeyOf(d.now, d.tz);
-  /** A due time Life would never ring: at or before now. */
-  const passed = (day: string, time: string) => instantAt(day, time, d.tz).getTime() <= d.now.getTime();
+  /** A due time Life would never ring: at or before the answer is applied. */
+  const passed = (day: string, time: string) => instantAt(day, time, d.tz).getTime() <= d.applyAt.getTime();
+  /** The day a line was written (a stated time with no day is on it). */
+  const dayOf = (m: Message) => dayKeyOf(new Date(m.at), d.tz);
 
   // This run's sources, and the ones made before.
   const taken = new Set<string>();
@@ -204,8 +223,8 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
   const record = (src: string, kind: MadeKind, target: string, chatKey: string | undefined) =>
     d.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key) VALUES (?, ?, ?, ?, ?)').run(src, d.runId, kind, target, chatKey ?? null);
 
-  /** Why Life stopped taking todos (its first refusal), or null while it takes them. */
-  let refused: 'limit' | 'life_refused' | null = null;
+  /** Why Life stopped taking todos (its first refusal, or Todos off), or null while it takes them. */
+  let refused: 'limit' | 'life_refused' | null = d.todosOn ? null : 'life_refused';
   let project: string | undefined | null = null;
   /** A Life todo for `src` (from `chatKey`'s chat): its id (none in a dry run), or null once Life refused (`refused` says why). */
   const todo = (src: string, kind: MadeKind, chatKey: string | undefined, body: { title: string; notes?: string; due?: Due; priority: TodoPriority }): { id?: string } | null => {
@@ -244,8 +263,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     }
     const lostTime = t.due_time !== undefined && !statesTime(hit.m);
     let time = lostTime ? undefined : t.due_time;
-    // A stated time with no day: today's (no line is from a later day).
-    const day = t.due_day ?? (time ? today : undefined);
+    const day = t.due_day ?? (time ? dayOf(hit.m) : undefined);
     const late = day !== undefined && time !== undefined && passed(day, time);
     if (late) time = undefined;
     const due = day ? (time ? { day, time } : { day }) : undefined;
@@ -261,6 +279,20 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     if (late) drop('todo', t.ref, 'time_passed');
   }
 
+  // A person's call-back still open in Life, by their 1:1: this run's, or one an earlier run made.
+  const calledBack = new Set<string>();
+  let openIds: Set<string> | null = null;
+  const callbackOpen = (person: string): boolean => {
+    if (calledBack.has(person)) return true;
+    const ids = (d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key = ? AND target_id IS NOT NULL").all(person) as { target_id: string }[]).map((r) => r.target_id);
+    if (ids.length === 0) return false;
+    if (openIds === null) {
+      const open = d.life.todos.listTodos({ done: false });
+      openIds = new Set(open.ok ? open.value.todos.map((t) => t.id) : []);
+    }
+    return ids.some((id) => openIds!.has(id));
+  };
+
   for (const c of answer.callbacks) {
     const callKey = c.ref.startsWith('k') ? refs.k.get(c.ref) : undefined;
     const call = callKey === undefined ? undefined : calls.get(callKey);
@@ -270,31 +302,39 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       continue;
     }
     const src = `callback:${call ? call.callKey : hit!.m.msgKey}`;
-    if (isMade(src)) {
+    const chatKey = call ? call.chatKey : hit!.chat.chatKey;
+    // A person is their 1:1 (a group's chat is many people).
+    const person = call ? call.chatKey : hit!.chat.kind === 'dm' ? chatKey : undefined;
+    if (isMade(src) || (!refused && person !== undefined && callbackOpen(person))) {
       drop('callback', c.ref, 'duplicate');
       continue;
     }
-    // A call states no time or day; a line only what it says.
+    // A call states no time or day; a line only what it says (a time with no day: the line's own day).
     const stated = hit !== null && statesTime(hit.m);
     const lostTime = c.time_stated !== undefined && !stated;
-    let time = stated && c.time_stated ? c.time_stated : (d.prefs.callbackAt ?? undefined);
-    let day = hit && c.day_stated && c.day_stated >= today ? c.day_stated : today;
+    const statedTime = stated && c.time_stated ? c.time_stated : undefined;
+    let time = statedTime ?? d.prefs.callbackAt ?? undefined;
+    let day = hit && c.day_stated ? c.day_stated : statedTime ? dayOf(hit!.m) : today;
+    // A day gone with no time it states: today's call-back time.
+    if (day < today && !statedTime) day = today;
     // Still owed once its time is gone (a late run, a morning time after the call-back time): it rings soon.
     const late = time !== undefined && passed(day, time);
-    if (late) ({ day, time } = nextQuarter(d.now, d.tz));
+    if (late) ({ day, time } = nextQuarter(d.applyAt, d.tz));
     const who = whoOf(call, hit, c.who);
     const why = multiLine(c.why, NOTES_MAX);
-    const chatKey = call ? call.chatKey : hit!.chat.chatKey;
     const made = todo(src, 'callback', chatKey, { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
     if (!made) {
       drop('callback', c.ref, refused ?? 'limit');
       continue;
     }
+    if (person !== undefined) calledBack.add(person);
     out.callbacks.push({ ...made, who, ...(time ? { at: instantAt(day, time, d.tz).toISOString() } : {}) });
     if (lostTime) drop('callback', c.ref, 'time_not_stated');
     if (late) drop('callback', c.ref, 'time_passed');
   }
 
+  // The chats this run drafted a reply for: one each.
+  const drafted = new Set<string>();
   for (const r of answer.replies) {
     const chatKey = refs.c.get(r.chat);
     const hit = lineOf(r.ref, true);
@@ -306,10 +346,11 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     // Still waiting with nothing new: a draft for any line it waits on (budget's waitsOn: all of them, kept or not) is this one.
     const bc = chatOf.get(chatKey);
     const waits = bc && stillWaiting(bc) ? (bc.waitsOn ?? bc.earlier.slice(openFrom(bc.earlier)).map((m) => m.msgKey)) : [];
-    if ([src, ...waits.map((k) => `reply:${k}`)].some(isMade)) {
+    if (drafted.has(chatKey) || [src, ...waits.map((k) => `reply:${k}`)].some(isMade)) {
       drop('reply', r.ref, 'duplicate');
       continue;
     }
+    drafted.add(chatKey);
     const draft: MorningDraft = {
       runId: d.runId,
       chatKey,
@@ -327,6 +368,8 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     }
     const id = newId();
     d.db.tx(() => {
+      // It replaces the chat's open draft: Waiting on you has one row per chat.
+      d.db.prepare("UPDATE drafts SET state = 'dismissed' WHERE chat_key = ? AND state = 'open'").run(chatKey);
       d.db
         .prepare('INSERT INTO drafts (id, run_id, chat_key, chat_name, phone, they_asked, draft, at, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(id, d.runId, chatKey, draft.chatName, draft.phone ?? null, draft.theyAsked, draft.draft, draft.at, draft.state);
@@ -334,8 +377,27 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     });
     out.replies.push({ id, ...draft });
   }
-  if (refused) out.lifeRefused = refused;
+  // Said only when Life (or Todos off) did leave something out.
+  if (refused && out.dropped.some((x) => x.why === refused)) out.lifeRefused = refused;
   return out;
+}
+
+/**
+ * Before a run applies: the open drafts of each chat in `wroteAt` (when the
+ * owner last wrote to it, collect.ts Batch) whose line came before that are
+ * dismissed, since he answered in WhatsApp itself. How many.
+ */
+export function dismissAnswered(db: MessagesDb, wroteAt: Readonly<Record<string, string>>): number {
+  const open = db.prepare("SELECT id, chat_key, at FROM drafts WHERE state = 'open'").all() as { id: string; chat_key: string; at: string }[];
+  const dismiss = db.prepare("UPDATE drafts SET state = 'dismissed' WHERE id = ? AND state = 'open'");
+  let n = 0;
+  db.tx(() => {
+    for (const r of open) {
+      const wrote = wroteAt[r.chat_key];
+      if (wrote !== undefined && Date.parse(wrote) >= Date.parse(r.at)) n += Number(dismiss.run(r.id).changes);
+    }
+  });
+  return n;
 }
 
 /**

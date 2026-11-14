@@ -39,7 +39,7 @@ function bc(c: ChatOwner, messages: Message[], o: { earlier?: Message[]; waiting
 }
 
 function batchOf(chats: BatchChat[], calls: BatchCall[] = []): Batch {
-  return { chats, calls, cursor: { pk: 1, at: NOW.toISOString() }, reset: false, newestAt: null, waCalls: true, phone: true };
+  return { chats, calls, cursor: { pk: 1, at: NOW.toISOString() }, reset: false, newestAt: null, waCalls: true, phone: true, wroteAt: {} };
 }
 
 const count = (text: string, re: RegExp) => (text.match(re) ?? []).length;
@@ -197,8 +197,10 @@ describe('morningInput', () => {
     for (const mark of ['by_user="yes"', 'to_me="yes"', 'earlier="yes"', 'waiting="yes"', 'archived="yes"', 'video="yes"', '`reply`', '`left`', '`members`', '`via`']) {
       expect(prompt).toContain(mark);
     }
-    // Relative days go from the message's own day.
+    // Relative days go from the message's own day; so does a time with no day, for todos and call-backs alike.
     expect(prompt).toMatch(/"tomorrow"[^\n]*`at`/);
+    expect(prompt).toMatch(/`due_time` \(a time with no day is on the message's own day/);
+    expect(prompt).toMatch(/`time_stated` \(a time with no day is on the message's own day/);
     // Pictures are labelled by ids only; an earlier line with an id is for a reply only.
     expect(prompt).toContain('"Image, message m17 (chat c3)"');
     expect(prompt).toMatch(/earlier="yes"[^\n]*an id[^\n]*reply/);

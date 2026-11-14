@@ -16,7 +16,7 @@
  * morning run reports, what each run made and from which chat (so a re-run
  * makes nothing twice, and a skip takes it from view), the chats each run
  * sent to Claude, the read log (ids and counts only) and Messages' own
- * settings (the morning and call-back times, the "ran today" mark). No
+ * settings (the morning and call-back times, the "ran this morning" mark). No
  * message text but a draft's quote of what they asked, never a WhatsApp id.
  */
 import { basename } from 'node:path';
@@ -48,8 +48,8 @@ const FOLDER_MAX = 255;
 const PREFS_KEY = 'prefs';
 /** meta: where the morning feed got to (ReaderCursor as JSON), moved only by a run that went well. */
 export const CURSOR_KEY = 'morning.cursor';
-/** meta: the newest day (Life zone) the morning timer's run went well on. */
-export const LAST_DAY_KEY = 'morning.last_day';
+/** meta: when the morning the timer's newest run that went well was for was due (ISO; read as a day in the Life zone as it is now). */
+export const LAST_MORNING_KEY = 'morning.last_at';
 
 export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
   {

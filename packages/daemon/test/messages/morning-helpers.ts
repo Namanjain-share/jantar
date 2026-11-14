@@ -35,7 +35,7 @@ export function bc(c: ChatOwner, messages: Message[], o: { earlier?: Message[]; 
 }
 
 export function batchOf(chats: BatchChat[], calls: BatchCall[] = []): Batch {
-  return { chats, calls, cursor: { pk: 42, at: '2026-11-13T20:00:00.000Z' }, reset: false, newestAt: '2026-11-13T20:00:00.000Z', waCalls: true, phone: true };
+  return { chats, calls, cursor: { pk: 42, at: '2026-11-13T20:00:00.000Z' }, reset: false, newestAt: '2026-11-13T20:00:00.000Z', waCalls: true, phone: true, wroteAt: {} };
 }
 
 export function sample() {

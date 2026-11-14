@@ -324,9 +324,12 @@ export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
  * it read what the Mac had (`newestAt`: WhatsApp's newest message). `why`: a
  * failed run's fixed sentence. `counts`: the chats, new messages and missed
  * calls the model read, what it made (a dry run: would make), and `dropped`
- * the new messages left out for the budget; `dropped` (the list): per chat,
- * the messages kept and left out, most left out first (`chatKey`: whose,
- * so a skip can take its line out). `summary`: the
+ * the messages left out for the budget; `dropped` (the list): first the
+ * missed calls left out, per person (`call`: calls kept and left out), then
+ * per chat the messages kept and left out (a 1:1 still waiting with nothing
+ * new: of the lines it waits on), most left out first (`chatKey`: whose,
+ * so a skip can take its line out); at most 50, `droppedMore`: how many
+ * more the list would hold. `summary`: the
  * model's (other people's words: the phone shows it, a push never does).
  * `todoIds`: the todos made (not the call-backs). `preview`: a dry run's
  * answer only, never stored. `waCalls`, `phoneCalls`: false when the run
@@ -345,7 +348,8 @@ export const MorningRunSchema = z.object({
   stale: z.boolean(),
   newestAt: IsoDateSchema.nullable(),
   counts: z.object({ chats: count, messages: count, calls: count, todos: count, replies: count, callbacks: count, dropped: count }),
-  dropped: z.array(z.object({ chatKey: ChatKeySchema.optional(), chatName: z.string(), kept: count, left: count })),
+  dropped: z.array(z.object({ chatKey: ChatKeySchema.optional(), chatName: z.string(), kept: count, left: count, call: z.literal(true).optional() })),
+  droppedMore: count.optional(),
   todoIds: z.array(LifeIdSchema),
   summary: z.string().max(600).optional(),
   preview: MorningPreviewSchema.optional(),

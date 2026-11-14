@@ -85,10 +85,12 @@ const applyDeps = (x: ReturnType<typeof lifeAndDb>, runId = '01JMORNINGRUN000000
   life: x.life,
   db: x.db,
   now: NOW,
+  applyAt: NOW,
   tz: TZ,
   prefs: { morningAt: '08:00', callbackAt: '11:00' },
   runId,
   dryRun: false,
+  todosOn: true,
 });
 
 describe('runMorning', () => {
