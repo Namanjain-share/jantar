@@ -7,7 +7,7 @@
 //   {"id":1,"op":"chats","args":{"limit":30}}
 //     -> {"id":1,"ok":true,"data":{…}} | {"id":1,"ok":false,"error":"not_found","detail":"…"}
 //
-//   status                                      {whatsapp: {found, running, schemaOk, newestAt, walMtime},
+//   status                                      {whatsapp: {found, running, schemaOk, contactsOk, newestAt, walMtime},
 //                                                phone: {readable}, skipped, skipOk, version}
 //   chats      {q?, since?, limit, waiting?}    {chats: [chat (+phone)], total}
 //   read       {chatKey, since?, before?, limit} {chat, messages (oldest first), more}
@@ -64,17 +64,20 @@ let SESSION_COMMUNITY = 4
 let SESSION_NEWSLETTER = 5
 
 /// ZWAMESSAGE.ZMESSAGETYPE, from the owner's own data (Task 0). Any other
-/// type: non-empty text is "text", else "other". 14 is a revoked message.
+/// type: non-empty text is "text", else "other". 14 is taken as a revoked
+/// message where Task 0 left it "other" (unclear): it carries no text either
+/// way. The real-Mac checks confirm it.
 let MESSAGE_KINDS: [Int: String] = [
   0: "text", 1: "image", 2: "video", 3: "voice", 4: "contact", 5: "location", 6: "system", 7: "link",
   8: "document", 10: "system", 11: "gif", 12: "system", 14: "deleted", 15: "sticker", 19: "system",
   46: "system", 59: "system", 66: "poll", 68: "system", 75: "system",
 ]
-let SYSTEM_TYPES = MESSAGE_KINDS.filter { $0.value == "system" }.map { String($0.key) }.sorted().joined(separator: ", ")
 let MEDIA_KINDS: Set<String> = ["image", "video", "voice", "document", "sticker", "gif"]
 let CAPTIONED_KINDS: Set<String> = ["image", "video", "gif", "link"]
 /// Kinds whose lines carry no text out (a system line may hold ids).
 let SILENT_KINDS: Set<String> = ["system", "deleted", "reaction"]
+/// Their types, for SQL: none of them counts as a chat's last line.
+let SILENT_TYPES = MESSAGE_KINDS.filter { SILENT_KINDS.contains($0.value) }.map { String($0.key) }.sorted().joined(separator: ", ")
 
 let WHATSAPP_BUNDLE = "net.whatsapp.WhatsApp"
 let USER_SUFFIX = "@s.whatsapp.net"
@@ -322,7 +325,9 @@ let progressHandler: @convention(c) (UnsafeMutableRawPointer?) -> Int32 = { _ in
 func sqlFailure(_ rc: Int32, _ what: String) -> Failure {
   switch rc & 0xff {
   case SQLITE_INTERRUPT: return Failure("timeout", what)
-  case SQLITE_BUSY, SQLITE_LOCKED, SQLITE_IOERR: return Failure("busy", what)
+  // READONLY covers READONLY_RECOVERY and _CANTINIT: a read-only WAL
+  // connection meeting WhatsApp mid-recovery. Passing, like the rest.
+  case SQLITE_BUSY, SQLITE_LOCKED, SQLITE_IOERR, SQLITE_READONLY, SQLITE_PROTOCOL, SQLITE_NOMEM: return Failure("busy", what)
   case SQLITE_CANTOPEN, SQLITE_PERM, SQLITE_AUTH: return Failure("no_access", "macOS refused \(what) to the reader")
   default: return Failure("unsupported", "\(what): sqlite \(rc)")
   }
@@ -655,10 +660,11 @@ struct WhatsAppOut: Encodable {
   let found: Bool
   let running: Bool
   let schemaOk: Bool
+  let contactsOk: Bool
   let newestAt: String?
   let walMtime: String?
 
-  enum CodingKeys: String, CodingKey { case found, running, schemaOk, newestAt, walMtime }
+  enum CodingKeys: String, CodingKey { case found, running, schemaOk, contactsOk, newestAt, walMtime }
 
   // The two times are null, not left out, when unknown.
   func encode(to encoder: Encoder) throws {
@@ -666,6 +672,7 @@ struct WhatsAppOut: Encodable {
     try c.encode(found, forKey: .found)
     try c.encode(running, forKey: .running)
     try c.encode(schemaOk, forKey: .schemaOk)
+    try c.encode(contactsOk, forKey: .contactsOk)
     try c.encode(newestAt, forKey: .newestAt)
     try c.encode(walMtime, forKey: .walMtime)
   }
@@ -718,11 +725,13 @@ struct Args {
     return t
   }
 
-  /// An ISO time as Core Data seconds.
-  func time(_ k: String) throws -> Double? {
+  /// An ISO time as Core Data milliseconds, the unit every time is compared
+  /// in (appleMs). Rounded: the parse can land a hair either side of the
+  /// millisecond it names.
+  func time(_ k: String) throws -> Int64? {
     guard let v = value(k) else { return nil }
     guard let s = v as? String, let d = parseIso(s) else { throw bad(k) }
-    return d.timeIntervalSinceReferenceDate
+    return Int64((d.timeIntervalSinceReferenceDate * 1000).rounded())
   }
 
   func limit(max: Int, def: Int) throws -> Int {
@@ -819,12 +828,18 @@ final class Reader {
 
   // ---- status
 
-  /// `schemaOk` is false only when a column is known to be missing; with
+  /// Each of WhatsApp's databases on its own. ChatStorage gives `found`,
+  /// `schemaOk` and the times (refused or timing out, the op fails). The
+  /// optional two (names, and which @lid is which number) never stop an
+  /// answer: a missing column there is `schemaOk: false` too, any other
+  /// failure `contactsOk: false`, and reads answer that failure rather than
+  /// go on without them (and miss a skipped person's other id). With
   /// WhatsApp closed (`busy`) the times are null and reads answer `busy`.
   func status() throws -> StatusOut {
     skip.refresh()
     var found = false
     var schemaOk = false
+    var contactsOk = true
     var newest: String?
     switch fileState(chat.path) {
     case .missing: break
@@ -832,21 +847,31 @@ final class Reader {
     case .present:
       found = true
       schemaOk = true
+      var closed = false
       do {
         if let db = try chat.get() {
           let s = try db.prepare("SELECT max(ZMESSAGEDATE) FROM ZWAMESSAGE")
           if try s.step(), !s.isNull(0) { newest = isoApple(s.double(0)) }
         }
-        _ = try contacts.get()
-        _ = try lid.get()
       } catch let f as Failure where f.code == "unsupported" {
         schemaOk = false
       } catch let f as Failure where f.code == "busy" {
         // Closed: nothing more to say until WhatsApp opens it.
+        closed = true
+      }
+      for source in [contacts, lid] where !closed {
+        do {
+          _ = try source.get()
+        } catch let f as Failure where f.code == "unsupported" {
+          schemaOk = false
+        } catch {
+          contactsOk = false
+        }
       }
     }
     return StatusOut(
-      whatsapp: WhatsAppOut(found: found, running: whatsAppRunning(), schemaOk: schemaOk, newestAt: newest, walMtime: mtime(chat.path + "-wal")),
+      whatsapp: WhatsAppOut(found: found, running: whatsAppRunning(), schemaOk: schemaOk, contactsOk: contactsOk, newestAt: newest,
+                            walMtime: mtime(chat.path + "-wal")),
       phone: PhoneOut(readable: phoneReadable()),
       skipped: skip.keys.count,
       skipOk: !skip.broken,
@@ -994,11 +1019,13 @@ final class Reader {
                    lastFromMe: fromMe, archived: s.archived, members: count, phone: phone)
   }
 
-  /// Whether the chat's last line (system lines aside) is the owner's.
+  /// Whether the chat's last line is the owner's. System and deleted lines
+  /// don't count (the other side deleting a line doesn't make a chat wait);
+  /// a type the reader doesn't know does.
   func lastFromMe(_ s: Session) throws -> Bool {
     guard let db = try chat.get() else { return false }
     let q = try db.prepare("""
-      SELECT ZISFROMME FROM ZWAMESSAGE WHERE ZCHATSESSION = ? AND ZMESSAGETYPE NOT IN (\(SYSTEM_TYPES))
+      SELECT ZISFROMME FROM ZWAMESSAGE WHERE ZCHATSESSION = ? AND ZMESSAGETYPE NOT IN (\(SILENT_TYPES))
       ORDER BY ZSORT DESC LIMIT 1
       """).bind(s.pk)
     return try q.step() && q.int(0) == 1
@@ -1014,12 +1041,12 @@ final class Reader {
     return people.count
   }
 
-  func chats(q: String?, since: Double?, limit: Int, waiting: Bool) throws -> ChatsOut {
+  func chats(q: String?, since: Int64?, limit: Int, waiting: Bool) throws -> ChatsOut {
     let (w, hide) = try load()
     let waitingSince = now.addingTimeInterval(-WAITING_S).timeIntervalSinceReferenceDate
     var matched: [Session] = []
     for s in w.sessions where s.shown && !hide.hides(s, w) {
-      if let since, s.lastAt < since { continue }
+      if let since, appleMs(s.lastAt) < since { continue }
       if let q, s.name.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) == nil { continue }
       if waiting {
         guard s.type == SESSION_DM, s.lastAt >= waitingSince, try !lastFromMe(s) else { continue }
@@ -1100,7 +1127,7 @@ final class Reader {
   /// to READ_MAX). Exact while WhatsApp's order (ZSORT) and its times agree;
   /// a line whose time is out of order (a skewed clock) can come twice or,
   /// when it is newer than a later page's cut, be missed.
-  func read(_ s: Session, _ w: World, _ hide: Hidden, since: Double?, before: Double?, limit: Int) throws -> ReadOut {
+  func read(_ s: Session, _ w: World, _ hide: Hidden, since: Int64?, before: Int64?, limit: Int) throws -> ReadOut {
     var page = try lines(s, w, hide, since: since, before: before, fromMs: nil, limit: limit + 1)
     var more = page.count > limit
     if more {
@@ -1118,20 +1145,21 @@ final class Reader {
   }
 
   /// Whether the chat has a line before millisecond `ms` (and from `since`).
-  func olderThan(_ ms: Int64, _ s: Session, since: Double?) throws -> Bool {
+  func olderThan(_ ms: Int64, _ s: Session, since: Int64?) throws -> Bool {
     guard let db = try chat.get() else { throw Failure("no_access") }
     var sql = "SELECT 1 FROM ZWAMESSAGE WHERE ZCHATSESSION = ? AND ZMESSAGEDATE * 1000 < ?"
     var binds: [Any?] = [s.pk, ms]
     if let since {
-      sql += " AND ZMESSAGEDATE >= ?"
+      sql += " AND ZMESSAGEDATE * 1000 >= ?"
       binds.append(since)
     }
     return try db.prepare(sql + " LIMIT 1").bindAll(binds).step()
   }
 
   /// Up to `limit` of a chat's lines, newest first (WhatsApp's order), each
-  /// with its millisecond; `fromMs`: only those at or after it.
-  func lines(_ s: Session, _ w: World, _ hide: Hidden, since: Double?, before: Double?, fromMs: Int64?,
+  /// with its millisecond; `fromMs`: only those at or after it. Every bound
+  /// is a millisecond compared as appleMs cuts it (`ZMESSAGEDATE * 1000`).
+  func lines(_ s: Session, _ w: World, _ hide: Hidden, since: Int64?, before: Int64?, fromMs: Int64?,
              limit: Int) throws -> [(ms: Int64, message: MessageOut)] {
     guard let db = try chat.get() else { throw Failure("no_access") }
     var sql = """
@@ -1145,8 +1173,8 @@ final class Reader {
       LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER
       WHERE m.ZCHATSESSION = ?
       """
-    if since != nil { sql += " AND m.ZMESSAGEDATE >= ?" }
-    if before != nil { sql += " AND m.ZMESSAGEDATE < ?" }
+    if since != nil { sql += " AND m.ZMESSAGEDATE * 1000 >= ?" }
+    if before != nil { sql += " AND m.ZMESSAGEDATE * 1000 < ?" }
     if fromMs != nil { sql += " AND m.ZMESSAGEDATE * 1000 >= ?" }
     sql += " ORDER BY m.ZSORT DESC LIMIT ?"
     var binds: [Any?] = [s.pk]
@@ -1221,7 +1249,7 @@ final class Reader {
     return out
   }
 
-  func readByName(_ name: String, since: Double?, before: Double?, limit: Int) throws -> any Encodable {
+  func readByName(_ name: String, since: Int64?, before: Int64?, limit: Int) throws -> any Encodable {
     let (w, hide) = try load()
     let visible = w.sessions.filter { $0.shown && !hide.hides($0, w) }
     let match: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]

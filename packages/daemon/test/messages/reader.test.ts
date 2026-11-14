@@ -4,12 +4,15 @@
  * - the socket is 0600 and checks its caller's uid (getpeereid);
  * - status, chats, read and readByName answer what the fixture holds, in
  *   the shapes reader-protocol.ts checks; removed, hidden and broadcast-list
- *   chats are left out; paging back with `before` returns every line once;
+ *   chats are left out; deleted and system lines never make a chat wait;
+ *   times are whole milliseconds, so `since` and `before` cut exactly and
+ *   paging back with `before` returns every line once;
  * - a mention is the person's name ("@Me", "@[skipped]"), never their id;
  * - the skip list hides a person everywhere (both ids, their group lines)
  *   and a skipped chat is `not_found`, never `skipped`;
  * - a missing column is `unsupported`; a skip list that won't parse and a
- *   closed WhatsApp (no -wal) are `busy`; WhatsApp's files are never changed;
+ *   closed WhatsApp (no -wal) are `busy`; a refused ContactsV2 still lets
+ *   status answer, and reads refuse; WhatsApp's files are never changed;
  * - keys are stable across restarts and depend on the salt.
  * Lines and chats a test adds are written as WhatsApp would (writeAsWhatsApp).
  * WhatsApp counts as running (whatsAppRunning) unless a test says otherwise.
@@ -17,7 +20,7 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, createHmac } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -56,7 +59,7 @@ const EX_USAGE = 64;
 const KEY_HEX = 16;
 /** reader-protocol's AMBIGUOUS_MAX: the most candidates a name answers. */
 const AMBIGUOUS_MAX = 20;
-const PAGES_MAX = 50;
+const PAGES_MAX = 100;
 
 /** An id's digits, as WhatsApp stores a mention of it ("@" + these). */
 const digitsOf = (jid: string) => jid.split('@')[0]!;
@@ -74,6 +77,8 @@ interface AddedLine {
   fromMe?: boolean;
   /** An image with this caption. */
   caption?: string;
+  /** ZMESSAGETYPE (WA_TYPE); text, or image with a caption, by default. */
+  type?: number;
 }
 
 /**
@@ -97,7 +102,7 @@ function writeAsWhatsApp(p: FixturePaths) {
     }
     db.prepare(
       'INSERT INTO ZWAMESSAGE (Z_PK, Z_ENT, Z_OPT, ZISFROMME, ZMESSAGETYPE, ZSORT, ZCHATSESSION, ZGROUPMEMBER, ZMEDIAITEM, ZMESSAGEDATE, ZSTANZAID, ZTEXT) VALUES (?, 2, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).run(nextPk('ZWAMESSAGE'), l.fromMe ? 1 : 0, media === null ? WA_TYPE.text : WA_TYPE.image, sort + 1, chat, member, media, l.at, l.stanza, l.text ?? null);
+    ).run(nextPk('ZWAMESSAGE'), l.fromMe ? 1 : 0, l.type ?? (media === null ? WA_TYPE.text : WA_TYPE.image), sort + 1, chat, member, media, l.at, l.stanza, l.text ?? null);
   };
   return {
     line,
@@ -233,6 +238,24 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
 
   const groupLine = (key: string, stanza: string) => `${key}.${stanza}`;
 
+  /** A chat paged back from its newest line, `before` = each page's first `at`; oldest page first. */
+  async function pageBack(r: Running, chatKey: string, limit: number, since?: string): Promise<ReaderRead[]> {
+    const pages: ReaderRead[] = [];
+    let before: string | undefined;
+    do {
+      const page = ReaderReadSchema.parse(await r.ok('read', { chatKey, limit, ...(before ? { before } : {}), ...(since ? { since } : {}) }));
+      pages.push(page);
+      expect(page.messages.length).toBeGreaterThan(0);
+      // Past the limit only to hold one millisecond's lines whole.
+      if (page.messages.length > limit) expect(new Set(page.messages.map((m) => m.at)).size).toBe(1);
+      // Wholly older than the page before: never the same page again.
+      if (before) expect(page.messages.at(-1)!.at < before).toBe(true);
+      before = page.more ? page.messages[0]!.at : undefined;
+    } while (before && pages.length < PAGES_MAX);
+    expect(pages.at(-1)!.more).toBe(false);
+    return pages.reverse();
+  }
+
   it('status reports a readable container', async () => {
     const r = await start();
     const sock = statSync(r.sock);
@@ -241,7 +264,7 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
 
     const status = ReaderStatusSchema.parse(await r.ok('status'));
     expect(status).toMatchObject({
-      whatsapp: { found: true, schemaOk: true, newestAt: FIXTURE_NEWEST_AT },
+      whatsapp: { found: true, schemaOk: true, contactsOk: true, newestAt: FIXTURE_NEWEST_AT },
       phone: { readable: true },
       skipped: 0,
       skipOk: true,
@@ -255,7 +278,7 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     const closed = makeWhatsAppFixture(join(dir, 'closed'));
     const r = await start({ fixture: closed });
     const status = ReaderStatusSchema.parse(await r.ok('status'));
-    expect(status.whatsapp).toMatchObject({ found: true, schemaOk: true, newestAt: null, walMtime: null });
+    expect(status.whatsapp).toMatchObject({ found: true, schemaOk: true, contactsOk: true, newestAt: null, walMtime: null });
     expect(await r.call('chats', { limit: 50 })).toMatchObject({ ok: false, error: 'busy' });
     expect(filesUnder(closed.container).filter((f) => f.endsWith('-wal'))).toEqual([]);
 
@@ -387,23 +410,8 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     expect(everything).toHaveLength(10);
     expect(everything.slice(-4)).toEqual(added.map((l) => groupLine(key, l.stanza)));
 
-    const pageBack = async (limit: number, since?: string): Promise<ReaderRead[]> => {
-      const pages: ReaderRead[] = [];
-      let before: string | undefined;
-      do {
-        const page = ReaderReadSchema.parse(await r.ok('read', { chatKey: key, limit, ...(before ? { before } : {}), ...(since ? { since } : {}) }));
-        pages.push(page);
-        expect(page.messages.length).toBeGreaterThan(0);
-        // Past the limit only to hold one millisecond's lines whole.
-        if (page.messages.length > limit) expect(new Set(page.messages.map((m) => m.at)).size).toBe(1);
-        before = page.more ? page.messages[0]!.at : undefined;
-      } while (before && pages.length < PAGES_MAX);
-      expect(pages.at(-1)!.more).toBe(false);
-      return pages.reverse();
-    };
-
     for (const limit of [1, 2, 3, 4, 5]) {
-      const pages = await pageBack(limit);
+      const pages = await pageBack(r, key, limit);
       // Every line exactly once, in WhatsApp's order.
       expect(pages.flatMap((p) => p.messages.map((m) => m.msgKey))).toEqual(everything);
       // Under three, the burst can't fit beside another line: its page grows.
@@ -411,9 +419,94 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     }
 
     // A grown page that is also the last: nothing older within `since`.
-    const sinceBurst = await pageBack(1, '2026-11-13T21:00:00.000Z');
+    const sinceBurst = await pageBack(r, key, 1, '2026-11-13T21:00:00.000Z');
     expect(sinceBurst.map((p) => p.messages.length)).toEqual([3, 1]);
     expect(sinceBurst.flatMap((p) => p.messages.map((m) => m.msgKey))).toEqual(everything.slice(-4));
+  });
+
+  it('times are whole milliseconds: since and before cut exactly, paging never repeats', async () => {
+    // Each on a millisecond, as seconds (so a hair either side of it, as a
+    // time WhatsApp keeps to the millisecond would be); lines 9 and 30 each
+    // have a twin in the same millisecond.
+    const first = Date.parse('2026-11-13T21:00:00.000Z');
+    const at = (ms: number) => appleSeconds(new Date(first + ms).toISOString());
+    const MS_LINES = 40;
+    const STEP_MS = 7;
+    const TWINS = [9, 30];
+    const added: AddedLine[] = [];
+    for (let i = 0; i < MS_LINES; i++) {
+      const line = { at: at(STEP_MS * (i + 1)), member: i % 2 ? paths.jids.ravi : FIXTURE_NEEL };
+      added.push({ ...line, stanza: `3EB0FXS${String(i).padStart(3, '0')}`, text: `Line ${i}` });
+      if (TWINS.includes(i)) added.push({ ...line, stanza: `3EB0FXS${String(i).padStart(3, '0')}B`, text: `Line ${i} again` });
+    }
+    const CHATS = 10;
+    const chats = Array.from({ length: CHATS }, (_, i) => ({ jid: userJid(`9199900002${String(i).padStart(2, '0')}`), type: WA_SESSION.dm, name: `Ms Test ${i}`, at: at(STEP_MS * i + 2) }));
+    const wa = writeAsWhatsApp(paths);
+    try {
+      for (const l of added) wa.line(paths.jids.group, l);
+      for (const c of chats) wa.chat(c);
+    } finally {
+      wa.close();
+    }
+
+    const r = await start();
+    const key = keyOf(r.state, paths.jids.group);
+    const keysOf = (res: ReaderRead) => res.messages.map((m) => m.msgKey);
+    const all = ReaderReadSchema.parse(await r.ok('read', { chatKey: key, limit: 200 }));
+    const everything = keysOf(all);
+    expect(everything.slice(-added.length)).toEqual(added.map((l) => groupLine(key, l.stanza)));
+
+    // Every line's own time: `since` holds it and every newer line, `before` every older one.
+    for (const m of all.messages) {
+      const since = keysOf(ReaderReadSchema.parse(await r.ok('read', { chatKey: key, limit: 200, since: m.at })));
+      const before = keysOf(ReaderReadSchema.parse(await r.ok('read', { chatKey: key, limit: 200, before: m.at })));
+      expect(since).toContain(m.msgKey);
+      expect([...before, ...since]).toEqual(everything);
+    }
+
+    for (const limit of [1, 2, 3, 4, 5]) {
+      const pages = await pageBack(r, key, limit);
+      expect(pages.flatMap((p) => p.messages.map((m) => m.msgKey))).toEqual(everything);
+      // Only the twins outgrow a page, and only one of a single line.
+      expect(pages.some((p) => p.messages.length > limit)).toBe(limit < 2);
+    }
+
+    // A chat's lastAt as `since` keeps it; a millisecond later leaves it out.
+    const listed = ReaderChatsSchema.parse(await r.ok('chats', { limit: 200 })).chats;
+    for (const c of chats) {
+      const chat = listed.find((l) => l.chatKey === keyOf(r.state, c.jid))!;
+      const since = async (iso: string) => ReaderChatsSchema.parse(await r.ok('chats', { limit: 200, since: iso })).chats.map((l) => l.chatKey);
+      expect(await since(chat.lastAt)).toContain(chat.chatKey);
+      expect(await since(new Date(Date.parse(chat.lastAt) + 1).toISOString())).not.toContain(chat.chatKey);
+    }
+  });
+
+  it('a deleted or system last line never makes a chat wait', async () => {
+    // Ravi's last line is the owner's; then Ravi deletes one, and a system line follows.
+    const later = (minute: number) => appleSeconds(`2026-11-13T21:0${minute}:00.000Z`);
+    const wa = writeAsWhatsApp(paths);
+    try {
+      wa.line(paths.jids.ravi, { stanza: '3EB0FXD001', at: later(0), type: WA_TYPE.deleted });
+      wa.line(paths.jids.ravi, { stanza: '3EB0FXD002', at: later(1), type: WA_TYPE.system });
+    } finally {
+      wa.close();
+    }
+
+    const r = await start();
+    const ravi = keyOf(r.state, paths.jids.ravi);
+    const waiting = async () => ReaderChatsSchema.parse(await r.ok('chats', { limit: 50, waiting: true })).chats.map((c) => c.chatKey);
+    const chats = ReaderChatsSchema.parse(await r.ok('chats', { limit: 50 })).chats;
+    expect(chats.find((c) => c.chatKey === ravi)).toMatchObject({ lastFromMe: true });
+    expect(await waiting()).not.toContain(ravi);
+
+    // A line he writes after them does.
+    const again = writeAsWhatsApp(paths);
+    try {
+      again.line(paths.jids.ravi, { stanza: '3EB0FXD003', at: later(2), text: 'Are you there?' });
+    } finally {
+      again.close();
+    }
+    expect(await waiting()).toContain(ravi);
   });
 
   it('a mention is the person\'s name, never their number', async () => {
@@ -542,6 +635,25 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     expect(status.whatsapp).toMatchObject({ found: true, schemaOk: false, newestAt: null });
     expect(await r.call('read', { chatKey: keyOf(r.state, broken.jids.group), limit: 50 })).toMatchObject({ ok: false, error: 'unsupported' });
     expect(await r.call('chats', { limit: 50 })).toMatchObject({ ok: false, error: 'unsupported' });
+  });
+
+  it('a refused ContactsV2 still lets status answer, and reads refuse', async () => {
+    const contacts = join(paths.container, 'ContactsV2.sqlite');
+    const mode = statSync(contacts).mode & 0o777;
+    chmodSync(contacts, 0o000);
+    try {
+      const r = await start();
+      const status = ReaderStatusSchema.parse(await r.ok('status'));
+      expect(status.whatsapp).toMatchObject({ found: true, schemaOk: true, contactsOk: false, newestAt: FIXTURE_NEWEST_AT });
+      // Never read without it: a skipped person's other id could show.
+      expect(await r.call('chats', { limit: 50 })).toMatchObject({ ok: false, error: 'no_access' });
+
+      chmodSync(contacts, mode);
+      expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp.contactsOk).toBe(true);
+      expect(ReaderChatsSchema.parse(await r.ok('chats', { limit: 50 })).total).toBe(5);
+    } finally {
+      chmodSync(contacts, mode);
+    }
   });
 
   it('the container is untouched', async () => {

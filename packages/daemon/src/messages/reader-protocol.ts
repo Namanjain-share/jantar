@@ -43,24 +43,31 @@ export type ReaderReply = z.infer<typeof ReaderReplySchema>;
 /**
  * `found`: ChatStorage.sqlite is there; `running`: WhatsApp is open;
  * `schemaOk`: false when a column the reader reads is missing (reads are
- * then `unsupported`); `newestAt`: the newest message's time; `walMtime`:
- * when WhatsApp last wrote (its -wal file). Both times are null while the
- * database is closed: macOS's SQLite opens it read-only only with its -wal
- * there, so reads answer `busy` until WhatsApp is open. `phone.readable`:
- * macOS lets the reader open the iPhone call log (Full Disk Access).
- * `skipped`: entries in the skip list; `skipOk`: false while the skip list
- * won't parse (reads then answer `busy`, and `skipped` counts the last good one).
+ * then `unsupported`); `contactsOk`: false when ContactsV2 or LID.sqlite
+ * (names, and which @lid is which number) is there but won't open, and
+ * reads then answer that failure (`no_access`, `timeout`, `busy`) rather
+ * than miss a skipped person's other id; `newestAt`: the newest message's
+ * time; `walMtime`: when WhatsApp last wrote (its -wal file). Both times
+ * are null while the database is closed: macOS's SQLite opens it read-only
+ * only with its -wal there, so reads answer `busy` until WhatsApp is open.
+ * `phone.readable`: macOS lets the reader open the iPhone call log (Full
+ * Disk Access). `skipped`: entries in the skip list; `skipOk`: false while
+ * the skip list won't parse (reads then answer `busy`, and `skipped` counts
+ * the last good one).
  *
  * Telling `busy` and `no_access` apart: `busy` is WhatsApp closed
- * (`found` and no `walMtime`), a broken skip list (`skipOk: false`) or
- * SQLite busy; `no_access` with `found: false` is no WhatsApp for Mac here,
- * not a missing Full Disk Access (WhatsApp's files don't need it).
+ * (`found` and no `walMtime`), a broken skip list (`skipOk: false`), SQLite
+ * busy or a read-only WAL connection meeting WhatsApp mid-recovery;
+ * `no_access` with `found: false` is no WhatsApp for Mac here, not a
+ * missing Full Disk Access (WhatsApp's files don't need it); with
+ * `contactsOk: false`, macOS refused ContactsV2 or LID.sqlite.
  */
 export const ReaderStatusSchema = z.object({
   whatsapp: z.object({
     found: z.boolean(),
     running: z.boolean(),
     schemaOk: z.boolean(),
+    contactsOk: z.boolean(),
     newestAt: IsoDateSchema.nullable(),
     walMtime: IsoDateSchema.nullable(),
   }),
