@@ -76,7 +76,7 @@ import {
   WorkLogPatchSchema,
 } from '@jantar/protocol/work';
 import type { Actor, LifeResult } from '../contracts.js';
-import { clientSource, current, dealSource, findClient, findDeal, findLog, findMedicine, findMeeting, findPlace, findTodo, fromMeeting, labelOf, medicineHasDoses, type ItemRef } from './items.js';
+import { clientSource, current, dealSource, findClient, findDeal, findLog, findMedicine, findMeeting, findPlace, findTodo, fromSource, labelOf, medicineHasDoses, type ItemRef } from './items.js';
 import { applyPersonWrite, describePersonWrite, stillPerson, undoPerson, type PersonStep } from './person-writes.js';
 import { ownerAuthored } from './person-reads.js';
 import { PERSON_WRITE_TOOLS, isPersonWriteTool, type PersonWriteTool } from './person-tools.js';
@@ -313,10 +313,10 @@ export interface Journal {
 
 /**
  * Whose words a change's or a card's label carries when they are someone else's: a meeting's (its name, an
- * action item, a todo made from one) or a saved page's title. The run's answer frames such a label as data
- * and taints the message (B9).
+ * action item, a todo made from one), a saved page's title, or 0.15 WhatsApp's (a todo the morning run
+ * made). The run's answer frames such a label as data and taints the message (B9).
  */
-export type LabelSource = 'meeting' | 'intel' | 'owner' | 'partner' | 'import';
+export type LabelSource = 'meeting' | 'messages' | 'intel' | 'owner' | 'partner' | 'import';
 
 export interface Applied {
   change: ChangeJson;
@@ -502,7 +502,7 @@ export async function applyWrite(d: ChatDeps, tool: WriteTool | PersonWriteTool,
   return third ? { ok: true, value: { ...r.value, third } } : r;
 }
 
-/** A meeting's own write names the meeting (and an action item); a todo's names the todo, a meeting's words when made from one. */
+/** A meeting's own write names the meeting (and an action item); a todo's names the todo, a meeting's or WhatsApp's words when made from one. */
 function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSource | null {
   if (tool === 'meeting_edit' || tool === 'meeting_item_todo') return 'meeting';
   // v0.13 Work: a label naming a client whose words came from an import or a meeting carries them.
@@ -519,7 +519,8 @@ function writeLabelSource(d: ChatDeps, tool: WriteTool, ref: string): LabelSourc
   if (tool === 'deal_add' || tool === 'deal_edit' || tool === 'deal_move') return dealSource(d, findDeal(d, ref));
   if (tool === 'todo_add' || tool === 'todo_edit' || tool === 'todo_done' || tool === 'todo_snooze') {
     const t = findTodo(d, ref);
-    if (t && fromMeeting(t)) return 'meeting';
+    const from = t ? fromSource(t) : null;
+    if (from) return from;
     // v0.11 People (C19): in her thread, a to-do the owner added or last edited is his words.
     if (t && d.person && ownerAuthored(t as { by?: string; editedBy?: string })) return 'owner';
     return null;
@@ -1020,7 +1021,7 @@ export function describeDelete(d: ChatDeps, a: Extract<CardAction, { t: 'delete'
   switch (a.kind) {
     case 'todo': {
       const t = findTodo(d, a.id);
-      return t ? out(`Delete todo ${q(t.title)}?`, a.id, fromMeeting(t) ? 'meeting' : undefined) : gone;
+      return t ? out(`Delete todo ${q(t.title)}?`, a.id, fromSource(t) ?? undefined) : gone;
     }
     case 'project': {
       const p = current(d, { kind: 'project', id: a.id }) as { name?: string; open?: number } | null;

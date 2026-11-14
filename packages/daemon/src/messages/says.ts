@@ -54,6 +54,8 @@ export const MESSAGES_SAYS = {
   noFile: 'No file for that message on this Mac.',
   tooBig: `That file is over ${MESSAGES_LIMITS.mediaMaxBytes / MB} MB, too large to show.`,
   badAsk: "The reader couldn't take that request.",
+  // The morning run.
+  noRun: 'No such morning run.',
 } as const;
 
 /**

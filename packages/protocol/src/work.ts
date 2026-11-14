@@ -33,6 +33,7 @@ import {
   OkReplySchema,
   ProjectBodySchema,
   ProjectViewSchema,
+  TodoFromSchema,
   TodoSchema,
   TodoTitleSchema,
 } from './life.js';
@@ -371,9 +372,9 @@ export const WorkLogRowSchema = z.object({
   outcome: WorkLogOutcomeSchema.optional(),
   stageFrom: z.string().optional(),
   stageTo: z.string().optional(),
-  /** A follow-up's title; `todoFrom`: the todo's own mark (a meeting's action item). */
+  /** A follow-up's title; `todoFrom`: the todo's own mark (a meeting's action item; 0.15 a todo the morning run made from WhatsApp). */
   title: z.string().optional(),
-  todoFrom: z.enum(['meeting']).optional(),
+  todoFrom: TodoFromSchema.optional(),
   from: z.enum(['import']).optional(),
   auto: z.literal(true).optional(),
 });
@@ -947,7 +948,7 @@ export const FolderClientResponseSchema = z.object({
       source: WorkSourceSchema.optional(),
       company: z.object({ id: LifeIdSchema, name: z.string(), source: WorkSourceSchema.optional() }).optional(),
       project: z.object({ id: LifeIdSchema, name: z.string() }).optional(),
-      next: z.object({ title: z.string(), due: DueSchema.optional(), source: z.enum(['meeting']).optional() }).optional(),
+      next: z.object({ title: z.string(), due: DueSchema.optional(), source: TodoFromSchema.optional() }).optional(),
       lastTouchAt: IsoDateSchema.optional(),
       openDeals: z.number().int().nonnegative(),
       /** P3: its open deals (the first WORK_LIMITS.hereDeals), each with its stage's name. */

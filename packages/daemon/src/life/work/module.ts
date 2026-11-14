@@ -243,7 +243,7 @@ function followUpView(t: Todo): WorkLogRow {
     ...(t.contactId ? { contactId: t.contactId } : {}),
     ...(t.dealId ? { dealId: t.dealId } : {}),
     ...(t.projectId ? { projectId: t.projectId } : {}),
-    ...(t.from === 'meeting' ? { todoFrom: 'meeting' as const } : {}),
+    ...(t.from ? { todoFrom: t.from } : {}),
   };
 }
 
@@ -1302,7 +1302,7 @@ class Work implements WorkModule {
         ...(c.from ? { source: c.from } : {}),
         ...(company ? { company: { id: company.id, name: company.name, ...(company.from ? { source: company.from } : {}) } } : {}),
         ...(project && project.clientId === c.id ? { project: { id: project.id, name: project.name } } : {}),
-        ...(next ? { next: { title: next.title, ...(next.due ? { due: next.due } : {}), ...(next.from === 'meeting' ? { source: 'meeting' as const } : {}) } } : {}),
+        ...(next ? { next: { title: next.title, ...(next.due ? { due: next.due } : {}), ...(next.from ? { source: next.from } : {}) } } : {}),
         ...(c.lastTouchAt ? { lastTouchAt: c.lastTouchAt } : {}),
         openDeals: deals,
         ...(open.length > 0 ? { deals: open.map((d) => ({ title: d.title, stage: d.stageName, ...(d.from ? { source: d.from } : {}) })) } : {}),

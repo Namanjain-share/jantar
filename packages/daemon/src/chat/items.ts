@@ -17,6 +17,7 @@ import {
   type Post,
   type ProjectView,
   type Todo,
+  type TodoFrom,
 } from '@jantar/protocol';
 import { shiftDay, shiftMonths } from '@jantar/life-core';
 import type { Contact, Deal, WorkLogRow } from '@jantar/protocol/work';
@@ -50,13 +51,15 @@ export function findTodo(d: ChatDeps, id: string): Todo | null {
 }
 
 /**
- * Whether a todo's title and notes are a meeting's words (an action item; the meeting's name): marked
- * `from: 'meeting'` since 0.10, and before that known by the notes the daemon wrote ("From the meeting "…"
- * on …"). Chat frames such a todo as data and taints its message; a todo of the user's own whose notes say
- * so is framed too, which only asks for a tap.
+ * Whose words a todo's title and notes are when they aren't the user's: a meeting's (an action item; the
+ * meeting's name), marked `from: 'meeting'` since 0.10 and before that known by the notes the daemon wrote
+ * ("From the meeting "…" on …"); 0.15 WhatsApp's (`from: 'messages'`: the morning run made it from a chat
+ * or a missed call). Else null. Chat frames such a todo as data and taints its message; a todo of the
+ * user's own whose notes say so is framed too, which only asks for a tap.
  */
-export function fromMeeting(t: Pick<Todo, 'from' | 'notes'>): boolean {
-  return t.from === 'meeting' || (t.notes ?? '').includes(MEETING_TODO_NOTES_START);
+export function fromSource(t: Pick<Todo, 'from' | 'notes'>): TodoFrom | null {
+  if (t.from) return t.from;
+  return (t.notes ?? '').includes(MEETING_TODO_NOTES_START) ? 'meeting' : null;
 }
 
 export function findProject(d: ChatDeps, id: string): ProjectView | null {

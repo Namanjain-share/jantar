@@ -89,6 +89,17 @@ export async function sendLifePush(
   return sendDirect(ctx, targets, lifeNotification(p, ctx.clock.iso()), { ignoreMute: p.kind === 'med' });
 }
 
+/**
+ * 0.15 Messages: the morning run's one push, a `morning` kind of Life push
+ * (tag `life:morning`: the next morning's replaces it). Counts only, never a
+ * name or a word of a chat: it shows on the lock screen.
+ */
+export const MORNING_PUSH_TAG = 'life:morning';
+
+export function morningPush(c: { todos: number; replies: number; callbacks: number }): LifePush {
+  return { kind: 'life', title: 'Messages', body: `Morning: ${c.todos} todos, ${c.replies} replies waiting, ${c.callbacks} call-backs`, url: '/messages', tag: MORNING_PUSH_TAG };
+}
+
 /** The daemon's LifeSend over its notifiers. */
 export function createLifeSend(
   ctx: Pick<DaemonContext, 'settings' | 'clock' | 'log'>,
