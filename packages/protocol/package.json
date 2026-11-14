@@ -44,6 +44,11 @@
       "types": "./dist/work.d.ts",
       "default": "./dist/work.js"
     },
+    "./messages": {
+      "@jantar/source": "./src/messages.ts",
+      "types": "./dist/messages.d.ts",
+      "default": "./dist/messages.js"
+    },
     "./page-read": {
       "@jantar/source": "./src/page-read.ts",
       "types": "./dist/page-read.d.ts",

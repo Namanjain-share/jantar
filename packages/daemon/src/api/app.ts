@@ -214,6 +214,8 @@ export const FEATURE_OFF: Readonly<Record<FeatureSwitch, { code: ErrorCode; mess
   intelRead: { code: 'forbidden', message: INTEL_READ_REASONS.off },
   // v0.13: Work turns Todos on with it (its projects and follow-ups are todos).
   work: { code: 'forbidden', message: 'Work is off. Turn it on at your Mac: jantar work on' },
+  // 0.15
+  messages: { code: 'forbidden', message: 'Messages is off. At the Mac: jantar messages on' },
 };
 
 /** The switches of Life's routes: while life.db is broken they answer 503 (lifeStatus, lifeBackup and lifeRestore have none). */

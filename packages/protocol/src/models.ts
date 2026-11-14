@@ -1090,6 +1090,8 @@ export const FeaturesSchema = z.object({
    * the people are, and anything of theirs, stay control reads (GET /v1/people).
    */
   people: z.boolean().default(false),
+  /** 0.15: Messages is on at the Mac (settings messages.enabled). Whether WhatsApp can be read is `GET /v1/messages/status`, a control read. */
+  messages: z.boolean().default(false),
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 
@@ -1110,6 +1112,7 @@ export const NO_FEATURES: Readonly<Features> = Object.freeze({
   ask: false,
   fleet: false,
   people: false,
+  messages: false,
 });
 
 // ===========================================================================

@@ -245,6 +245,9 @@ export const ErrorCodeSchema = z.enum([
   'node_version', // 426: a server's link version differs from the Mac's (update Jantar there)
   // 0.14.0
   'ccw_absent', // 404: the legacy ccw tool is not on this Mac, so there are no switching rules to read or save
+  // 0.15.0
+  'messages_unavailable', // 503: the WhatsApp reader is down, lacks access or can't read this WhatsApp (the reason says what to do at the Mac)
+  'not_an_image', // 415: a message's media that is a document or a video (only images are shown)
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -277,6 +280,8 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   node_unsupported: 409,
   node_version: 426,
   ccw_absent: 404,
+  messages_unavailable: 503,
+  not_an_image: 415,
 };
 
 export const ErrorBodySchema = z.object({
@@ -1041,6 +1046,7 @@ export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
  * `fleet.enabled`. v0.7: 'posts', a sixth Life module, reads `life.posts`.
  * v0.8: 'intelRead' reads `intel.enabled` and `intel.read` (reading links).
  * v0.13: 'work', a seventh Life module, reads `life.work` and `life.todos` (workOn).
+ * 0.15: 'messages' reads `messages.enabled`.
  */
 export type FeatureSwitch =
   | 'files'
@@ -1060,7 +1066,8 @@ export type FeatureSwitch =
   | 'fleet'
   | 'posts'
   | 'intelRead'
-  | 'work';
+  | 'work'
+  | 'messages';
 
 export interface RouteDef {
   method: HttpMethod | 'WS';
@@ -1081,8 +1088,8 @@ export interface RouteDef {
    * active key (404 otherwise), never with an Origin.
    */
   scope: Scope | 'public' | 'extension' | 'node' | 'capture' | 'person';
-  /** v0.13: Work's routes (the spec's name, whichever release ships them). Every one is an owner route. */
-  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11' | 'v0.13' | 'v0.14';
+  /** v0.13: Work's routes (the spec's name, whichever release ships them). Every one is an owner route. 0.15: Messages'. */
+  phase: 'v0.1' | 'v0.2' | 'v0.3' | 'v0.4' | 'v0.4.2' | 'v0.5' | 'v0.5.3' | 'v0.6' | 'v0.7' | 'v0.8' | 'v0.10' | 'v0.11' | 'v0.13' | 'v0.14' | 'v0.15';
   /**
    * v0.11 People (`@jantar/protocol/people`): a `person` route needs no
    * credential (an invite or device-link claim). Only personJoinPreview,

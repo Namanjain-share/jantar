@@ -129,6 +129,7 @@ const MAC_COMMAND: Record<MacOnlySettingGroup, string> = {
   ask: 'jantar chat',
   fleet: 'jantar fleet',
   people: 'jantar people',
+  messages: 'jantar messages',
 };
 
 /**

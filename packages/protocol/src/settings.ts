@@ -362,6 +362,16 @@ export const FleetSettingsSchema = z.object({
   enabled: z.boolean().default(false),
 });
 
+/**
+ * 0.15 Messages: the owner's WhatsApp chats and calls, read on the Mac by
+ * its reader and never sent to. Off until turned on at the Mac
+ * (`jantar messages on`); only the switch lives here (the skip list, the
+ * morning and call-back times are in messages.db).
+ */
+export const MessagesSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+});
+
 export const AccountsSettingsSchema = z.object({
   /**
    * Accounts kept for other work: Auto, Rewrite, Ask Claude and Ask never pick one (a manual
@@ -426,6 +436,8 @@ export const SettingsSchema = z.object({
   fleet: FleetSettingsSchema.prefault({}),
   /** v0.11 People (no version bump either) */
   people: PeopleSettingsSchema.prefault({}),
+  /** 0.15 Messages (no version bump either) */
+  messages: MessagesSettingsSchema.prefault({}),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -456,6 +468,8 @@ export const MAC_ONLY_SETTING_GROUPS = [
   'fleet',
   // v0.11: People (a phone must never let a person in).
   'people',
+  // 0.15: the Messages switch (a phone must never open the owner's chats to itself).
+  'messages',
 ] as const;
 export type MacOnlySettingGroup = (typeof MAC_ONLY_SETTING_GROUPS)[number];
 
@@ -564,6 +578,7 @@ export function settingsFeatures(s: Settings): Features {
     ask: s.ask.enabled,
     fleet: s.fleet.enabled,
     people: s.people.enabled,
+    messages: s.messages.enabled,
   };
 }
 

@@ -41,6 +41,10 @@
  *   the `work` switch, the owner's `?q=` on the todos list). Its own shapes and routes (the project
  *   hub, one search across Jantar, projects from client folders) are the subpath
  *   `@jantar/protocol/work`, never exported here: none of it belongs in the main bundle
+ * - 0.15 Messages (in settings, models, life, api, constants): the owner's WhatsApp and call log, read on
+ *   the Mac. The Mac-only `messages` switch, the `messages` todo source, `messages_unavailable` and
+ *   `not_an_image`, MESSAGES_LIMITS. Its shapes and routes (chats, messages, calls, the skip list, the
+ *   morning run) are the subpath `@jantar/protocol/messages`, never exported here
  */
 export * from './constants.js';
 export * from './models.js';

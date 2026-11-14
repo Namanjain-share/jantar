@@ -260,6 +260,8 @@ describe('Mac-only settings', () => {
       fleet: { enabled: true },
       // v0.11 People (its switch needs a people host; the owner's name alone is a valid patch).
       people: { ownerName: 'Sam' },
+      // 0.15 Messages' switch.
+      messages: { enabled: true },
     };
     for (const [group, value] of Object.entries(samples)) {
       const patch = { notify: { bodies: 'short' }, [group]: value };

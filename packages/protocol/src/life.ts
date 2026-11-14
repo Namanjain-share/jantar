@@ -181,9 +181,10 @@ export type TodoPriority = z.infer<typeof TodoPrioritySchema>;
 export const TodoTitleSchema = z.string().trim().min(1).max(200);
 /**
  * v0.10: where a todo's words came from when they are someone else's. `meeting`: a meeting's action item
- * (its title from the summary, its notes the meeting's name), by itself or on a tap.
+ * (its title from the summary, its notes the meeting's name), by itself or on a tap. 0.15 `messages`: the
+ * morning run's, from WhatsApp chats and missed calls.
  */
-export const TodoFromSchema = z.enum(['meeting']);
+export const TodoFromSchema = z.enum(['meeting', 'messages']);
 export type TodoFrom = z.infer<typeof TodoFromSchema>;
 
 export const TodoSchema = z.object({

@@ -674,3 +674,39 @@ export const CAPTURE_KEY_PREFIX = 'jcap_';
 export const CAPTURE_PREFIX = '/v1/capture/';
 /** The honest User-Agent of every fetch the Mac makes for Intel (a faked browser one is never sent). */
 export const JANTAR_FETCH_UA = 'Jantar/0.8 (+https://github.com/Namanjain-share/jantar)';
+
+// ---------------------------------------------------------------------------
+// 0.15: Messages (the owner's WhatsApp and call log, read on the Mac, never sent to)
+
+/** Every number of Messages: reads, the morning run's budget and tiers, and its timer. */
+export const MESSAGES_LIMITS = Object.freeze({
+  /** One read of a chat, and one search, at most (messages, hits). */
+  readMax: 200,
+  searchMax: 50,
+  /** The morning run: each message cut at this many characters, the input's token budget, images sent and their longest edge. */
+  perMessageChars: 500,
+  morningTokens: 50_000,
+  morningImages: 5,
+  imageEdge: 1024,
+  /** A media file larger than this is never copied out of WhatsApp's folder. */
+  mediaMaxBytes: 25 * 1024 * 1024,
+  /** Context kept per tier: a 1:1's last messages, a small group's (at most this many members) last messages. */
+  dmContext: 40,
+  smallGroupMembers: 10,
+  smallGroupContext: 20,
+  /** A group with this many new messages, or this many members, is busy: a count and the mention windows only. */
+  busyGroupMessages: 200,
+  busyGroupMembers: 100,
+  /** Messages kept on each side of one that mentions or replies to the owner. */
+  mentionWindow: 5,
+  /** A 1:1 whose last message is theirs is waiting on the owner for this many days. */
+  waitingDays: 3,
+  /** The first run (or one after WhatsApp renumbered its rows) reads this far back; a stored cursor never further. */
+  firstRunHours: 24,
+  cursorGuardHours: 72,
+  /** The timer waits this long for WhatsApp to run and go quiet (no write for quietMs), then runs on stale data. */
+  waitForWhatsAppMs: 6 * 3_600_000,
+  quietMs: 120_000,
+  morningTimeoutMs: 300_000,
+  todosPerRun: 20,
+});
