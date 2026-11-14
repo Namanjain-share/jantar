@@ -20,7 +20,7 @@
  *   CLI and every Claude session) never carry it;
  * - a name two chats share answers the candidates and `total`, never one;
  * - removing a skip widens what Jantar reads: refused over TCP (the part
- *   refuses anyone but the CLI too);
+ *   refuses anyone but the CLI too), and so is the reset after a lost salt;
  * - messagesMedia answers the shrunk JPEG with meetingShot's headers and,
  *   for a device, takes its bytes from s.rawBytesBudget (shared with Files
  *   and Meetings), refusing a spent budget before the reader is asked;
@@ -41,6 +41,7 @@ import {
   type MessagesSearchQuery,
   type MorningRunBody,
   type SkipAddBody,
+  type SkipResetBody,
 } from '@jantar/protocol/messages';
 import type { RateLimitResult } from '../../auth/rate-limit.js';
 import type { ReadBy } from '../../contracts.js';
@@ -205,6 +206,14 @@ export const MESSAGES_ROUTE_IMPLS: RouteTable = {
       return OK;
     },
     audit: (c: Call<ChatParams>) => ({ target: c.params.chatKey }),
+  },
+
+  messagesSkipReset: {
+    handle: async (c: Call<NoParams, unknown, SkipResetBody>, s) => {
+      // It drops every key on the list (after a lost salt): the Mac's CLI only.
+      if (c.auth.transport !== 'ctl') throw new ApiError('forbidden', MESSAGES_SAYS.skipResetMacOnly);
+      return lifeValue(await s.deps.messages.skip.reset({ forget: c.body.forget === true }, needActor(c.auth)));
+    },
   },
 
   messagesToday: {

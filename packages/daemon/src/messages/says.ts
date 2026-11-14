@@ -29,18 +29,26 @@ export const MESSAGES_SAYS = {
   // Status details.
   notInstalled: "The reader isn't set up on this Mac. At the Mac: jantar messages setup",
   noWhatsApp: "WhatsApp for Mac isn't on this Mac, or isn't linked to a phone yet.",
-  contacts: "Messages can't read WhatsApp right now: macOS refused WhatsApp's contact files (ContactsV2.sqlite, LID.sqlite) to the reader. At the Mac: jantar messages setup",
+  contacts:
+    "Messages can't read WhatsApp right now: WhatsApp's contact files (ContactsV2.sqlite, LID.sqlite) are missing or macOS refused them to the reader, and the skip list needs them. At the Mac: jantar messages setup",
   closed: 'WhatsApp is closed: open it on the Mac so Messages can read the newest messages.',
   skipBroken: "The skip list file won't read, so Messages reads nothing until it is written again (turn Messages off and on at the Mac).",
-  skipLocked: "The skip list file (skip.json, in ~/.jantar/messages) won't open, so Messages reads nothing and won't write over it: make it readable again at the Mac.",
+  skipLocked:
+    "The skip list file (skip.json, in ~/.jantar/messages) won't open or isn't one Messages wrote, so Messages reads nothing and won't write over it. At the Mac: make it readable again, or move it aside and check jantar messages skip list.",
   skipUnsaved: "Messages couldn't save the skip list file's chats in messages.db (is the Mac's disk full?), so it reads nothing until it can. It tries again on each read.",
+  saltLost:
+    "The reader's salt (~/.jantar/messages/salt) is gone, so the skip list matches no chat and the reader won't start. At the Mac: jantar messages skip reset",
+  skipResetLeft:
+    "Chats skipped before the reader's salt was lost aren't all skipped again yet, so Messages reads nothing. At the Mac: jantar messages skip reset",
+  skipResetNotNeeded: "The reader's salt is there, so the skip list still matches its chats: there is nothing to reset.",
+  skipResetMacOnly: 'Resetting the skip list is done at the Mac: jantar messages skip reset',
   // Answers.
   busy: cantRead('WhatsApp is busy or closed'),
   timeout: cantRead('WhatsApp took too long to answer'),
   noImage: cantRead("jantar-media couldn't shrink the image (it needs Command Line Tools)"),
   skipWrite: "The skip list couldn't be saved; nothing changed. At the Mac: jantar messages status",
   noMirror: cantRead("the skip list couldn't be written for the reader"),
-  skipUnreadable: cantRead("the skip list file won't open, and Messages won't write over it"),
+  skipUnreadable: cantRead("the skip list file won't open or isn't one Messages wrote, and Messages won't write over it"),
   // no_access, by what the reader's detail names.
   noWhatsAppHere: cantRead("WhatsApp for Mac isn't on this Mac, or isn't signed in"),
   phoneLog:
@@ -76,7 +84,8 @@ export const MESSAGES_SAYS = {
  * Words of the reader's fixed `no_access` details (jantar-messages-reader.swift:
  * "<file> isn't there: is WhatsApp for Mac installed and signed in?",
  * "macOS refused <file> to the reader", "the iPhone call log isn't on this
- * Mac"), matched only to pick a sentence; a detail is never shown.
+ * Mac", "<contact file> isn't there, and the skip list needs it"), matched
+ * only to pick a sentence; a detail is never shown.
  */
 const NOT_THERE = "isn't there";
 const CONTACT_FILES = ['ContactsV2.sqlite', 'LID.sqlite'] as const;

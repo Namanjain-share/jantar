@@ -10,9 +10,11 @@
  * - the skip list lives in messages.db and its 0600 mirror (skip.json, what
  *   the reader enforces) is written at open and after every change; only
  *   the Mac's CLI removes a skip; a new messages.db keeps the keys skip.json
- *   lists (one that won't open is never written over, and reads wait for
- *   it), a mirror deleted or edited outside is written again before the
- *   next read, and a change that fails leaves the mirror as the table is;
+ *   lists (one that won't open, or that the reader would refuse, is never
+ *   written over, and reads wait for it), a mirror deleted or edited
+ *   outside is written again before the next read, and a change that fails
+ *   leaves the mirror as the table is; after a lost salt status says so,
+ *   and the Mac's reset finds the old chats again by name before reads go on;
  * - media: an image comes back shrunk by jantar-media (stubbed), anything
  *   else by name and size, and the reader's spool copy is gone either way;
  *   a job left from a crash goes at start;
@@ -299,8 +301,7 @@ describe('the skip list', () => {
     expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
     await t.svc.stop();
     // The owner moved messages.db aside (its broken sentence says to) and a new, empty one opens.
-    // A key that isn't one is never taken.
-    writeFileSync(join(t.paths.messagesDir, 'skip.json'), JSON.stringify({ version: 1, chatKeys: [ASHA, 'not a key'] }));
+    writeFileSync(join(t.paths.messagesDir, 'skip.json'), JSON.stringify({ version: 1, chatKeys: [ASHA] }));
     const fresh = await setup({ dbFile: join(dir, 'messages-new.db') });
     expect(fresh.svc.skip.list()).toEqual([{ chatKey: ASHA, name: SKIP_KEPT_NAME, kind: 'dm', addedAt: NOW }]);
     expect(mirrorOf(fresh)).toEqual({ version: 1, chatKeys: [ASHA] });
@@ -308,6 +309,45 @@ describe('the skip list', () => {
     // It is a skip like any other: the Mac removes it.
     expect(fresh.svc.skip.remove(ASHA, CLI)).toEqual({ ok: true, value: true });
     expect(mirrorOf(fresh)).toEqual({ version: 1, chatKeys: [] });
+  });
+
+  it('a reset messages.db never writes an empty list over a skip.json the reader would refuse', async () => {
+    const own = JSON.stringify({ version: 1, chatKeys: [ASHA] });
+    // Each breaks one of the reader's rules (jantar-messages-reader.swift SkipList.refresh).
+    const broken: [string, (file: string) => void][] = [
+      ['cut short', (f) => writeFileSync(f, own.slice(0, -3), { mode: 0o600 })],
+      ['a trailing comma', (f) => writeFileSync(f, `{"version":1,"chatKeys":["${ASHA}"],}`, { mode: 0o600 })],
+      ['another version', (f) => writeFileSync(f, JSON.stringify({ version: 2, chatKeys: [ASHA] }), { mode: 0o600 })],
+      ['version true', (f) => writeFileSync(f, JSON.stringify({ version: true, chatKeys: [ASHA] }), { mode: 0o600 })],
+      ['not a list', (f) => writeFileSync(f, JSON.stringify({ version: 1, chatKeys: { [ASHA]: true } }), { mode: 0o600 })],
+      ['a key that is not one', (f) => writeFileSync(f, JSON.stringify({ version: 1, chatKeys: [ASHA, 'not a key'] }), { mode: 0o600 })],
+      ['a folder', (f) => mkdirSync(f)],
+      ['too large', (f) => writeFileSync(f, `${own}${' '.repeat(4 * 1024 * 1024)}`, { mode: 0o600 })],
+    ];
+    for (const [i, [why, write]] of broken.entries()) {
+      const prepared: { file?: string; before?: string } = {};
+      const t = await setup({
+        dbFile: join(dir, `fresh-${i}.db`),
+        handlers: { ...anyChat, chats: () => ({ chats: [], total: 0 }), status: () => ({ ...READY, skipOk: false }) },
+        prepare: (paths) => {
+          mkdirSync(paths.messagesDir, { recursive: true, mode: 0o700 });
+          prepared.file = join(paths.messagesDir, 'skip.json');
+          rmSync(prepared.file, { recursive: true, force: true });
+          write(prepared.file);
+          prepared.before = statSync(prepared.file).isFile() ? readFileSync(prepared.file, 'utf8') : 'a folder';
+        },
+      });
+      const file = prepared.file!;
+      // Never written over: the reader goes on refusing reads, and so does the daemon.
+      await expect(t.svc.chats({ limit: 30 }, { via: 'cli' }), why).rejects.toMatchObject({ code: 'messages_unavailable', message: MESSAGES_SAYS.skipUnreadable });
+      expect((await t.svc.status()).reader, why).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipLocked });
+      expect(await t.svc.skip.add(RAVI, CLI), why).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+      expect(statSync(file).isFile() ? readFileSync(file, 'utf8') : 'a folder', why).toBe(prepared.before);
+      expect(t.svc.skip.list(), why).toEqual([]);
+      expect(t.reader!.calls.filter((c) => c.op === 'chats'), why).toEqual([]);
+      await t.svc.stop();
+      await t.reader!.close();
+    }
   });
 
   it('skip.json deleted or edited outside the daemon is written again before the next read, and by status', async () => {
@@ -443,6 +483,96 @@ describe('the skip list', () => {
     expect(statSync(file).ino).toBe(ino);
     expect(statSync(file).mode & 0o777).toBe(0);
     expect(t.svc.skip.list()).toEqual([]);
+  });
+
+  it('a lost salt: status says why, and skip reset finds the old chats again by name before reads go on', async () => {
+    const before: Record<string, Chat> = { [ASHA]: chat(ASHA, 'Asha Test'), [GROUP]: chat(GROUP, 'Group One', 'group'), [MOM]: chat(MOM, 'Mom'), [RAVI]: chat(RAVI, 'Ravi Test') };
+    const t = await setup({
+      handlers: {
+        read: (a) => {
+          const c = before[String(a.chatKey)];
+          if (!c) throw readerError('not_found');
+          return { chat: c, messages: [], more: false };
+        },
+      },
+    });
+    for (const k of [ASHA, GROUP, MOM, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: true });
+    const salt = join(t.paths.messagesDir, 'salt');
+    writeFileSync(salt, Buffer.alloc(32, 7), { mode: 0o600 });
+    // The salt there: nothing to reset, and only the Mac's CLI may.
+    expect(await t.svc.skip.reset({}, CLI)).toEqual({ ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipResetNotNeeded });
+    expect(await t.svc.skip.reset({}, PHONE)).toEqual({ ok: false, code: 'forbidden', reason: MESSAGES_SAYS.skipResetMacOnly });
+
+    // The salt deleted: the reader won't start over keys it can't match, and status says why.
+    rmSync(salt);
+    await t.reader!.close();
+    expect((await t.svc.status()).reader).toEqual({ state: 'down', detail: MESSAGES_SAYS.saltLost });
+
+    // The reset drops the old keys at once (so the reader can start with a new salt); reads wait for the chats to be found again.
+    const waiting = await t.svc.skip.reset({}, CLI);
+    expect(waiting).toMatchObject({ ok: true, value: { skipped: [], waiting: true } });
+    expect(waiting.ok && waiting.value.left).toHaveLength(4);
+    expect(t.svc.skip.list()).toEqual([]);
+    expect(mirrorOf(t)).toEqual({ version: 1, chatKeys: [] });
+
+    // The reader is back with a new salt: every chat has a new key.
+    const NEW = { asha: 'ce1b2c3d4e5f6a7b8', group: 'ce2b2c3d4e5f6a7b8', mom1: 'ce3b2c3d4e5f6a7b8', mom2: 'ce4b2c3d4e5f6a7b8', other: 'ce5b2c3d4e5f6a7b8' };
+    const after = [
+      chat(NEW.asha, 'Asha Test'),
+      chat(NEW.group, 'Group One', 'group'),
+      chat(NEW.mom1, 'Mom'),
+      chat(NEW.mom2, 'Mom'),
+      // Holds a name, isn't it: never skipped for it.
+      chat(NEW.other, 'Asha Test and Group One', 'group'),
+    ];
+    const reader = await startFakeReader(t.paths.messagesReaderSock, {
+      status: () => READY,
+      chats: (a) => {
+        const q = String(a.q ?? '').toLowerCase();
+        const hits = after.filter((c) => c.name.toLowerCase().includes(q));
+        return { chats: hits, total: hits.length };
+      },
+    });
+    cleanups.push(() => reader.close());
+    const refused = { code: 'messages_unavailable', message: MESSAGES_SAYS.skipResetLeft };
+    await expect(t.svc.chats({ limit: 30 }, { via: 'mcp' })).rejects.toMatchObject(refused);
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipResetLeft });
+
+    // Found again by name and kind (both chats named Mom: the list hides more, never less); Ravi's name is gone.
+    const found = await t.svc.skip.reset({}, CLI);
+    expect(found).toEqual({
+      ok: true,
+      value: {
+        skipped: [
+          { chatKey: NEW.asha, name: 'Asha Test', kind: 'dm', addedAt: NOW },
+          { chatKey: NEW.group, name: 'Group One', kind: 'group', addedAt: NOW },
+          { chatKey: NEW.mom1, name: 'Mom', kind: 'dm', addedAt: NOW },
+          { chatKey: NEW.mom2, name: 'Mom', kind: 'dm', addedAt: NOW },
+        ],
+        left: [{ name: 'Ravi Test', kind: 'dm' }],
+        waiting: false,
+      },
+    });
+    expect((mirrorOf(t) as { chatKeys: string[] }).chatKeys).toEqual([NEW.asha, NEW.group, NEW.mom1, NEW.mom2].sort());
+    // One still to find: reads stay refused.
+    await expect(t.svc.chats({ limit: 30 }, { via: 'mcp' })).rejects.toMatchObject(refused);
+    expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: true, value: { skipped: [], left: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false } });
+
+    // The owner lets it go (he skips it by hand): reads go on, the found ones skipped.
+    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual({ ok: true, value: { skipped: [], left: [], waiting: false } });
+    expect(await t.svc.chats({ limit: 30 }, { via: 'cli' })).toMatchObject({ total: after.length });
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok' });
+    expect(t.svc.skip.list().map((e) => e.chatKey).sort()).toEqual([NEW.asha, NEW.group, NEW.mom1, NEW.mom2].sort());
+    writeFileSync(salt, Buffer.alloc(32, 8), { mode: 0o600 });
+    expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: false, code: 'conflict' });
+  });
+
+  it('status passes on how many skips name no chat on this Mac', async () => {
+    let st: ReaderStatus = READY;
+    const t = await setup({ handlers: { status: () => st } });
+    expect(await t.svc.status()).not.toHaveProperty('skipUnmatched');
+    st = { ...READY, skipped: 2, skipUnmatched: 1 };
+    expect((await t.svc.status()).skipUnmatched).toBe(1);
   });
 
   it("skip.json keys messages.db won't take: reads say the list couldn't be written, not that the file won't open", async () => {

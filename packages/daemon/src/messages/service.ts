@@ -11,9 +11,10 @@
  *   open the keys skip.json lists that the table hasn't (a new or reset
  *   messages.db) are kept, then the mirror is written, before any read;
  *   until it has been, reads are refused (to the reader no skip.json is an
- *   empty list). A skip.json that won't open, or whose keys messages.db
- *   won't take, is never written over (it may be the only list): reads and
- *   skip changes are refused until its keys are in.
+ *   empty list). A skip.json that won't open or that the reader would
+ *   refuse, or whose keys messages.db won't take, is never written over (it
+ *   may be the only list): reads and skip changes are refused until its
+ *   keys are in.
  *   One deleted or changed by anyone else is written again before the next
  *   read and by status(); a change that fails rewrites it from the table it
  *   rolled back to.
@@ -69,12 +70,14 @@ import {
   type MessagesSearchQuery,
   type MessagesSearchResponse,
   type MessagesPrefs,
+  type MessagesSkipReset,
   type MessagesStatus,
   type MessagesTodayResponse,
   type MorningPreview,
   type MorningRun,
   type MorningTrigger,
   type ReadLogEntry,
+  type SkipEntry,
 } from '@jantar/protocol/messages';
 import { ApiError } from '../api/errors.js';
 import type {
@@ -124,9 +127,9 @@ import { OWNER_NAME, morningInput } from './morning/input.js';
 import { morningImages, pickImages, runMorning } from './morning/run.js';
 import { MorningTimer, type WhatsAppReady } from './morning/timer.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from './reader-client.js';
-import { READER_KEYS_MAX, READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
+import { READER_CHATS_MAX, READER_KEYS_MAX, READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderChats, type ReaderStatus } from './reader-protocol.js';
 import { MESSAGES_SAYS, readerSays } from './says.js';
-import { SkipFileUnreadable, createSkipStore, type SkipStore } from './skip.js';
+import { SKIP_KEPT_NAME, SkipFileUnreadable, createSkipStore, saltLost, type LostEntry, type SkipStore } from './skip.js';
 
 export interface MessagesDeps {
   /** The morning run's todos. */
@@ -164,6 +167,10 @@ function errorKind(e: unknown): string {
 }
 
 const chatKeyOf = (msgKey: string) => msgKey.slice(0, msgKey.indexOf('.'));
+/** The reader's longest chat name to look for (its `q`). */
+const NAME_MAX = 100;
+/** A name as the reader matches it: case and accents aside. */
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
 /** Today's drafts and call-backs, at most. */
 const TODAY_MAX = 50;
@@ -269,6 +276,7 @@ class MessagesShell implements MessagesService {
       list: () => this.need().skip.list(),
       add: (chatKey, actor) => this.skipAdd(chatKey, actor),
       remove: (chatKey, actor) => this.skipRemove(chatKey, actor),
+      reset: (o, actor) => this.skipReset(o, actor),
     };
     this.send = opts.send ?? createLifeSend(ctx, deps.notifiers ?? []);
     this.timer = new MorningTimer(ctx.clock, this.log, {
@@ -312,6 +320,7 @@ class MessagesShell implements MessagesService {
     let whatsapp: MessagesStatus['whatsapp'] = { found: false, running: false, newestAt: null, schemaOk: false };
     let phone = { readable: false };
     let readerSkipped = 0;
+    let skipUnmatched: number | undefined;
     let reader: ReaderLine;
     const installed = await this.installed().catch((): Installed => 'missing');
     if (installed === 'missing') {
@@ -325,8 +334,11 @@ class MessagesShell implements MessagesService {
         reader = installed === 'stale' || st.version !== READER_VERSION ? { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded } : this.readerLine(st);
         // The reader enforces another list than the table's (skip.json changed outside the daemon): ours again.
         if (st.skipOk && this.mirrorDiffers(st.skipped)) this.mirror();
+        if (st.skipUnmatched !== undefined) skipUnmatched = st.skipUnmatched;
       } catch (e) {
-        reader = installed === 'stale' ? { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded } : this.failedLine(e);
+        // A reader that won't start over a skip list its lost salt can't match says why.
+        if (installed !== 'stale' && this.saltGone()) reader = { state: 'down', detail: MESSAGES_SAYS.saltLost };
+        else reader = installed === 'stale' ? { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded } : this.failedLine(e);
       }
     }
     const db = this.db;
@@ -343,6 +355,7 @@ class MessagesShell implements MessagesService {
       whatsapp,
       phone,
       skipped: this.skipStore ? safe(() => this.skipStore!.list().length, readerSkipped) : readerSkipped,
+      ...(skipUnmatched !== undefined ? { skipUnmatched } : {}),
       morning: db ? safe(() => ({ at: readPrefs(db).morningAt, lastRunAt: lastRunAt(db) }), { at: null, lastRunAt: null }) : { at: null, lastRunAt: null },
     };
   }
@@ -352,6 +365,7 @@ class MessagesShell implements MessagesService {
     if (!st.whatsapp.found) return { state: 'ok', detail: MESSAGES_SAYS.noWhatsApp };
     if (!st.whatsapp.schemaOk) return { state: 'unsupported', detail: MESSAGES_SAYS.unsupported };
     if (!st.whatsapp.contactsOk) return { state: 'no_access', detail: MESSAGES_SAYS.contacts };
+    if (this.resetGoing()) return { state: 'ok', detail: MESSAGES_SAYS.skipResetLeft };
     if (!st.skipOk || this.skipFile === 'locked' || this.skipFile === 'unsaved') {
       // Ours to write again (the reader reads nothing meanwhile), once its own keys are in the table.
       this.mirror();
@@ -529,6 +543,88 @@ class MessagesShell implements MessagesService {
     }
     this.log.info('messages: a chat is read again', { chatKey });
     return OK;
+  }
+
+  /**
+   * After the reader's salt was lost (the reader won't start over keys it
+   * can't match): the old keys go at once, set aside by name and kind, so it
+   * can start with a new salt; then each is looked for in the chats and
+   * every chat of that exact name and kind is skipped again (a shared name
+   * skips each: more hidden, never less). Reads stay refused while any is
+   * left, until the owner lets them go (`forget`) and skips them by hand.
+   * `waiting` while the reader isn't back. The Mac's CLI only.
+   */
+  private async skipReset(o: { forget?: boolean }, actor: Actor): Promise<LifeResult<MessagesSkipReset>> {
+    // It drops every key on the list: the Mac's own CLI only, whatever route got here.
+    if (actor.kind !== 'cli') return { ok: false, code: 'forbidden', reason: MESSAGES_SAYS.skipResetMacOnly };
+    const { skip } = this.need();
+    let left = skip.resetLeft();
+    if (left === null) {
+      if (!skip.saltLost()) return { ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipResetNotNeeded };
+      try {
+        // Over a skip.json that won't read too: its keys were made with the lost salt.
+        left = skip.resetStart();
+        this.skipFile = 'read';
+        this.wrote();
+      } catch (e) {
+        this.log.error('messages: the skip list was not reset', { error: errorKind(e) });
+        this.mirror();
+        return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
+      }
+      this.log.warn('messages: the skip list was reset after the salt was lost', { count: left.length });
+    }
+    if (o.forget === true) {
+      try {
+        skip.setResetLeft([]);
+      } catch (e) {
+        this.log.error('messages: the skip list reset was not ended', { error: errorKind(e) });
+        return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
+      }
+      if (left.length > 0) this.log.warn('messages: chats not found after a reset were let go', { count: left.length });
+      return { ok: true, value: { skipped: [], left: [], waiting: false } };
+    }
+
+    const found = new Map<string, SkipEntry>();
+    const still: LostEntry[] = [];
+    let waiting = false;
+    for (const e of left) {
+      if (waiting || e.name === SKIP_KEPT_NAME || e.name.length > NAME_MAX) {
+        still.push(e);
+        continue;
+      }
+      let r: ReaderChats;
+      try {
+        // Names only, to find each chat: never logged or kept beyond its entry.
+        r = await this.reader.call('chats', { q: e.name, limit: READER_CHATS_MAX });
+      } catch (err) {
+        if (!(err instanceof ReaderFailure)) throw err;
+        // A name the reader won't take is left to the owner; anything else, the reader isn't back yet.
+        if (err.code !== 'bad_request' && err.code !== 'not_found') waiting = true;
+        still.push(e);
+        continue;
+      }
+      const same = r.chats.filter((c) => c.kind === e.kind && fold(c.name) === fold(e.name));
+      for (const c of same) found.set(c.chatKey, { chatKey: c.chatKey, name: c.name, kind: c.kind, addedAt: this.ctx.clock.iso() });
+      // Not found, or more chats hold the name than one answer lists (one of that name may be past them).
+      if (same.length === 0 || r.total > r.chats.length) still.push(e);
+    }
+    // Messages may have gone off and on during the reads: the store open now.
+    const { db, skip: now } = this.need();
+    const skipped = [...found.values()].sort((a, b) => (a.chatKey < b.chatKey ? -1 : 1));
+    try {
+      db.tx(() => {
+        for (const e of skipped) now.add(e);
+        now.writeMirror();
+        now.setResetLeft(still);
+      });
+      this.wrote();
+    } catch (e) {
+      this.log.error('messages: the chats found after a reset were not skipped', { error: errorKind(e) });
+      this.mirror();
+      return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
+    }
+    this.log.info('messages: chats skipped again after a reset', { count: skipped.length, left: still.length });
+    return { ok: true, value: { skipped, left: still, waiting } };
   }
 
   // ---------------------------------------------------------------- the morning run
@@ -760,8 +856,28 @@ class MessagesShell implements MessagesService {
    */
   private needReads(): void {
     this.need();
+    // A reset after a lost salt: nothing reads until its chats are skipped again.
+    if (this.resetGoing()) throw new ApiError('messages_unavailable', MESSAGES_SAYS.skipResetLeft);
     if ((!this.mirrored || this.mirrorMoved()) && !this.mirror()) {
       throw new ApiError('messages_unavailable', this.skipFile === 'locked' ? MESSAGES_SAYS.skipUnreadable : MESSAGES_SAYS.noMirror);
+    }
+  }
+
+  /** A reset after a lost salt has chats still to find (or its record won't read); false while messages.db is closed. */
+  private resetGoing(): boolean {
+    try {
+      return this.skipStore !== null && this.skipStore.resetLeft() !== null;
+    } catch {
+      return this.skipStore !== null;
+    }
+  }
+
+  /** The reader's salt is gone while the skip list holds keys made with it (skip.ts saltLost); with messages.db closed, skip.json's. */
+  private saltGone(): boolean {
+    try {
+      return this.skipStore ? this.skipStore.saltLost() : saltLost(this.ctx.paths.messagesDir, 0);
+    } catch {
+      return false;
     }
   }
 
@@ -837,9 +953,9 @@ class MessagesShell implements MessagesService {
   /**
    * The keys skip.json lists, in the table (once per open). A new or reset
    * messages.db keeps what it still lists (it never empties by itself); a
-   * file that won't open (permissions, a disk error), or keys messages.db
-   * won't take, are tried again before every write of it, which waits until
-   * they go in.
+   * file that won't open (permissions, a disk error) or that the reader
+   * would refuse (`locked`), or keys messages.db won't take (`unsaved`), are
+   * tried again before every write of it, which waits until they go in.
    */
   private keepSkipFile(): boolean {
     if (this.skipFile === 'read') return true;

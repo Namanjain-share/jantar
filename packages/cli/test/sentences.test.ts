@@ -56,7 +56,7 @@ const OWN_HELP: Readonly<Record<string, string>> = { mcp: 'claude mcp add ' };
 /** Commands that only read from the daemon and write files on the Mac: they get `--out` and must write something. */
 const WRITES_FILES = /^meetings export\b/;
 /** v0.8: commands that only read from the daemon and print (the sentence points at them to see something, not to change it). */
-const READS_ONLY = /^(?:intel (?:read status|shortcut list)|chat (?:status|shortcut list)|messages status)$/;
+const READS_ONLY = /^(?:intel (?:read status|shortcut list)|chat (?:status|shortcut list)|messages (?:status|skip list))$/;
 /** 0.15: commands that change nothing through the daemon but load a LaunchAgent on the Mac (the WhatsApp reader's). */
 const LOADS_AGENT = /^messages setup$/;
 /** Words after the command: a <placeholder>, or a plain word (paths like ~/Desktop included). */
@@ -236,6 +236,8 @@ describe('the commands the daemon and the web app name', () => {
         'messages status',
         'messages setup',
         'messages skip remove <chat>',
+        'messages skip list',
+        'messages skip reset',
         'messages',
       ]),
     );
@@ -297,6 +299,8 @@ describe('the commands the daemon and the web app name', () => {
         'GET /v1/messages/status': () => ok(MESSAGES_STATUS),
         'GET /v1/messages/skip': () => ok({ skip: [{ chatKey: PLACEHOLDERS['<chat>'], name: 'Asha Test', kind: 'dm', addedAt: at }] }),
         [`DELETE /v1/messages/skip/${PLACEHOLDERS['<chat>']}`]: () => ok({ ok: true }),
+        // After a lost salt: the one chat found again by its name.
+        'POST /v1/messages/skip/reset': () => ok({ skipped: [{ chatKey: PLACEHOLDERS['<chat>'], name: 'Asha Test', kind: 'dm', addedAt: at }], left: [], waiting: false }),
       });
       // 0.15: setup finds this release's reader built (no swiftc), loads its agent with a faked launchctl,
       // and needs a reader socket path macOS takes (the fake home's is too long).

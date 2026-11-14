@@ -152,13 +152,14 @@ describe('which routes need the device secret', () => {
         'workStagesUpdate',
         // 0.14.0: the switching rules' save (control scope)
         'patchSwitchRules',
-        // 0.15 Messages (control scope; removing a skip is refused over TCP anyway, after this check)
+        // 0.15 Messages (control scope; removing a skip and the reset are refused over TCP anyway, after this check)
         'messagesDraftUpdate',
         'messagesMorningRun',
         'messagesMorningUndo',
         'messagesPrefsPatch',
         'messagesSkipAdd',
         'messagesSkipRemove',
+        'messagesSkipReset',
       ].sort(),
     );
     expect(needsDeviceSecret(ROUTES.events)).toBe(true);

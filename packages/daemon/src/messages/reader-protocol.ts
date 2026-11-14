@@ -73,7 +73,9 @@ export type ReaderReply = z.infer<typeof ReaderReplySchema>;
  * `phone.readable`: macOS lets the reader open the iPhone call log (Full
  * Disk Access). `skipped`: entries in the skip list; `skipOk`: false while
  * the skip list won't parse (reads then answer `busy`, and `skipped` counts
- * the last good one).
+ * the last good one); `skipUnmatched`: how many of its keys name no chat or
+ * person on this Mac (a skipped 1:1 WhatsApp no longer has; the skip still
+ * holds for that person's own ids), left out until a read has looked.
  *
  * Telling `busy` and `no_access` apart: `busy` is WhatsApp closed
  * (`found` and no `walMtime`), a broken skip list (`skipOk: false`), SQLite
@@ -94,6 +96,7 @@ export const ReaderStatusSchema = z.object({
   phone: z.object({ readable: z.boolean() }),
   skipped: count,
   skipOk: z.boolean(),
+  skipUnmatched: count.optional(),
   version: z.number().int().positive(),
 });
 export type ReaderStatus = z.infer<typeof ReaderStatusSchema>;

@@ -162,8 +162,9 @@ full model, [Messages](messages.md) the guide).
   as you: grant it only if the call log is worth it.
 - The skip list is enforced inside the reader: a skipped 1:1 hides that
   person's chats, calls and group lines everywhere. The phone can add a
-  skip, never remove one. A person WhatsApp never linked to a number can
-  still show in groups.
+  skip, never remove one (though with terminal control it can drive a
+  Claude session on the Mac, which can). A person WhatsApp never linked to
+  a number can still show in groups.
 - Claude Code asks before each WhatsApp tool runs (the ask rule `jantar
   mcp install` adds). That is a speed bump: a session with a shell can run
   `jantar messages` or read WhatsApp's files directly.

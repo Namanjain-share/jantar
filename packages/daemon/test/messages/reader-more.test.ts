@@ -8,12 +8,16 @@
  *   (and one after WhatsApp renumbered its rows) reads firstRunHours back,
  *   never everything; maxRows cuts at a row and the next cursor goes on;
  * - lastFromMe: the owner's last line to a chat (to a person, under either id);
- * - media: a copy (0600) in <state>/spool, never the original; old copies swept;
+ * - media: a copy (0600) in <state>/spool, never the original; old copies
+ *   swept; a skipped person's picture in a shared group never leaves;
  * - waCalls and phoneCalls: who (address book, else the number), the 1:1's
- *   key, missed and incoming; a skipped person's calls never come; the
- *   iPhone call log is `no_access` when macOS refuses it. WhatsApp's calls
- *   follow the real Mac's CallHistory.sqlite: one call per aggregate row
- *   (a redial is another attempt), its people hang off the aggregate.
+ *   key, missed and incoming; a skipped person's calls never come, even
+ *   after their 1:1 is gone (nor their group lines and mentions); the
+ *   iPhone call log is `no_access` when macOS refuses it, matches an
+ *   address-book number to its person, leaves WhatsApp's own rows out and
+ *   never shows a WhatsApp id. WhatsApp's calls follow the real Mac's
+ *   CallHistory.sqlite: one call per aggregate row (a redial is another
+ *   attempt), its people hang off the aggregate.
  * Skipped where Swift can't build the reader (not macOS, no Command Line Tools).
  */
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
@@ -28,6 +32,7 @@ import {
   ReaderLastFromMeSchema,
   ReaderMediaSchema,
   ReaderNewSinceSchema,
+  ReaderReadSchema,
   ReaderSearchSchema,
   ReaderStatusSchema,
   type ReaderNewSince,
@@ -364,6 +369,34 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     expect(after.filter((f) => !files.includes(f)).every((f) => /\.sqlite-(?:wal|shm)$/.test(f))).toBe(true);
   });
 
+  it("a skipped person's picture in a shared group never leaves", async () => {
+    // Asha (by her @lid) sends a picture to Group One, its file on this Mac.
+    const rel = `Media/${paths.jids.group}/a/b/00000000-0000-4000-8000-0000000a5a1e.jpg`;
+    writeFileSync(join(paths.container, 'Message', rel), readFileSync(join(paths.container, 'Message', FIXTURE_MEDIA.localPath)));
+    const wa = writeAsWhatsApp(paths);
+    try {
+      wa.line(paths.jids.group, { stanza: '3EB0FX0801', at: appleSeconds('2026-11-13T16:00:00.000Z'), member: paths.jids.ashaLid, caption: 'site photo', localPath: rel });
+    } finally {
+      wa.close();
+    }
+    const r = await start();
+    const group = keyOf(r.state, paths.jids.group);
+    const spool = join(r.state, 'spool');
+    const ask = (stanza: string) => r.call('media', { msgKey: `${group}.${stanza}`, maxBytes: MESSAGES_LIMITS.mediaMaxBytes });
+    const got = await ask('3EB0FX0801');
+    expect(got).toMatchObject({ ok: true, data: { kind: 'image' } });
+    rmSync(ReaderMediaSchema.parse(got.ok ? got.data : null).file);
+
+    // Skipped by her 1:1 (under her @lid) or by her number: not_found, and nothing is copied.
+    for (const key of [keyOf(r.state, paths.jids.ashaLid), keyOf(r.state, paths.jids.asha)]) {
+      writeSkip(r.state, [key]);
+      expect(await ask('3EB0FX0801')).toMatchObject({ ok: false, error: 'not_found' });
+      expect(readdirSync(spool)).toEqual([]);
+    }
+    // The group's other pictures still come.
+    expect(await ask('3EB0FX0704')).toMatchObject({ ok: true, data: { kind: 'image' } });
+  });
+
   it('waCalls and phoneCalls', async () => {
     // Two more on the iPhone: a number nobody has, and the owner's FaceTime video to Asha.
     const phone = new DatabaseSync(paths.phoneDb);
@@ -504,6 +537,114 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     } finally {
       chmodSync(locked, 0o600);
     }
+  });
+
+  it('a skip holds after the skipped 1:1 is gone from WhatsApp', async () => {
+    // Ravi's 1:1 is under his number and he has no @lid: only that chat's row ties his key to him.
+    const wa = writeAsWhatsApp(paths);
+    try {
+      wa.line(paths.jids.group, { stanza: '3EB0FX0901', at: appleSeconds('2026-11-13T16:00:00.000Z'), member: FIXTURE_NEEL, text: `@${digitsOf(paths.jids.ravi)} are you coming?` });
+    } finally {
+      wa.close();
+    }
+    const r = await start();
+    const ravi = keyOf(r.state, paths.jids.ravi);
+    const group = keyOf(r.state, paths.jids.group);
+    writeSkip(r.state, [ravi]);
+    const hidden = async () => {
+      const read = ReaderReadSchema.parse(await r.ok('read', { chatKey: group, limit: 50 }));
+      const line = (stanza: string) => read.messages.find((m) => m.msgKey === `${group}.${stanza}`)!;
+      expect(line('3EB0FX0703')).toMatchObject({ sender: '[skipped]', skippedSender: true });
+      expect(line('3EB0FX0901').text).toBe('@[skipped] are you coming?');
+      expect(JSON.stringify(read)).not.toContain('Ravi');
+      expect(ReaderCallsSchema.parse(await r.ok('waCalls', { since: FIXTURE_SINCE })).calls.map((c) => c.who)).toEqual(['Asha Test']);
+      // The fixture's one iPhone call is Ravi's.
+      expect(ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls).toEqual([]);
+    };
+    await hidden();
+    expect(ReaderStatusSchema.parse(await r.ok('status'))).toMatchObject({ skipped: 1, skipUnmatched: 0 });
+
+    // The owner deletes Ravi's 1:1 in WhatsApp: its row and lines go, and his key names no chat.
+    const gone = writeAsWhatsApp(paths);
+    try {
+      gone.drop(paths.jids.ravi);
+    } finally {
+      gone.close();
+    }
+    await hidden();
+    expect(await r.call('read', { chatKey: ravi, limit: 50 })).toMatchObject({ ok: false, error: 'not_found' });
+    // Status counts the skips that name no chat or person here, so the owner can check them.
+    expect(ReaderStatusSchema.parse(await r.ok('status'))).toMatchObject({ skipped: 1, skipUnmatched: 1 });
+  });
+
+  /** One statement on a fixture database (as WhatsApp or the address book would change it). */
+  function sql(file: string, statement: string, ...args: (string | number | null)[]): void {
+    const db = new DatabaseSync(file);
+    try {
+      db.prepare(statement).run(...args);
+    } finally {
+      db.close();
+    }
+  }
+  const addPhoneCall = (pk: number, address: string, provider: string | null, iso: string) =>
+    sql(
+      paths.phoneDb,
+      'INSERT INTO ZCALLRECORD (Z_PK, Z_ENT, Z_OPT, ZANSWERED, ZCALLTYPE, ZORIGINATED, ZDATE, ZDURATION, ZADDRESS, ZSERVICE_PROVIDER) VALUES (?, 1, 1, 0, 1, 0, ?, 0, ?, ?)',
+      pk,
+      appleSeconds(iso),
+      address,
+      provider,
+    );
+
+  it("the iPhone call log knows a number the address book gives only an @lid", async () => {
+    // Asha's address-book row keeps her number and @lid but no WhatsApp id, and LID.sqlite doesn't link her.
+    sql(join(paths.container, 'ContactsV2.sqlite'), 'UPDATE ZWAADDRESSBOOKCONTACT SET ZWHATSAPPID = NULL WHERE ZLID = ?', paths.jids.ashaLid);
+    sql(join(paths.container, 'LID.sqlite'), 'DELETE FROM ZWAZACCOUNT WHERE ZIDENTIFIER = ?', paths.jids.ashaLid);
+    addPhoneCall(10, '+91 99900 00001', 'com.apple.Telephony', '2026-11-13T16:00:00.000Z');
+    const r = await start();
+    const asha = keyOf(r.state, paths.jids.ashaLid);
+    const phone = async () => ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls;
+    expect(await phone()).toMatchObject([
+      { at: '2026-11-13T11:00:00.000Z', who: 'Ravi Test' },
+      { at: '2026-11-13T16:00:00.000Z', who: 'Asha Test', chatKey: asha },
+    ]);
+    writeSkip(r.state, [asha]);
+    expect((await phone()).map((c) => c.who)).toEqual(['Ravi Test']);
+  });
+
+  it('an address book without its number column still reads', async () => {
+    sql(join(paths.container, 'ContactsV2.sqlite'), 'ALTER TABLE ZWAADDRESSBOOKCONTACT DROP COLUMN ZPHONENUMBER');
+    const r = await start();
+    expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp).toMatchObject({ schemaOk: true, contactsOk: true });
+    expect(ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls.map((c) => c.who)).toEqual(['Ravi Test']);
+    expect(await r.ok('chats', { limit: 50 })).toMatchObject({ total: 5 });
+  });
+
+  it('iPhone call-log addresses that are not numbers', async () => {
+    // A FaceTime call by Apple ID (an email); WhatsApp's own CallKit row (waCalls has that call); ids another app logged.
+    addPhoneCall(10, 'ravi.test@example.com', 'com.apple.FaceTime', '2026-11-13T12:00:00.000Z');
+    addPhoneCall(11, paths.jids.ravi, 'net.whatsapp.WhatsApp', '2026-11-13T12:30:00.000Z');
+    addPhoneCall(12, paths.jids.ashaLid, 'com.example.Calls', '2026-11-13T13:00:00.000Z');
+    addPhoneCall(13, '88800000000077@lid', 'com.example.Calls', '2026-11-13T13:30:00.000Z');
+    addPhoneCall(14, '919990000005@s.whatsapp.net', null, '2026-11-13T14:00:00.000Z');
+    const r = await start();
+    const asha = keyOf(r.state, paths.jids.ashaLid);
+    const phone = async () => ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls;
+    const ph = await phone();
+    expect(ph).toMatchObject([
+      { at: '2026-11-13T11:00:00.000Z', who: 'Ravi Test' },
+      { at: '2026-11-13T12:00:00.000Z', who: 'ravi.test@example.com' },
+      { at: '2026-11-13T13:00:00.000Z', who: 'Asha Test', chatKey: asha },
+      { at: '2026-11-13T13:30:00.000Z', who: 'Unknown' },
+      { at: '2026-11-13T14:00:00.000Z', who: 'Neel Test' },
+    ]);
+    for (const i of [1, 3, 4]) expect(ph[i]).not.toHaveProperty('chatKey');
+    // No WhatsApp id ever leaves.
+    expect(JSON.stringify(ph)).not.toMatch(/@s\.whatsapp\.net|@lid|888000|919990000005/);
+
+    // Skipped: their ids go too; an email can't be matched to anyone, so it stays (docs/messages.md says so).
+    writeSkip(r.state, [keyOf(r.state, paths.jids.ravi), asha]);
+    expect((await phone()).map((c) => c.who)).toEqual(['ravi.test@example.com', 'Unknown', 'Neel Test']);
   });
 
   it('calls cut at whole milliseconds, as reads do', async () => {

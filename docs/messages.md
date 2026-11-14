@@ -138,7 +138,9 @@ command line or the morning run.
   chat never leaves it. Asking for one answers as if it weren't there.
 - **Removing a chat from the list is done at the Mac**:
   `jantar messages skip remove <name|chat id>`. A phone can add skips but
-  never take one away, so a lost phone can't widen what Jantar reads.
+  never take one away. (A paired phone with terminal control can still type
+  into a Claude session on the Mac, and that session can: see
+  [who can read](../SECURITY.md#who-can-read-anything-running-as-you).)
 - A name that matches several chats (two called "Mom") lists them all and
   stops (exit 2): say which by its chat id, the first column of `jantar
   messages chats`.
@@ -152,26 +154,48 @@ command line or the morning run.
 - Status updates, channels and broadcast lists are never read, skipped or
   not.
 
+- A skip holds after you delete that 1:1 in WhatsApp: the person's own
+  ids are checked too, in groups, mentions and calls. `jantar messages
+  status` counts the skips that name no chat on this Mac now.
+- **In the iPhone call log**, a number is matched to the person through
+  WhatsApp's ids and your address book. Calls WhatsApp put there are left
+  out (WhatsApp's own call list has them). A FaceTime call by Apple ID (an
+  email) shows as that address: the skip list can't match it to anyone.
+
 **A known gap.** In groups and calls WhatsApp now names many people by a
 private id instead of their number. The reader links the two through
-WhatsApp's own tables, but some people have no link there (mostly quiet
-members of big groups). A skipped person without one isn't recognised in
-a group or a call: their lines there show under their name. After
-skipping someone you share groups with, check one of those groups with
-`jantar messages read`.
+WhatsApp's own tables (`LID.sqlite`, `ContactsV2.sqlite`), but some people
+have no link there (mostly quiet members of big groups). A skipped person
+without one isn't recognised in a group or a call: their lines there show
+under their name. After skipping someone you share groups with, check one
+of those groups with `jantar messages read`. If one of those two files is
+missing while anything is skipped, Messages reads nothing until it is
+back, rather than lose every link.
 
 The list lives in `~/.jantar/messages.db` and, for the reader, in
 `~/.jantar/messages/skip.json`. If messages.db is ever reset, the chats
-skip.json lists stay skipped. If skip.json can't be read, Messages reads
-nothing until it can, rather than read everything. Never delete
-`~/.jantar/messages/salt`: every chat id, the skip list's included, is
-made from it, and a new salt would empty the list.
+skip.json lists stay skipped. If skip.json can't be read, or isn't one
+Messages wrote, Messages reads nothing and never writes over it, rather
+than read everything.
+
+**The salt.** Every chat id, the skip list's included, is made from
+`~/.jantar/messages/salt`. Deleted while the reader runs, it is written
+again. If it is gone when the reader starts and the skip list names chats,
+the reader won't start, since new ids would match none of them; status
+says so. Then run `jantar messages skip reset` at the Mac. It drops the
+old ids, waits for the reader to start with a new salt, and skips each
+chat again by its name and kind. Two chats with that name are both
+skipped: remove the one you didn't mean. Messages reads nothing until
+every chat is found. A chat it can't find (renamed, gone, or one whose
+name Messages never knew) waits for you: `jantar messages skip reset
+--forget` lets it go and reads start again, so skip it at once by hand
+(`jantar messages skip add`).
 
 ## At the Mac
 
 | Command | What it does |
 |---|---|
-| `jantar messages` (or `status`) | on or off, the reader's state and what fixes it, WhatsApp (found, running, its newest message), Full Disk Access, the skipped chats, the morning run |
+| `jantar messages` (or `status`) | on or off, the reader's state and what fixes it, WhatsApp (found, running, its newest message), Full Disk Access, the skipped chats (and how many name no chat on this Mac now), the morning run |
 | `jantar messages on \| off` | the switch. Off: nothing reads your chats; the skip list and drafts stay |
 | `jantar messages setup` | build and start the reader ([above](#the-reader-and-full-disk-access)) |
 | `jantar messages chats [--q <letters>] [--waiting] [--since <time>] [--limit <n>]` | your chats, each with its id |
@@ -179,6 +203,7 @@ made from it, and a new salt would empty the list.
 | `jantar messages search <words> [--since <time>] [--limit <n>]` | lines holding the words (the last 90 days unless `--since`) |
 | `jantar messages calls` | missed calls you haven't returned |
 | `jantar messages skip list \| add <name\|chat id> \| remove <name\|chat id>` | the skip list |
+| `jantar messages skip reset [--forget]` | after the reader's salt was lost: skip the same chats again by name ([the salt](#the-skip-list)) |
 | `jantar messages morning [--now \| --dry-run]` | the morning time and last run; `--now` runs it; `--dry-run` shows what it would make and writes nothing (exit 1 when the run failed) |
 
 A time is `2026-11-13` (midnight on this Mac) or `2026-11-13T08:00`.
@@ -312,10 +337,12 @@ sentence.
 | The reader changed in this release | `jantar messages setup`, then add it to Full Disk Access again if you had |
 | WhatsApp for Mac isn't on this Mac, or isn't signed in | install or open WhatsApp and link it |
 | WhatsApp is closed | open it: with WhatsApp closed, the newest messages can't be read |
-| macOS refused WhatsApp's contact files | `jantar messages setup`; if it stays, add the reader to Full Disk Access |
+| WhatsApp's contact files are missing or macOS refused them | open WhatsApp, then `jantar messages setup`; if it stays, add the reader to Full Disk Access. Missing after a WhatsApp update: Messages reads nothing while anything is skipped, until a Jantar update |
 | The iPhone call log isn't readable | optional: add the reader to Full Disk Access (or this Mac has no iPhone call log) |
 | This WhatsApp version stores chats differently | WhatsApp changed how it stores chats: Messages reads nothing rather than read it wrong, until a Jantar update |
-| The skip list file won't open | make `~/.jantar/messages/skip.json` readable again; Messages reads nothing until then |
+| The skip list file won't open or isn't one Messages wrote | make `~/.jantar/messages/skip.json` readable again, or move it aside: messages.db's list is written again (a reset messages.db has none: skip those chats again). Messages reads nothing until then |
+| The reader's salt is gone | `jantar messages skip reset` ([the salt](#the-skip-list)) |
+| Chats skipped before the reader's salt was lost aren't all skipped again yet | `jantar messages skip reset` again; for a chat it can't find, `--forget`, then skip it by hand |
 
 `jantar doctor` shows the reader's line too, while Messages is on.
 

@@ -184,6 +184,7 @@ import type {
   MessagesReadResponse,
   MessagesSearchQuery,
   MessagesSearchResponse,
+  MessagesSkipReset,
   MessagesStatus,
   MessagesTodayResponse,
   MorningRun,
@@ -2598,6 +2599,11 @@ export interface MessagesService extends Service {
     add(chatKey: string, actor: Actor): Promise<LifeResult>;
     /** The Mac's CLI only (`forbidden` for anyone else: a phone never widens what Jantar reads). */
     remove(chatKey: string, actor: Actor): LifeResult;
+    /**
+     * After the reader's salt was lost (`conflict` otherwise): the old keys go and each chat is found again
+     * by its name and kind; reads stay refused until none is left, or `forget`. The Mac's CLI only.
+     */
+    reset(o: { forget?: boolean }, actor: Actor): Promise<LifeResult<MessagesSkipReset>>;
   };
   /** The read log, newest first. */
   reads(limit: number): ReadLogEntry[];

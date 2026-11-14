@@ -12,14 +12,17 @@
  *   and a skipped chat is `not_found`, never `skipped`;
  * - a missing column is `unsupported`; a skip list that won't parse and a
  *   closed WhatsApp (no -wal) are `busy`; a refused ContactsV2 still lets
- *   status answer, and reads refuse; WhatsApp's files are never changed;
- * - keys are stable across restarts and depend on the salt.
+ *   status answer, and reads refuse; so do a missing ContactsV2 or
+ *   LID.sqlite while anything is skipped; WhatsApp's files are never changed;
+ * - keys are stable across restarts and depend on the salt; a salt deleted
+ *   while the reader runs is written again, and one missing at start over
+ *   a skip list that names chats stops the reader rather than make new keys.
  * Lines and chats a test adds are written as WhatsApp would (writeAsWhatsApp).
  * WhatsApp counts as running (whatsAppRunning) unless a test says otherwise.
  * Skipped where Swift can't build the reader (not macOS, no Command Line Tools).
  */
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -525,6 +528,74 @@ describe.skipIf(!reader)('jantar-messages-reader', () => {
     } finally {
       chmodSync(contacts, mode);
     }
+  });
+
+  it('a missing ContactsV2 or LID.sqlite refuses reads while anything is skipped', async () => {
+    for (const file of ['LID.sqlite', 'ContactsV2.sqlite']) {
+      // Gone (a WhatsApp update dropped it): every @lid link it held goes with it.
+      const p = fixture(`gone-${file}`);
+      for (const suffix of ['', '-wal', '-shm']) rmSync(join(p.container, file + suffix), { force: true });
+      const state = join(dir, `s-${file}`);
+      const r = await start({ fixture: p, state });
+      // Nothing skipped: read as before.
+      expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp.contactsOk, file).toBe(true);
+      expect(ReaderChatsSchema.parse(await r.ok('chats', { limit: 50 })).total, file).toBe(5);
+
+      // With a skip, a skipped person's @lid could show in groups and calls: refused, as for a file macOS refuses.
+      writeSkip(state, [keyOf(state, p.jids.ravi)]);
+      expect(ReaderStatusSchema.parse(await r.ok('status')).whatsapp, file).toMatchObject({ found: true, schemaOk: true, contactsOk: false });
+      for (const [op, args] of [
+        ['chats', { limit: 50 }],
+        ['read', { chatKey: keyOf(state, p.jids.group), limit: 50 }],
+        ['waCalls', { since: '2026-11-13T08:00:00.000Z' }],
+      ] as const) {
+        const failed = await r.call(op, args);
+        expect(failed, `${file} ${op}`).toMatchObject({ ok: false, error: 'no_access' });
+        expect(readerSays('no_access', failed.ok ? undefined : failed.detail), `${file} ${op}`).toBe(MESSAGES_SAYS.contacts);
+      }
+      writeSkip(state, []);
+      expect(ReaderChatsSchema.parse(await r.ok('chats', { limit: 50 })).total, file).toBe(5);
+    }
+  });
+
+  it('a lost salt never makes new keys over a skip list', async () => {
+    const state = join(dir, 'kept');
+    const saltFile = join(state, 'salt');
+    const first = await start({ state });
+    const salt = readFileSync(saltFile);
+    writeSkip(state, [keyOf(state, paths.jids.ashaLid)]);
+    expect(ReaderChatsSchema.parse(await first.ok('chats', { limit: 50 })).total).toBe(4);
+
+    // Gone while the reader runs (its folder deleted): written again from memory before the next answer.
+    rmSync(saltFile);
+    expect(ReaderStatusSchema.parse(await first.ok('status')).skipped).toBe(1);
+    expect(readFileSync(saltFile).equals(salt)).toBe(true);
+    expect(statSync(saltFile).mode & 0o777).toBe(0o600);
+    await first.stop();
+    running.splice(running.indexOf(first), 1);
+
+    // Gone while it is stopped: it won't start, since new keys would match nothing the list holds.
+    const run = () =>
+      spawnSync(reader!, ['--container', paths.container, '--phone-db', paths.phoneDb, '--socket', join(dir, 'lost.sock'), '--state', state], {
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+    const lists = [JSON.stringify({ version: 1, chatKeys: [keyOf(state, paths.jids.ravi)] }), '{"version":1,"chatKeys":["c0123'];
+    rmSync(saltFile);
+    for (const list of lists) {
+      writeFileSync(join(state, 'skip.json'), list, { mode: 0o600 });
+      const lost = run();
+      expect(lost.status, list).toBe(1);
+      expect(lost.stderr, list).toContain('the salt is gone and the skip list still lists chats');
+      expect(existsSync(saltFile), list).toBe(false);
+      expect(existsSync(join(dir, 'lost.sock')), list).toBe(false);
+    }
+
+    // The list reset (empty), or none at all: a new salt, and new keys.
+    writeSkip(state, []);
+    const again = await start({ state });
+    expect(readFileSync(saltFile).equals(salt)).toBe(false);
+    expect(ReaderChatsSchema.parse(await again.ok('chats', { limit: 50 })).total).toBe(5);
   });
 
   it('the container is untouched', async () => {

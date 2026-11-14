@@ -8,7 +8,7 @@
 //     -> {"id":1,"ok":true,"data":{…}} | {"id":1,"ok":false,"error":"not_found","detail":"…"}
 //
 //   status                                      {whatsapp: {found, running, schemaOk, contactsOk, newestAt, walMtime},
-//                                                phone: {readable}, skipped, skipOk, version}
+//                                                phone: {readable}, skipped, skipOk, skipUnmatched?, version}
 //   chats      {q?, since?, limit, waiting?}    {chats: [chat (+phone)], total}
 //   read       {chatKey, since?, before?, limit} {chat, messages (oldest first), more}
 //                                                (next page: before = messages[0].at; see read())
@@ -39,15 +39,23 @@
 //   reads answer `unsupported` rather than wrong rows.
 // - WhatsApp's ids never leave: a chat is "c" + 16 hex of HMAC-SHA256(salt,
 //   its id), a message its chat's key + "." + its stanza id. The salt (32
-//   random bytes, <state>/salt, 0600) is made once and never replaced. A
-//   mention (WhatsApp stores "@" + the id's digits) becomes "@" + a name.
+//   random bytes, <state>/salt, 0600) is made once and never replaced:
+//   deleted while the reader runs, it is written again from memory; missing
+//   at start while skip.json names chats (or won't parse), the reader won't
+//   start, since new keys would match none of them. A mention (WhatsApp
+//   stores "@" + the id's digits) becomes "@" + a name.
 // - The skip list (<state>/skip.json, the daemon's) is reloaded when it
 //   changes, checked on every request. A skipped 1:1 hides that person
 //   everywhere: their chats under either id (@lid or number), their lines
 //   in groups ("[skipped]") and mentions of them ("@[skipped]"); a skipped
-//   group hides the group. A skipped chat is `not_found`. A skip list that
-//   won't parse refuses reads (`busy`, status `skipOk: false`) rather than
-//   read everything.
+//   group hides the group. A group sender, a mention, a call's people and
+//   an iPhone number are also matched by their own id's key, so a skip holds
+//   after its 1:1 is gone from WhatsApp. A skipped chat is `not_found`. A
+//   skip list that won't parse refuses reads (`busy`, status `skipOk:
+//   false`) rather than read everything; so does a missing LID.sqlite or
+//   ContactsV2.sqlite while anything is skipped and anyone is named by an
+//   @lid (`no_access`, `contactsOk: false`): their links are what find a
+//   skipped person's @lid.
 // - Status, channels, broadcast lists, removed and hidden chats are left out.
 //   The chat's unsent-draft and last-message-preview columns are never read.
 // - A search runs under a 5 s deadline; a hit is checked again on the line
@@ -97,12 +105,15 @@ let SILENT_TYPES = MESSAGE_KINDS.filter { SILENT_KINDS.contains($0.value) }.map 
 let WHATSAPP_BUNDLE = "net.whatsapp.WhatsApp"
 let USER_SUFFIX = "@s.whatsapp.net"
 let LID_SUFFIX = "@lid"
+let GROUP_SUFFIX = "@g.us"
 let LEFT_OUT_SUFFIXES = ["@broadcast", "@newsletter"]
 let ME = "Me"
 let UNKNOWN = "Unknown"
 let SKIPPED = "[skipped]"
 
 let SALT_BYTES = 32
+/// Why the reader won't start (stderr): `jantar messages skip reset` is the way on.
+let SALT_LOST = "the salt is gone and the skip list still lists chats; nothing is read until the skip list is reset at the Mac: jantar messages skip reset"
 let KEY_HEX = 16
 let STANZA_MAX = 64
 let PHONE_MAX = 20
@@ -277,8 +288,26 @@ func mtime(_ path: String) -> String? {
   return isoUnix(st.st_mtimespec)
 }
 
-/// <state> (0700, made if missing) and its salt: 32 random bytes made once,
-/// published with link() so a second reader never replaces the first's.
+/// `salt` written to `path` (0600) through a temp file and link(), so a
+/// second reader never replaces the first's: true when it is there (EEXIST:
+/// another got there first).
+func publishSalt(_ path: String, _ salt: [UInt8]) -> Bool {
+  let tmp = "\(path).\(getpid()).tmp"
+  let fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+  guard fd >= 0 else { return false }
+  let wrote = write(fd, salt, salt.count)
+  let synced = fsync(fd)
+  close(fd)
+  let linked = wrote == salt.count && synced == 0 ? link(tmp, path) : -1
+  let linkErr = errno
+  unlink(tmp)
+  return linked == 0 || linkErr == EEXIST
+}
+
+/// <state> (0700, made if missing) and its salt: 32 random bytes made once.
+/// Every key on the skip list was made with it: a new one over a list that
+/// names chats (or won't parse) would match none of them, so the reader
+/// stops instead, until the list is reset at the Mac.
 func loadSalt(_ state: String) -> [UInt8] {
   var st = stat()
   if lstat(state, &st) != 0 {
@@ -289,18 +318,12 @@ func loadSalt(_ state: String) -> [UInt8] {
   let path = state + "/salt"
   if lstat(path, &st) != 0 {
     guard errno == ENOENT else { fatal("the salt can't be read") }
+    let skip = SkipList(state)
+    skip.refresh()
+    guard !skip.broken, skip.keys.isEmpty else { fatal(SALT_LOST) }
     var fresh = [UInt8](repeating: 0, count: SALT_BYTES)
     arc4random_buf(&fresh, SALT_BYTES)
-    let tmp = "\(path).\(getpid()).tmp"
-    let fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-    guard fd >= 0 else { fatal("the salt can't be made") }
-    let wrote = write(fd, fresh, SALT_BYTES)
-    let synced = fsync(fd)
-    close(fd)
-    let linked = wrote == SALT_BYTES && synced == 0 ? link(tmp, path) : -1
-    let linkErr = errno
-    unlink(tmp)
-    guard linked == 0 || linkErr == EEXIST else { fatal("the salt can't be made") }
+    guard publishSalt(path, fresh) else { fatal("the salt can't be made") }
   }
   let fd = open(path, O_RDONLY | O_NOFOLLOW)
   guard fd >= 0, fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_uid == getuid(), st.st_size == SALT_BYTES else {
@@ -361,6 +384,12 @@ func userJid(_ raw: String?) -> String? {
   if raw.contains("@") { return nil }
   let digits = String(raw.unicodeScalars.filter { $0.value >= 48 && $0.value <= 57 }.map(Character.init))
   return digits.isEmpty ? nil : digits + USER_SUFFIX
+}
+
+/// `address` (lower case) when it is one of WhatsApp's ids (a person, a group, a list), which never leave the reader.
+func whatsAppId(_ address: String) -> String? {
+  let id = address.lowercased()
+  return ([USER_SUFFIX, LID_SUFFIX, GROUP_SUFFIX] + LEFT_OUT_SUFFIXES).contains { id.hasSuffix($0) } ? id : nil
 }
 
 func lidJid(_ raw: String?) -> String? {
@@ -630,6 +659,10 @@ let WA_CALL_TABLES: [(String, [String])] = [
 ]
 /// The iPhone call log (CallHistory.storedata).
 let PHONE_TABLES: [(String, [String])] = [("ZCALLRECORD", ["ZADDRESS", "ZDATE", "ZDURATION", "ZORIGINATED", "ZANSWERED", "ZCALLTYPE"])]
+/// Read when there: which app logged a call (WhatsApp's are left out).
+let PHONE_PROVIDER: [(String, [String])] = [("ZCALLRECORD", ["ZSERVICE_PROVIDER"])]
+/// Read when there: an address-book contact's own number (CONTACT_TABLES must not need it).
+let CONTACT_PHONE: [(String, [String])] = [("ZWAADDRESSBOOKCONTACT", ["ZPHONENUMBER"])]
 
 /// One line and what it points at, for every query that answers lines
 /// (lineOut reads these columns by index: 0-5 the line, 6-8 its parent,
@@ -682,7 +715,8 @@ final class World {
   var personByKey: [String: String] = [:]
   /// A person -> their 1:1s (indexes in `sessions`, newest first).
   var dmsByPerson: [String: [Int]] = [:]
-  /// Every known number's digits, and its last NUMBER_SUFFIX_DIGITS, -> the person ("<digits>@s.whatsapp.net").
+  /// Every known number's digits, and its last NUMBER_SUFFIX_DIGITS, -> the person ("<digits>@s.whatsapp.net",
+  /// or the @lid of an address-book contact with that number and no WhatsApp id).
   var personByNumber: [String: String] = [:]
   var personBySuffix: [String: String] = [:]
   var ownerDigits: [String] = []
@@ -696,9 +730,15 @@ final class World {
     guard jid.hasSuffix(USER_SUFFIX) else { return }
     let digits = jid.dropLast(USER_SUFFIX.count)
     guard isAsciiDigits(digits) else { return }
-    if personByNumber[String(digits)] == nil { personByNumber[String(digits)] = jid }
+    addNumber(String(digits), of: jid)
+  }
+
+  /// A number's digits (and its last ones) name `person`; the first person a number is given keeps it.
+  func addNumber(_ digits: String, of person: String) {
+    guard (1...PHONE_MAX).contains(digits.count) else { return }
+    if personByNumber[digits] == nil { personByNumber[digits] = person }
     let tail = String(digits.suffix(NUMBER_SUFFIX_DIGITS))
-    if digits.count >= NUMBER_SUFFIX_DIGITS, personBySuffix[tail] == nil { personBySuffix[tail] = jid }
+    if digits.count >= NUMBER_SUFFIX_DIGITS, personBySuffix[tail] == nil { personBySuffix[tail] = person }
   }
 
   /// The person a dialled number is: all its digits, else its last ones; nil for a number nobody has.
@@ -718,12 +758,32 @@ final class World {
   }
 }
 
-/// What the skip list hides: people (by person()) and groups (by jid).
-struct Hidden {
+/// What the skip list hides, for one request: people (by person()) and
+/// groups (by jid) its keys name through a chat or a link, and any id whose
+/// own key, or its person's, is on it (a skipped 1:1 WhatsApp no longer
+/// has). `checked` keeps each id's answer.
+final class Hidden {
   var persons = Set<String>()
   var groups = Set<String>()
+  let keys: Set<String>
+  let key: (String) -> String
+  private var checked: [String: Bool] = [:]
+
+  init(keys: Set<String>, key: @escaping (String) -> String) {
+    self.keys = keys
+    self.key = key
+  }
 
   func hides(_ s: Session, _ w: World) -> Bool { s.type == SESSION_DM ? persons.contains(w.person(s.jid)) : groups.contains(s.jid) }
+
+  /// Whether `id` (a person's WhatsApp id, by number or @lid) is a skipped person's.
+  func hides(person id: String, _ w: World) -> Bool {
+    if let known = checked[id] { return known }
+    let p = w.person(id)
+    let hidden = persons.contains(p) || (!keys.isEmpty && (keys.contains(key(id)) || keys.contains(key(p))))
+    checked[id] = hidden
+    return hidden
+  }
 }
 
 final class SkipList {
@@ -919,11 +979,13 @@ struct WhatsAppOut: Encodable {
 struct PhoneOut: Encodable { let readable: Bool }
 
 /// `skipOk`: false while the skip list won't parse (reads answer `busy`; `skipped` counts the last good one).
+/// `skipUnmatched`: how many of its keys name no chat or person here (left out until a read built the world).
 struct StatusOut: Encodable {
   let whatsapp: WhatsAppOut
   let phone: PhoneOut
   let skipped: Int
   let skipOk: Bool
+  let skipUnmatched: Int?
   let version: Int
 }
 
@@ -1041,6 +1103,8 @@ final class Reader {
   private var world: World?
   private var worldStamp: [Int64] = []
   private var owner: (generation: Int, digits: [String])?
+  /// The ChatStorage open (generation) in which an @lid was seen (linksNeeded).
+  private var lidsSeen = -1
   private var lastSweep = Date.distantPast
 
   init(_ opts: Options, salt: [UInt8]) {
@@ -1060,14 +1124,26 @@ final class Reader {
   func key(_ id: String) -> String { hmacKey(salt, id) }
   func callKey(_ id: String) -> String { hmacKey(salt, "call " + id, prefix: UInt8(ascii: "k")) }
 
-  /// Between requests: idle databases closed, old spool copies deleted (by the real clock, never --now).
+  /// Between requests: idle databases closed, a deleted salt written again,
+  /// old spool copies deleted (by the real clock, never --now).
   func closeIdle() {
     let t = Date()
     for s in [chat, contacts, lid, calls] { s.closeIfIdle(t) }
+    keepSalt()
     if t.timeIntervalSince(lastSweep) > SPOOL_SWEEP_S {
       lastSweep = t
       sweepSpool()
     }
+  }
+
+  /// The salt file gone while the reader runs (it, or the state folder,
+  /// deleted): written again from memory, so the next start keeps the same
+  /// keys. Only into <state> while it is a folder of ours; never over a file.
+  func keepSalt() {
+    let path = opts.state + "/salt"
+    var st = stat()
+    guard lstat(path, &st) != 0, errno == ENOENT, lstat(opts.state, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR, st.st_uid == getuid() else { return }
+    if publishSalt(path, salt) { log("the salt was gone: written again") }
   }
 
   // ---- one request
@@ -1130,8 +1206,11 @@ final class Reader {
   /// optional two (names, and which @lid is which number) never stop an
   /// answer: a missing column there is `schemaOk: false` too, any other
   /// failure `contactsOk: false`, and reads answer that failure rather than
-  /// go on without them (and miss a skipped person's other id). With
-  /// WhatsApp closed (`busy`) the times are null and reads answer `busy`.
+  /// go on without them (and miss a skipped person's other id); so does one
+  /// missing while load() needs it (linksNeeded). With WhatsApp closed
+  /// (`busy`) the times are null and reads answer `busy`. `skipUnmatched`:
+  /// the skip keys naming no chat or person in the last world built (left
+  /// out before the first read).
   func status() throws -> StatusOut {
     skip.refresh()
     var found = false
@@ -1145,8 +1224,10 @@ final class Reader {
       found = true
       schemaOk = true
       var closed = false
+      var chatDb: Database?
       do {
-        if let db = try chat.get() {
+        chatDb = try chat.get()
+        if let db = chatDb {
           let s = try db.prepare("SELECT max(ZMESSAGEDATE) FROM ZWAMESSAGE")
           if try s.step(), !s.isNull(0) { newest = isoApple(s.double(0)) }
         }
@@ -1158,7 +1239,7 @@ final class Reader {
       }
       for source in [contacts, lid] where !closed {
         do {
-          _ = try source.get()
+          if try source.get() == nil, let db = chatDb, (try? linksNeeded(db)) ?? true { contactsOk = false }
         } catch let f as Failure where f.code == "unsupported" {
           schemaOk = false
         } catch {
@@ -1172,7 +1253,28 @@ final class Reader {
       phone: PhoneOut(readable: phoneReadable()),
       skipped: skip.keys.count,
       skipOk: !skip.broken,
+      skipUnmatched: world.map { w in skip.keys.filter { w.byKey[$0] == nil && w.personByKey[$0] == nil }.count },
       version: READER_VERSION)
+  }
+
+  /// Whether a missing LID.sqlite or ContactsV2.sqlite must stop reads:
+  /// something is skipped and WhatsApp names someone by an @lid (a 1:1, a
+  /// group member, a call's people), whom only those files link to a
+  /// number. Found once per open of ChatStorage when it is so.
+  func linksNeeded(_ db: Database) throws -> Bool {
+    guard !skip.keys.isEmpty else { return false }
+    if lidsSeen == chat.generation { return true }
+    let q = try db.prepare("""
+      SELECT EXISTS (SELECT 1 FROM ZWAGROUPMEMBER WHERE ZMEMBERJID LIKE '%\(LID_SUFFIX)')
+          OR EXISTS (SELECT 1 FROM ZWACHATSESSION WHERE ZCONTACTJID LIKE '%\(LID_SUFFIX)')
+      """)
+    var seen = try q.step() && q.int(0) == 1
+    if !seen, let callsDb = try? calls.get() {
+      let c = try callsDb.prepare("SELECT EXISTS (SELECT 1 FROM ZWACDCALLEVENTPARTICIPANT WHERE ZJIDSTRING LIKE '%\(LID_SUFFIX)')")
+      seen = try c.step() && c.int(0) == 1
+    }
+    if seen { lidsSeen = chat.generation }
+    return seen
   }
 
   /// NSWorkspace's list is kept current by the main run loop, so it is read there.
@@ -1202,6 +1304,10 @@ final class Reader {
     guard let chatDb = try chat.get() else { throw Failure("no_access") }
     let contactsDb = try contacts.get()
     let lidDb = try lid.get()
+    if contactsDb == nil || lidDb == nil, try linksNeeded(chatDb) {
+      // As if macOS refused it: without its links a skipped person's @lid would show.
+      throw Failure("no_access", "\(((contactsDb == nil ? contacts : lid).path as NSString).lastPathComponent) isn't there, and the skip list needs it")
+    }
     let chatV = try chatDb.dataVersion()
     let contactsV = try contactsDb?.dataVersion() ?? -1
     let lidV = try lidDb?.dataVersion() ?? -1
@@ -1214,7 +1320,7 @@ final class Reader {
       world = w
       worldStamp = stamp
     }
-    var hide = Hidden()
+    let hide = Hidden(keys: skip.keys, key: self.key)
     for k in skip.keys {
       if let i = w.byKey[k] {
         let s = w.sessions[i]
@@ -1236,14 +1342,18 @@ final class Reader {
     }
     var named: [(String, String)] = []
     var numbers: [String] = []
+    // The address book's own number for a contact, by WhatsApp id (else @lid): after WhatsApp's ids, for the iPhone call log.
+    var booked: [(digits: String, id: String)] = []
     if let contactsDb {
-      let s = try contactsDb.prepare("SELECT ZWHATSAPPID, ZLID, ZFULLNAME FROM ZWAADDRESSBOOKCONTACT")
+      let phone = try contactsDb.missingColumns(CONTACT_PHONE).isEmpty ? "ZPHONENUMBER" : "NULL"
+      let s = try contactsDb.prepare("SELECT ZWHATSAPPID, ZLID, ZFULLNAME, \(phone) FROM ZWAADDRESSBOOKCONTACT")
       while try s.step() {
         let u = userJid(s.text(0))
         let l = lidJid(s.text(1))
         if let u, let l, w.lidToUser[l] == nil { w.lidToUser[l] = u }
         if let u { numbers.append(u) }
         if let name = nonEmpty(s.text(2)), let id = u ?? l { named.append((id, name)) }
+        if let raw = s.text(3), let id = u ?? l { booked.append((digitsIn(raw), id)) }
       }
     }
     for (id, name) in named where w.contactNames[w.person(id)] == nil { w.contactNames[w.person(id)] = name }
@@ -1285,6 +1395,7 @@ final class Reader {
       w.personByKey[key(u)] = u
     }
     for u in numbers + w.lidToUser.values.sorted() { w.addNumber(u) }
+    for b in booked { w.addNumber(b.digits, of: w.person(b.id)) }
     w.ownerDigits = try ownerDigits(chatDb)
     return w
   }
@@ -1409,8 +1520,8 @@ final class Reader {
         me = true
         who = ME
       } else {
-        let people = [w.person(digits + LID_SUFFIX), w.person(digits + USER_SUFFIX)]
-        who = people.contains(where: { hide.persons.contains($0) }) ? SKIPPED : people.compactMap(name).first ?? UNKNOWN
+        let ids = [digits + LID_SUFFIX, digits + USER_SUFFIX]
+        who = ids.contains(where: { hide.hides(person: $0, w) }) ? SKIPPED : ids.map { w.person($0) }.compactMap(name).first ?? UNKNOWN
       }
       out.append(contentsOf: who.unicodeScalars)
     }
@@ -1504,7 +1615,7 @@ final class Reader {
         sender = s.name
       } else if let memberJid = q.text(15) {
         let person = w.person(memberJid)
-        if hide.persons.contains(person) {
+        if hide.hides(person: memberJid, w) {
           return MessageOut(msgKey: mk, at: at, fromMe: false, sender: SKIPPED, kind: "other", skippedSender: true)
         }
         sender = senderName(person, contact: q.text(16), first: q.text(17), w) ?? UNKNOWN
@@ -1815,9 +1926,10 @@ final class Reader {
     while try q.step() {
       let ids = { (i: Int32) in (q.text(i) ?? "").split(separator: " ").map(String.init) }
       // The owner starts every outgoing call: never hidden by a skipped "Message yourself" chat.
-      if ids(8).filter({ !w.isOwner($0) }).contains(where: { hide.persons.contains(w.person($0)) }) { continue }
+      if ids(8).filter({ !w.isOwner($0) }).contains(where: { hide.hides(person: $0, w) }) { continue }
+      let others = ids(9).filter { !w.isOwner($0) }
       // Each person once (either id), by id so `who` reads the same every time.
-      let people = Set(ids(9).filter { !w.isOwner($0) }.map { w.person($0) }).sorted()
+      let people = Set(others.map { w.person($0) }).sorted()
       let who: String
       var chatKey: String?
       if let group = nonEmpty(q.text(7)) {
@@ -1825,7 +1937,7 @@ final class Reader {
         who = w.sessions[i].name
         chatKey = w.sessions[i].key
       } else {
-        guard !people.isEmpty, !people.contains(where: { hide.persons.contains($0) }) else { continue }
+        guard !people.isEmpty, !others.contains(where: { hide.hides(person: $0, w) }) else { continue }
         who = people.map { personName($0, w) }.joined(separator: ", ")
         if people.count == 1 { chatKey = dmKey(people[0], w, hide) }
       }
@@ -1839,8 +1951,12 @@ final class Reader {
   /// The iPhone call log from `since`, oldest first. It needs Full Disk
   /// Access on the reader (`no_access` until then) and is never kept open;
   /// WhatsApp's own store too (names, and who is skipped). A number is
-  /// matched to a person through WhatsApp's ids (the address book's, the
-  /// chats'); `who` is then their name, else the number.
+  /// matched to a person through WhatsApp's ids (the address book's, its
+  /// numbers, the chats'); `who` is then their name, else the number. Rows
+  /// WhatsApp logged (its service provider) are left out: waCalls has those
+  /// calls. An address that is a WhatsApp id is matched the same way and
+  /// never shown (a person nobody names is "Unknown"); any other address
+  /// (a FaceTime call by email) is shown as it is, and no skip can match it.
   func phoneCalls(since: Int64) throws -> CallsOut {
     let (w, hide) = try load()
     switch fileState(opts.phoneDb) {
@@ -1859,19 +1975,39 @@ final class Reader {
     }
     let missing = try db.missingColumns(PHONE_TABLES)
     guard missing.isEmpty else { throw Failure("unsupported", "the iPhone call log lacks \(missing.prefix(3).joined(separator: ", "))") }
+    let byProvider = try db.missingColumns(PHONE_PROVIDER).isEmpty
     let q = try db.prepare("""
       SELECT ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED, ZCALLTYPE FROM ZCALLRECORD
-      WHERE ZDATE >= ? AND ZDATE * 1000 >= ? ORDER BY ZDATE DESC LIMIT ?
+      WHERE ZDATE >= ? AND ZDATE * 1000 >= ?\(byProvider ? " AND coalesce(ZSERVICE_PROVIDER, '') NOT LIKE '%whatsapp%'" : "")
+      ORDER BY ZDATE DESC LIMIT ?
       """).bind(indexBound(since), since, CALLS_MAX)
     var out: [CallOut] = []
     while try q.step() {
-      let address = q.text(0) ?? ""
-      let p = w.person(number: address)
-      if let p, hide.persons.contains(p) { continue }
+      let raw = q.text(0) ?? ""
+      let address = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+      let who: String
+      var chatKey: String?
+      if let id = whatsAppId(address) {
+        if id.hasSuffix(GROUP_SUFFIX) {
+          guard let i = w.byKey[key(id)], w.sessions[i].shown, !hide.hides(w.sessions[i], w) else { continue }
+          who = w.sessions[i].name
+          chatKey = w.sessions[i].key
+        } else {
+          guard id.hasSuffix(USER_SUFFIX) || id.hasSuffix(LID_SUFFIX), !hide.hides(person: id, w) else { continue }
+          who = personName(w.person(id), w)
+          chatKey = dmKey(w.person(id), w, hide)
+        }
+      } else {
+        let p = w.person(number: address)
+        // Its own number's key too: a skipped person whose 1:1 is gone.
+        if let p, hide.hides(person: p, w) { continue }
+        if let own = userJid(address), hide.hides(person: own, w) { continue }
+        who = p.map { personName($0, w) } ?? formatNumber(address)
+        chatKey = p.flatMap { dmKey($0, w, hide) }
+      }
       let incoming = q.int(3) == 0
-      out.append(CallOut(callKey: callKey("phone \(address) \(appleMs(q.double(1)))"), at: isoApple(q.double(1)),
-                         who: p.map { personName($0, w) } ?? formatNumber(address), chatKey: p.flatMap { dmKey($0, w, hide) }, via: "phone",
-                         incoming: incoming, missed: incoming && q.int(4) == 0, video: Int(q.int(5)) == PHONE_CALL_VIDEO,
+      out.append(CallOut(callKey: callKey("phone \(raw) \(appleMs(q.double(1)))"), at: isoApple(q.double(1)), who: who, chatKey: chatKey,
+                         via: "phone", incoming: incoming, missed: incoming && q.int(4) == 0, video: Int(q.int(5)) == PHONE_CALL_VIDEO,
                          durationS: max(0, q.double(2))))
     }
     return CallsOut(calls: out.reversed())

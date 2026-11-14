@@ -2433,10 +2433,13 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   Origin on a write. A person's credential (0.11's People) gets 404 with
   an empty body on her host and the same answer as no credential on his;
   the People isolation suites run every Messages route. A phone can add a
-  skip but never remove one (403, and the service refuses any caller but
-  the Mac's control socket), so a stolen phone can't widen what Jantar
-  reads. A picture shown on the phone counts against the device's byte
-  budget, checked before the reader or `jantar-media` run. A 1:1's own
+  skip but never remove one through Messages (403, and the service refuses
+  any caller but the Mac's control socket), nor reset the list. A stolen
+  phone with terminal control can still drive a Claude session on the Mac,
+  and that session can (`jantard --no-terminal` or `--read-only` close
+  that; listed under accepted risks below). A picture shown on the phone
+  counts against the device's byte budget, checked before the reader or
+  `jantar-media` run. A 1:1's own
   number (`phone`, for Open in WhatsApp) goes to the phone only.
 - **The Mac's control socket.** `jantar messages` and `jantar mcp` use
   `ctl.sock`, which answers any process running as the owner, a Claude
@@ -2474,8 +2477,16 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   request. A skipped 1:1 hides that person everywhere: their chats under
   either WhatsApp id, their calls, their lines in groups (`[skipped]`, no
   text, no picture) and mentions of them. A skipped group hides the group.
-  A request naming a skipped chat answers `not_found`, the same as a chat
+  A group sender, a mention, a call's people and an iPhone number are also
+  matched by their own id's key, so a skip holds after the 1:1 is deleted
+  in WhatsApp; status counts the keys that name no chat on the Mac. A
+  request naming a skipped chat answers `not_found`, the same as a chat
   that isn't there, so a skip is never confirmed.
+- **The iPhone call log.** A number is matched to a person through
+  WhatsApp's ids and the address book's numbers. Rows WhatsApp logged
+  there are left out (its own call list has them), and an address that is
+  a WhatsApp id is matched the same way and never shown. A FaceTime call
+  by Apple ID (an email) shows as that address: no skip can match it.
 - **What the morning made from it goes too.** In the skip's own
   transaction its open reply drafts are dismissed, a run that sent the
   chat to Claude loses its summary and every report its left-out line;
@@ -2487,17 +2498,35 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   the group, so they stay until removed in Life.
 - **It fails closed.** Reads are refused until `skip.json` has been
   written since messages.db opened; a `skip.json` that won't parse makes
-  the reader refuse reads; one that won't open is never written over, and
-  reads stay refused until it opens. A new or reset messages.db takes in
-  every key `skip.json` lists, so a reset never empties the list.
+  the reader refuse reads. One that won't open or breaks the reader's
+  rules (not a regular file of the owner's, too large, not JSON, another
+  version, not a list, one bad key) is never written over, and reads stay
+  refused until it is fixed or moved aside at the Mac. A new or reset
+  messages.db takes in every key `skip.json` lists; only a missing
+  `skip.json` is an empty list, so a reset never empties the list. While
+  anything is skipped and WhatsApp names anyone by an `@lid`, a missing
+  `LID.sqlite` or `ContactsV2.sqlite` refuses reads as an unreadable one
+  does, since its links are what find a skipped person's `@lid`.
+- **The salt.** Every key is made from the salt. Deleted while the reader
+  runs, it is written again from memory. Missing when the reader starts
+  while `skip.json` names chats (or won't parse), the reader won't start:
+  new keys would match none of them. Status says so, and only
+  `jantar messages skip reset` at the Mac (refused over TCP and to any
+  caller but the CLI) goes on: it drops the old keys, lets the reader make
+  a new salt, and skips again every chat with each old entry's name and
+  kind. Reads stay refused while any entry isn't found, until the owner
+  lets it go (`--forget`).
 - **Known gaps.** In groups and calls WhatsApp names many people by an
   `@lid` id; the reader links it to their number through WhatsApp's
   `LID.sqlite` and `ContactsV2.sqlite`. Some `@lid`s have no link there
   (measured on a real Mac: mostly silent members of big groups, a few
   senders and call participants). A skipped person whose `@lid` isn't
-  linked shows by name in groups and calls. And every key is made from
-  the salt: a deleted salt makes new keys, and the old list matches
-  nothing (setup never touches the salt).
+  linked shows by name in groups and calls. A reset after a lost salt
+  finds chats by name: a chat renamed since it was skipped isn't found,
+  and the owner lets it go and skips it by hand. The salt and `skip.json`
+  both deleted while the reader is stopped, or messages.db moved to a Mac
+  with another salt, still make new keys under the old list without a
+  word; status then counts every skip as naming no chat.
 
 ### What leaves the Mac
 
@@ -2568,21 +2597,28 @@ such a line and anything that happens:
   bind it ([who can read](#who-can-read-anything-running-as-you)).
 - Full Disk Access on the reader reaches beyond the call log until the
   reader refuses other folders ([the grant](#the-reader-and-full-disk-access)).
+- A paired phone with terminal control can type into a Claude session on
+  the Mac, and that session can remove a skip or read WhatsApp's files
+  itself. `jantard --no-terminal` or `--read-only` close that.
 - A skipped person whose `@lid` WhatsApp never linked to a number still
-  shows in groups and calls.
+  shows in groups and calls, and a FaceTime call by email in the iPhone
+  call log can't be matched to a skipped person.
 - People without a name show by their number in Claude sessions.
 - An item citing a real line is made as the model wrote it; the morning
   run's answer is never more than drafts, reminders and todos he acts on.
 
 Pinned by `packages/daemon/test/messages/reader.test.ts` and
 `reader-more.test.ts` (the real reader on a synthetic WhatsApp: the skip
-list across chats, groups, calls, search and pictures; a missing column
-answers unsupported; WhatsApp's files unchanged while a second connection
-writes; ids that never leave; the peer-uid check), `service.test.ts` (the
-read log holds ids and counts only; the skip list's mirror fails closed
-and survives a reset), `test/api/messages-routes.test.ts` (the switch,
+list across chats, groups, calls, search and pictures, a skipped person's
+picture in a shared group, after the 1:1 is deleted, and in the iPhone
+call log; a missing column answers unsupported; a missing link file and a
+lost salt fail closed; WhatsApp's files unchanged while a second
+connection writes; ids that never leave), `service.test.ts` (the read log
+holds ids and counts only; the skip list's mirror fails closed, survives
+a reset and is never emptied over a file the reader would refuse; the
+reset after a lost salt), `test/api/messages-routes.test.ts` (the switch,
 the 503 sentences, no `phone` over `ctl.sock`, the phone's refused skip
-removal, audit rows by target id, the People isolation),
+removal and reset, audit rows by target id, the People isolation),
 `morning-run.test.ts` (no tools, made-up refs dropped, an injected line
 stays inside its `<m>`), `morning-apply.test.ts` (the mark, and Chat's
 framing and taint), `morning-timer.test.ts` (a skip takes the morning's
@@ -2591,4 +2627,6 @@ drafts, todos, call-backs and summary from view, and stops a run going),
 headers), `mcp.test.ts` (`todos_here` frames a WhatsApp todo) and
 `mcp-install.test.ts` with
 `packages/daemon/test/hooks/ask-rules.test.ts` (the ask rules, the
-guarded write).
+guarded write). The peer-uid check is verified by source inspection
+only: `reader.test.ts` checks that the reader calls `getpeereid` and
+compares with its own uid, since a test can't connect as another user.

@@ -193,6 +193,8 @@ export const MessagesStatusSchema = z.object({
   /** The iPhone call log (it needs Full Disk Access on the reader; WhatsApp's files don't). */
   phone: z.object({ readable: z.boolean() }),
   skipped: count,
+  /** Skipped chats that name no chat or person on this Mac now (the skip still holds for that person's own ids); left out until the reader has looked. */
+  skipUnmatched: count.optional(),
   morning: z.object({ at: HhMmSchema.nullable(), lastRunAt: IsoDateSchema.nullable() }),
 });
 export type MessagesStatus = z.infer<typeof MessagesStatusSchema>;
@@ -239,6 +241,22 @@ export const SkipAddBodySchema = z.strictObject({ chatKey: ChatKeySchema });
 export type SkipAddBody = z.infer<typeof SkipAddBodySchema>;
 export const MessagesSkipListSchema = z.object({ skip: z.array(SkipEntrySchema) });
 export type MessagesSkipList = z.infer<typeof MessagesSkipListSchema>;
+/** `forget`: stop looking for the chats not found again (reads start again; skip them by hand at once). */
+export const SkipResetBodySchema = z.strictObject({ forget: z.boolean().optional() });
+export type SkipResetBody = z.infer<typeof SkipResetBodySchema>;
+/**
+ * After the reader's salt was lost: `skipped`, the chats found again by the
+ * old entries' names and kinds (every chat with that exact name, so a shared
+ * name skips each); `left`, the entries not found yet (reads stay refused
+ * while any is left); `waiting`, the reader hasn't come back with its new
+ * salt yet (ask again).
+ */
+export const MessagesSkipResetSchema = z.object({
+  skipped: z.array(SkipEntrySchema),
+  left: z.array(z.object({ name: z.string(), kind: ChatKindSchema })),
+  waiting: z.boolean(),
+});
+export type MessagesSkipReset = z.infer<typeof MessagesSkipResetSchema>;
 
 // ---------------------------------------------------------------------------
 // The morning run: its times, reply drafts, run reports and the read log
@@ -423,7 +441,8 @@ function route<T extends RouteDef>(r: T): T {
  * On ctl.sock only what the CLI and `jantar mcp` need: the status, reads,
  * search, media, calls, the skip list and Run now. Every read is logged
  * (ids and counts only). Removing a skip widens what Jantar reads, so its
- * handler refuses it over TCP: the Mac's CLI only.
+ * handler refuses it over TCP: the Mac's CLI only; so is the reset after a
+ * lost salt.
  */
 export const MESSAGES_ROUTES = {
   messagesStatus: route({
@@ -475,6 +494,11 @@ export const MESSAGES_ROUTES = {
     method: 'DELETE', path: '/v1/messages/skip/:chatKey', scope: 'control', phase: 'v0.15', ctl: true, feature: 'messages',
     params: ChatKeyParamsSchema, response: OkReplySchema,
     summary: 'Read a skipped chat again (the Mac only: refused over TCP).',
+  }),
+  messagesSkipReset: route({
+    method: 'POST', path: '/v1/messages/skip/reset', scope: 'control', phase: 'v0.15', ctl: true, feature: 'messages',
+    body: SkipResetBodySchema, response: MessagesSkipResetSchema,
+    summary: "After the reader's salt was lost: drop the old keys and skip the same chats again by name (the Mac only: refused over TCP).",
   }),
   messagesToday: route({
     method: 'GET', path: '/v1/messages/today', scope: 'control', phase: 'v0.15', ctl: false, feature: 'messages',

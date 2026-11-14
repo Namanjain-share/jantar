@@ -79,6 +79,10 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   stops. A phone can add a skip but never remove one: that is
   `jantar messages skip remove` at the Mac.
   A person WhatsApp never linked to a number can still show in groups.
+  It fails closed: a skip list file the reader would refuse is never
+  written over, a missing contact file stops reads while anything is
+  skipped, and if the reader's salt is lost it won't start until
+  `jantar messages skip reset` skips the same chats again by name.
 - **At the Mac**: `jantar messages chats`, `read`, `search`, `calls`,
   `skip` and `morning`. A name two chats share lists both and stops.
 - In Chat, todos the morning made are someone else's words: Chat reads them

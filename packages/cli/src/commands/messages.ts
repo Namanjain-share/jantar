@@ -26,7 +26,9 @@
  * - `skip list | add | remove <name|chat id>`: a name resolves through the
  *   chats (add) or the skip list (remove), exact names first; one that
  *   matches several chats, or more chats than one list holds, lists them
- *   and exits 2, never one picked.
+ *   and exits 2, never one picked. `skip reset [--forget]`: after the
+ *   reader's salt was lost, the same chats skipped again by name; one not
+ *   found keeps Messages from reading (exit 1) until `--forget`.
  * - `morning [--now | --dry-run]`: the morning pass now, and what it made
  *   (counts, the chats left out for size); a dry run also prints what it
  *   would make as a table (todo titles, who to call back and when, each
@@ -43,6 +45,7 @@ import { dirname, join } from 'node:path';
 import { ensureStateDirs, socketPathOk } from '@jantar/daemon';
 import { dataNote } from '@jantar/daemon/chat/text';
 import { READER_SOURCE, readerSourceKey } from '@jantar/daemon/messages/reader-protocol';
+import { MESSAGES_SAYS } from '@jantar/daemon/messages/says';
 import { MESSAGES_LIMITS, buildPath } from '@jantar/protocol';
 import {
   ChatKeySchema,
@@ -55,6 +58,7 @@ import {
   type MessagesReadResponse,
   type MessagesSearchResponse,
   type MessagesSkipList,
+  type MessagesSkipReset,
   type MessagesStatus,
   type MorningPreview,
   type MorningRun,
@@ -89,6 +93,8 @@ const BUILD_MS = 600_000;
 const BUILD_OUTPUT_MAX = 256 * 1024;
 /** The reader's reads can take its own 10 s deadline; ctl's default would give up first. */
 const READ_TIMEOUT_MS = 20_000;
+/** A reset looks for each skipped chat by name: a few reads. */
+const RESET_TIMEOUT_MS = 60_000;
 /** A run may take the morning's whole timeout, plus the reader's reads. */
 const MORNING_TIMEOUT_MS = MESSAGES_LIMITS.morningTimeoutMs + 60_000;
 /** The most chats a name is matched against. */
@@ -109,6 +115,7 @@ const FLAGS = {
   limit: { type: 'number', help: 'chats, read, search: how many' },
   now: { type: 'boolean', help: 'morning: run the morning pass now' },
   'dry-run': { type: 'boolean', help: 'morning: show what it would make and write nothing' },
+  forget: { type: 'boolean', help: "skip reset: stop looking for the chats it couldn't find again (reads start again)" },
 } as const;
 
 type Flags = ParsedArgs<typeof FLAGS>['flags'];
@@ -286,7 +293,7 @@ async function status(ctx: CliContext): Promise<number> {
       `Reader: ${readerText(st)}\n` +
       `WhatsApp: ${whatsappText(st, now)}\n` +
       `Full Disk Access: ${fdaText(ctx, st)}\n` +
-      `Skipped chats: ${st.skipped}\n` +
+      `Skipped chats: ${st.skipped}${st.skipUnmatched ? ` (${st.skipUnmatched} ${st.skipUnmatched === 1 ? 'names' : 'name'} no chat on this Mac now; check them: jantar messages skip list)` : ''}\n` +
       `Morning run: ${morningText(st, now)}\n`,
   );
   return EXIT.ok;
@@ -400,7 +407,8 @@ async function waitForReader(ctx: CliContext): Promise<MessagesStatus | null> {
       if (e instanceof CtlUnavailableError) return null;
       throw e;
     }
-    if (st.reader.state === 'ok' || SETTLED.has(st.reader.state) || !(ctx.deps.now() < until)) return st;
+    // A lost salt: the reader won't start until the skip list is reset.
+    if (st.reader.state === 'ok' || SETTLED.has(st.reader.state) || st.reader.detail === MESSAGES_SAYS.saltLost || !(ctx.deps.now() < until)) return st;
     await ctx.deps.sleep(SETUP_POLL_MS);
   }
 }
@@ -580,7 +588,7 @@ function skippedChat(ctx: CliContext, which: string, list: MessagesSkipList['ski
   return { ok: true, chatKey: one.chatKey, name: one.name };
 }
 
-async function skip(ctx: CliContext, rest: readonly string[]): Promise<number> {
+async function skip(ctx: CliContext, rest: readonly string[], flags: Flags): Promise<number> {
   const [sub, ...args] = rest;
   const list = () => get<MessagesSkipList>(ctx, MESSAGES_ROUTES.messagesSkipList.path);
   switch (sub) {
@@ -618,9 +626,52 @@ async function skip(ctx: CliContext, rest: readonly string[]): Promise<number> {
       ctx.io.out(`Removed "${clip(picked.name ?? picked.chatKey, 60)}" from the skip list: Messages reads it again.\n`);
       return EXIT.ok;
     }
+    case 'reset':
+      if (args.length) throw new UsageError('skip reset takes no chat');
+      return skipReset(ctx, flags.forget === true);
     default:
-      throw new UsageError(`unknown skip action "${clip(sub, 20)}" (list, add or remove)`);
+      throw new UsageError(`unknown skip action "${clip(sub, 20)}" (list, add, remove or reset)`);
   }
+}
+
+/**
+ * After the reader's salt was lost: the daemon drops the old keys, the
+ * reader starts again with a new salt (launchd, within seconds), and each
+ * chat is skipped again by its name. Asked again while the reader is coming
+ * back (two minutes at most). Chats not found keep Messages from reading
+ * until `--forget`.
+ */
+async function skipReset(ctx: CliContext, forget: boolean): Promise<number> {
+  const ask = () =>
+    callDaemon<MessagesSkipReset>(ctx.ctl, 'POST', MESSAGES_ROUTES.messagesSkipReset.path, forget ? { forget: true } : {}, {
+      idempotencyKey: ctx.deps.randomId(),
+      timeoutMs: RESET_TIMEOUT_MS,
+    });
+  let r = await ask();
+  const until = ctx.deps.now() + SETUP_WAIT_MS;
+  while (r.waiting && ctx.deps.now() < until) {
+    await ctx.deps.sleep(SETUP_POLL_MS);
+    r = await ask();
+  }
+  for (const e of r.skipped) ctx.io.out(`Skipped again: "${clip(e.name, 60)}" (${e.kind})\n`);
+  if (forget) {
+    ctx.io.out('Messages reads again. Skip any chat it must not read now: jantar messages skip add <name|chat id>\n');
+    return EXIT.ok;
+  }
+  if (r.waiting) {
+    ctx.io.err(`jantar messages: the reader hasn't started again yet (its errors: ${readerLogPaths(ctx.paths).stderr}). Run jantar messages skip reset again in a minute.\n`);
+    return EXIT.failed;
+  }
+  if (r.left.length > 0) {
+    const names = r.left.map((e) => `"${clip(e.name, 60)}" (${e.kind})`).join(', ');
+    ctx.io.err(
+      `jantar messages: not found by name: ${names}. Messages reads nothing until they are skipped again. ` +
+        'If they are gone or renamed: jantar messages skip reset --forget, then skip them at once: jantar messages skip add <name|chat id>\n',
+    );
+    return EXIT.failed;
+  }
+  ctx.io.out('The skip list matches its chats again, and Messages reads.\n');
+  return EXIT.ok;
 }
 
 // ------------------------------------------------------------------ morning
@@ -700,7 +751,7 @@ export default defineCommand(
   {
     name: 'messages',
     summary: 'Messages: your WhatsApp for Claude sessions, the phone and the morning run. On or off, setup, read, skip.',
-    usage: 'jantar messages [on | off | status | setup | chats | read <name|chat id> | search <words> | calls | skip [list | add | remove] <name|chat id> | morning]',
+    usage: 'jantar messages [on | off | status | setup | chats | read <name|chat id> | search <words> | calls | skip [list | add | remove] <name|chat id> | skip reset [--forget] | morning]',
     owner: 'WP-MESSAGES',
     help:
       '  messages | messages status     on or off, the reader, WhatsApp, Full Disk Access, skipped chats, the morning run\n' +
@@ -713,6 +764,7 @@ export default defineCommand(
       '  messages calls                 missed WhatsApp and phone calls you haven\'t returned\n' +
       '  messages skip list | add <name|chat id> | remove <name|chat id>\n' +
       '                                 chats Messages never reads; a 1:1 skips that person everywhere\n' +
+      "  messages skip reset [--forget]  after the reader's salt was lost: skip the same chats again by name\n" +
       '  messages morning [--now | --dry-run]\n' +
       '                                 the morning pass now (--dry-run shows what it would make and writes nothing)\n' +
       'A name two chats share lists both (exit 2): say which by its id. Nothing is ever sent to WhatsApp.',
@@ -751,8 +803,8 @@ export default defineCommand(
         if (rest.length) throw new UsageError('calls takes no argument');
         return calls(ctx);
       case 'skip':
-        only(flags, action, []);
-        return skip(ctx, rest);
+        only(flags, action, rest[0] === 'reset' ? ['forget'] : []);
+        return skip(ctx, rest, flags);
       case 'morning':
         only(flags, action, ['now', 'dry-run']);
         if (rest.length) throw new UsageError('morning takes no argument');

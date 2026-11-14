@@ -18,7 +18,8 @@ import { resolvePaths, type Paths } from '@jantar/daemon';
 import { onCommand, type ExecHandler } from '@jantar/daemon/core/testing';
 import { READER_SOURCE, readerSourceKey } from '@jantar/daemon/messages/reader-protocol';
 import { makeFakeHome, type FakeHome } from '@jantar/fixtures';
-import type { Chat, MessagesReadResponse, MessagesStatus, MorningRun, SkipEntry } from '@jantar/protocol/messages';
+import { MESSAGES_SAYS } from '@jantar/daemon/messages/says';
+import type { Chat, MessagesReadResponse, MessagesSkipReset, MessagesStatus, MorningRun, SkipEntry } from '@jantar/protocol/messages';
 import messages, { FDA_PANE, MESSAGES_DATA_NOTE, SETUP_POLL_MS, SETUP_WAIT_MS } from '../src/commands/messages.js';
 import { doctorReport } from '../src/commands/doctor.js';
 import { EXIT } from '../src/command.js';
@@ -235,6 +236,18 @@ describe('jantar messages', () => {
       expect(never.io.stderr).toContain(join(paths.logsDir, 'messages-reader.err.log'));
     });
 
+    it('stops waiting at once when the reader lost its salt, and says how to reset', async () => {
+      await builtReader();
+      let asked = 0;
+      const { ctx, io } = setupCtx(() => {
+        asked += 1;
+        return ok(readerStatus({ reader: { state: 'down', detail: MESSAGES_SAYS.saltLost } }));
+      });
+      expect(await messages.run(['setup'], ctx)).toBe(EXIT.failed);
+      expect(asked).toBe(1);
+      expect(io.stderr).toContain('jantar messages skip reset');
+    });
+
     it("stops waiting at once when waiting can't help: no access, unsupported, update needed, not installed", async () => {
       await builtReader();
       for (const state of ['no_access', 'unsupported', 'update_needed', 'not_installed'] as const) {
@@ -350,6 +363,36 @@ describe('jantar messages', () => {
       expect(await messages.run(['skip', 'remove', 'Ravi'], ctx)).toBe(EXIT.failed);
       expect(io.stderr).toContain('skip list');
     });
+
+    it('skip reset waits for the reader to start again, says which chats it skipped again and which are left', async () => {
+      const answers: MessagesSkipReset[] = [
+        // The old keys gone; the reader starting with its new salt.
+        { skipped: [], left: [{ name: 'Asha Test', kind: 'dm' }, { name: 'Ravi Test', kind: 'dm' }], waiting: true },
+        { skipped: [{ chatKey: ASHA, name: 'Asha Test', kind: 'dm', addedAt: AT }], left: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false },
+      ];
+      const bodies: unknown[] = [];
+      const ctl = fakeCtl({
+        'POST /v1/messages/skip/reset': (call) => {
+          bodies.push(call.body);
+          return ok(answers.shift() ?? { skipped: [], left: [], waiting: false });
+        },
+      });
+      const { ctx, io } = contextFor(home, { ctl, paths });
+      expect(await messages.run(['skip', 'reset'], ctx)).toBe(EXIT.failed);
+      expect(bodies).toEqual([{}, {}]);
+      expect(io.stdout).toContain('Skipped again: "Asha Test"');
+      expect(io.stderr).toContain('"Ravi Test"');
+      expect(io.stderr).toContain('jantar messages skip reset --forget');
+
+      // Let go: reads start again, and the owner is told to skip by hand at once.
+      const f = contextFor(home, { ctl, paths });
+      expect(await messages.run(['skip', 'reset', '--forget'], f.ctx), f.io.stderr).toBe(EXIT.ok);
+      expect(bodies.at(-1)).toEqual({ forget: true });
+      expect(f.io.stdout).toContain('jantar messages skip add');
+      // Only the reset takes it.
+      expect(await messages.run(['skip', 'list', '--forget'], f.ctx)).toBe(EXIT.usage);
+      expect(f.io.stderr).toContain('--forget');
+    });
   });
 
   describe('reading', () => {
@@ -405,6 +448,13 @@ describe('jantar messages', () => {
         if (tz === undefined) delete process.env.TZ;
         else process.env.TZ = tz;
       }
+    });
+
+    it('status says how many skips name no chat on this Mac', async () => {
+      const ctl = fakeCtl({ 'GET /v1/messages/status': ok(readerStatus({ skipped: 2, skipUnmatched: 1 })) });
+      const { ctx, io } = contextFor(home, { ctl, paths });
+      expect(await messages.run(['status'], ctx), io.stderr).toBe(EXIT.ok);
+      expect(io.stdout).toContain('Skipped chats: 2 (1 names no chat on this Mac now');
     });
 
     it("status says the call log isn't readable as not granted, or no iPhone call log on this Mac", async () => {

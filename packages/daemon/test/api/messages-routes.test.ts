@@ -544,6 +544,27 @@ describe('the skip list', () => {
     const unknown = await tcp(t, 'POST', '/v1/messages/skip', { chatKey: MOM1 });
     expect([unknown.statusCode, err(unknown.body)]).toEqual([404, { code: 'not_found', message: MESSAGES_SAYS.notAChat }]);
   });
+
+  it('skip reset over tcp is refused; over ctl it answers only after a lost salt', async () => {
+    // After the reset the reader shows no chat named as the skipped one was.
+    const t = await messagesApi({ handlers: { ...READER, chats: () => ({ chats: [], total: 0 }) } });
+    expect((await tcp(t, 'POST', '/v1/messages/skip', { chatKey: ASHA })).statusCode).toBe(200);
+    const refused = await tcp(t, 'POST', '/v1/messages/skip/reset', {});
+    expect([refused.statusCode, err(refused.body)]).toEqual([403, { code: 'forbidden', message: MESSAGES_SAYS.skipResetMacOnly }]);
+    // No salt in this test's messages folder: lost, so the reset runs.
+    const reset = await ctl(t, 'POST', '/v1/messages/skip/reset', {});
+    expect([reset.statusCode, reset.json()]).toEqual([200, { skipped: [], left: [{ name: 'Asha Test', kind: 'dm' }], waiting: false }]);
+    expect(JSON.parse(readFileSync(join(t.messagesDir, 'skip.json'), 'utf8'))).toEqual({ version: 1, chatKeys: [] });
+    const reads = await ctl(t, 'GET', '/v1/messages/chats');
+    expect([reads.statusCode, err(reads.body)]).toEqual([503, { code: 'messages_unavailable', message: MESSAGES_SAYS.skipResetLeft }]);
+    const forgot = await ctl(t, 'POST', '/v1/messages/skip/reset', { forget: true });
+    expect([forgot.statusCode, forgot.json()]).toEqual([200, { skipped: [], left: [], waiting: false }]);
+    expect((await ctl(t, 'GET', '/v1/messages/chats')).statusCode).toBe(200);
+    // The reader made its new salt: nothing more to reset.
+    writeFileSync(join(t.messagesDir, 'salt'), Buffer.alloc(32, 1), { mode: 0o600 });
+    const done = await ctl(t, 'POST', '/v1/messages/skip/reset', {});
+    expect([done.statusCode, err(done.body)]).toEqual([409, { code: 'conflict', message: MESSAGES_SAYS.skipResetNotNeeded }]);
+  });
 });
 
 describe('the audit', () => {

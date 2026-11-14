@@ -34,13 +34,16 @@ export interface AddedLine {
   fromMe?: boolean;
   /** An image with this caption. */
   caption?: string;
+  /** Its file, under <container>/Message (written by the test). */
+  localPath?: string;
   /** ZMESSAGETYPE (WA_TYPE); text, or image with a caption, by default. */
   type?: number;
 }
 
 /**
  * WhatsApp writing to the fixture's ChatStorage meanwhile (its own
- * connection): a line at the end of a chat, or a chat with one line.
+ * connection): a line at the end of a chat, a chat with one line, or a chat
+ * gone with its lines.
  */
 export function writeAsWhatsApp(p: FixturePaths) {
   const db = new DatabaseSync(join(p.container, 'ChatStorage.sqlite'));
@@ -55,7 +58,7 @@ export function writeAsWhatsApp(p: FixturePaths) {
     let media: number | null = null;
     if (l.caption !== undefined) {
       media = nextPk('ZWAMEDIAITEM');
-      db.prepare('INSERT INTO ZWAMEDIAITEM (Z_PK, Z_ENT, Z_OPT, ZFILESIZE, ZTITLE) VALUES (?, 3, 1, 0, ?)').run(media, l.caption);
+      db.prepare('INSERT INTO ZWAMEDIAITEM (Z_PK, Z_ENT, Z_OPT, ZFILESIZE, ZTITLE, ZMEDIALOCALPATH) VALUES (?, 3, 1, 0, ?, ?)').run(media, l.caption, l.localPath ?? null);
     }
     db.prepare(
       'INSERT INTO ZWAMESSAGE (Z_PK, Z_ENT, Z_OPT, ZISFROMME, ZMESSAGETYPE, ZSORT, ZCHATSESSION, ZGROUPMEMBER, ZMEDIAITEM, ZMESSAGEDATE, ZSTANZAID, ZTEXT) VALUES (?, 2, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -68,6 +71,12 @@ export function writeAsWhatsApp(p: FixturePaths) {
         'INSERT INTO ZWACHATSESSION (Z_PK, Z_ENT, Z_OPT, ZARCHIVED, ZHIDDEN, ZREMOVED, ZSESSIONTYPE, ZUNREADCOUNT, ZLASTMESSAGEDATE, ZCONTACTJID, ZPARTNERNAME) VALUES (?, 1, 1, 0, ?, ?, ?, 0, ?, ?, ?)',
       ).run(nextPk('ZWACHATSESSION'), c.hidden ? 1 : 0, c.removed ? 1 : 0, c.type, c.at, c.jid, c.name);
       line(c.jid, { stanza: `3EB0FXC${digitsOf(c.jid).slice(-6)}`, at: c.at, text: `A line in ${c.name}` });
+    },
+    /** A chat gone from WhatsApp (the owner deleted it): its row and its lines. */
+    drop(jid: string) {
+      const chat = one<{ pk: number }>('SELECT Z_PK AS pk FROM ZWACHATSESSION WHERE ZCONTACTJID = ?', jid).pk;
+      db.prepare('DELETE FROM ZWAMESSAGE WHERE ZCHATSESSION = ?').run(chat);
+      db.prepare('DELETE FROM ZWACHATSESSION WHERE Z_PK = ?').run(chat);
     },
     close: () => db.close(),
   };

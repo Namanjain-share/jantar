@@ -92,7 +92,7 @@ test('the CLI and jantar mcp reach what they need on ctl.sock; the phone keeps t
   const ctl = Object.entries<RouteDef>(MESSAGES_ROUTES).filter(([, r]) => r.ctl).map(([n]) => n).sort();
   expect(ctl).toEqual([
     'messagesCalls', 'messagesChats', 'messagesMedia', 'messagesMorningRun', 'messagesRead', 'messagesReadByName',
-    'messagesSearch', 'messagesSkipAdd', 'messagesSkipList', 'messagesSkipRemove', 'messagesStatus',
+    'messagesSearch', 'messagesSkipAdd', 'messagesSkipList', 'messagesSkipRemove', 'messagesSkipReset', 'messagesStatus',
   ]);
   for (const r of Object.values<RouteDef>(MESSAGES_ROUTES)) {
     expect(r.scope).toBe('control');
