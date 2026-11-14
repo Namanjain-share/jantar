@@ -13,6 +13,14 @@
 //   read       {chatKey, since?, before?, limit} {chat, messages (oldest first), more}
 //                                                (next page: before = messages[0].at; see read())
 //   readByName {name, since?, before?, limit}   a read's answer, or {ambiguous: [chat], total}
+//   search     {q, since?, chatKey?, limit}     {hits: [{chatKey, chatName, msgKey, at, fromMe, sender, snippet}]}
+//                                                (newest first; 90 days back without since)
+//   newSince   {cursor: {pk, at} | null, guardHours, firstRunHours, maxRows}
+//                                                {chats: [{chat (+phone), messages, earlier}], nextCursor, truncated, reset}
+//   lastFromMe {chatKeys}                       {[chatKey]: the owner's last line's time | null}
+//   media      {msgKey, maxBytes}               {file (<state>/spool/…), bytes, kind, mime, fileName?}
+//   waCalls    {since}                          {calls: [call]} (WhatsApp's CallHistory.sqlite)
+//   phoneCalls {since}                          {calls: [call]} (the iPhone call log: needs Full Disk Access)
 //
 //   jantar-messages-reader --container <dir> --phone-db <file> --socket <path> --state <dir> [--now <iso>]
 //   (exit 64 on bad arguments; --now is for tests)
@@ -42,6 +50,13 @@
 //   read everything.
 // - Status, channels, broadcast lists, removed and hidden chats are left out.
 //   The chat's unsent-draft and last-message-preview columns are never read.
+// - A search runs under a 5 s deadline; a hit is checked again on the line
+//   as it is shown, so an id's digits inside a mention never match.
+// - The morning feed (newSince) goes by row id, never further back than
+//   guardHours; a cursor above the newest row id (WhatsApp renumbered its
+//   rows when re-linked) starts over with firstRunHours.
+// - A media file is copied (never moved) into <state>/spool, 0600; the
+//   reader deletes copies older than 10 minutes.
 // - stderr carries no text, name, id or number.
 
 import AppKit
@@ -112,6 +127,48 @@ let WAITING_S: TimeInterval = 3 * 86_400
 let AMBIGUOUS_MAX = 20
 /// The fewest digits after "@" that make a mention (an id: country code and number, or an @lid).
 let MENTION_DIGITS_MIN = 8
+/// MESSAGES_LIMITS.searchMax, a search's longest text, how far back it looks without `since`, its deadline.
+let SEARCH_MAX = 50
+let SEARCH_DEFAULT = 20
+let QUERY_MAX = 200
+let SEARCH_BACK_MS: Int64 = 90 * 86_400_000
+let SEARCH_NS: UInt64 = 5_000_000_000
+/// A hit's snippet: at most this many characters around the match.
+let SNIPPET_CHARS = 160
+/// newSince: lines kept before a chat's first new one, the most lines in one answer, the longest window.
+let EARLIER_MAX = 10
+let NEW_ROWS_MAX = 20_000
+let HOURS_MAX = 720
+let MS_PER_HOUR: Int64 = 3_600_000
+/// lastFromMe: the most chat keys in one request.
+let KEYS_MAX = 500
+/// MESSAGES_LIMITS.mediaMaxBytes; how long a spool copy lives; how often the spool is swept between requests.
+let MEDIA_MAX_BYTES = 25 * 1024 * 1024
+let SPOOL_TTL_S: TimeInterval = 600
+let SPOOL_SWEEP_S: TimeInterval = 60
+let SPOOL_NAME_BYTES = 16
+let EXT_MAX = 8
+/// A copy's type, by its file's extension; a kind's extension when the file has none.
+let MIME_BY_EXT: [String: String] = [
+  "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "heic": "image/heic", "webp": "image/webp", "gif": "image/gif",
+  "mp4": "video/mp4", "mov": "video/quicktime", "m4v": "video/x-m4v", "opus": "audio/ogg", "ogg": "audio/ogg", "m4a": "audio/mp4",
+  "mp3": "audio/mpeg", "aac": "audio/aac", "pdf": "application/pdf",
+]
+let EXT_BY_KIND: [String: String] = ["image": "jpg", "video": "mp4", "gif": "mp4", "voice": "opus", "sticker": "webp"]
+let MIME_DEFAULT = "application/octet-stream"
+/// The most calls in one answer (the newest).
+let CALLS_MAX = 500
+/// ZWACDCALLEVENT.ZOUTCOME of a call nobody picked up (the fixture's value: checked on the real Mac, Task 14).
+let WA_OUTCOME_MISSED = 1
+/// ZCALLRECORD.ZCALLTYPE of a FaceTime video call.
+let PHONE_CALL_VIDEO = 8
+/// A number's last digits, which name it however it was dialled (with +91, a 0 or neither).
+let NUMBER_SUFFIX_DIGITS = 10
+/// An Indian mobile with its country code, shown "+91 99900 00002" (two groups of five).
+let INDIA_CODE = "91"
+let INDIA_DIGITS = 12
+let INDIA_GROUP = 5
+let NUMBER_CHARS = Set("+0123456789 -().".unicodeScalars)
 
 // ---------------------------------------------------------------- output and failures
 
@@ -163,9 +220,10 @@ func appleMs(_ seconds: Double) -> Int64 { Int64((seconds * 1000).rounded(.down)
 
 /// Core Data seconds as ISO, cut down to the millisecond: a time read back
 /// as `before` then never includes the message it came from.
-func isoApple(_ seconds: Double) -> String {
-  isoFrac.string(from: Date(timeIntervalSinceReferenceDate: Double(appleMs(seconds)) / 1000))
-}
+func isoApple(_ seconds: Double) -> String { isoMs(appleMs(seconds)) }
+
+/// Core Data milliseconds as ISO.
+func isoMs(_ ms: Int64) -> String { isoFrac.string(from: Date(timeIntervalSinceReferenceDate: Double(ms) / 1000)) }
 
 func isoUnix(_ ts: timespec) -> String {
   isoApple(Double(ts.tv_sec) + Double(ts.tv_nsec) / 1e9 - Date.timeIntervalBetween1970AndReferenceDate)
@@ -262,16 +320,23 @@ func loadSalt(_ state: String) -> [UInt8] {
 
 let HEX = Array("0123456789abcdef".utf8)
 
-func hmacKey(_ salt: [UInt8], _ id: String) -> String {
+/// `prefix` and 16 hex of HMAC-SHA256(salt, id): "c…" a chat, "k…" a call.
+func hmacKey(_ salt: [UInt8], _ id: String, prefix: UInt8 = UInt8(ascii: "c")) -> String {
   var mac = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
   let data = Array(id.utf8)
   CCHmac(CCHmacAlgorithm(kCCHmacAlgSHA256), salt, salt.count, data, data.count, &mac)
-  var out: [UInt8] = [UInt8(ascii: "c")]
+  var out: [UInt8] = [prefix]
   for b in mac.prefix(KEY_HEX / 2) {
     out.append(HEX[Int(b >> 4)])
     out.append(HEX[Int(b & 0xf)])
   }
   return String(decoding: out, as: UTF8.self)
+}
+
+func randomHex(_ bytes: Int) -> String {
+  var raw = [UInt8](repeating: 0, count: bytes)
+  arc4random_buf(&raw, bytes)
+  return String(decoding: raw.flatMap { [HEX[Int($0 >> 4)], HEX[Int($0 & 0xf)]] }, as: UTF8.self)
 }
 
 func isChatKey(_ s: String) -> Bool {
@@ -309,6 +374,52 @@ func lidJid(_ raw: String?) -> String? {
 func nonEmpty(_ s: String?) -> String? {
   guard let s, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
   return s
+}
+
+func digitsIn(_ s: String) -> String { String(s.unicodeScalars.filter { $0.value >= 48 && $0.value <= 57 }.map(Character.init)) }
+
+/// A number as people write it: "+91 99900 00002" for an Indian mobile,
+/// else "+" and its digits (as dialled when it had no country code);
+/// anything that isn't a number (a FaceTime address) as it is.
+func formatNumber(_ raw: String) -> String {
+  let t = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+  let digits = digitsIn(t)
+  guard !digits.isEmpty, t.unicodeScalars.allSatisfy({ NUMBER_CHARS.contains($0) }) else { return t.isEmpty ? UNKNOWN : t }
+  let international = t.hasPrefix("+") || (digits.count > NUMBER_SUFFIX_DIGITS && !digits.hasPrefix("0"))
+  guard international else { return digits }
+  if digits.count == INDIA_DIGITS, digits.hasPrefix(INDIA_CODE) {
+    let d = Array(digits.dropFirst(INDIA_CODE.count))
+    return "+\(INDIA_CODE) \(String(d[..<INDIA_GROUP])) \(String(d[INDIA_GROUP...]))"
+  }
+  return "+" + digits
+}
+
+/// `q` for `LIKE '%' || ? || '%' ESCAPE '\'`: its own %, _ and \ taken literally.
+func likeEscaped(_ q: String) -> String {
+  var out = ""
+  for c in q {
+    if c == "%" || c == "_" || c == "\\" { out.append("\\") }
+    out.append(c)
+  }
+  return out
+}
+
+/// Core Data seconds a millisecond below `ms`: a bound the date index can
+/// use, beside the exact `ZMESSAGEDATE * 1000` test (float slack either way).
+func indexBound(_ ms: Int64) -> Double { Double(ms - 1) / 1000 }
+
+/// `text` around its first case-insensitive match of `q`, at most
+/// SNIPPET_CHARS characters ("…" where cut); nil when it doesn't hold `q`.
+func snippet(_ text: String, _ q: String) -> String? {
+  guard let r = text.range(of: q, options: .caseInsensitive) else { return nil }
+  let total = text.count
+  guard total > SNIPPET_CHARS else { return text }
+  let before = text.distance(from: text.startIndex, to: r.lowerBound)
+  let len = text.distance(from: r.lowerBound, to: r.upperBound)
+  let lead = max(0, min(before - max(0, SNIPPET_CHARS - len) / 2, total - SNIPPET_CHARS))
+  let start = text.index(text.startIndex, offsetBy: lead)
+  let end = text.index(start, offsetBy: SNIPPET_CHARS, limitedBy: text.endIndex) ?? text.endIndex
+  return (lead > 0 ? "…" : "") + text[start..<end] + (end < text.endIndex ? "…" : "")
 }
 
 // ---------------------------------------------------------------- sqlite
@@ -511,6 +622,35 @@ let CHAT_TABLES: [(String, [String])] = [
 ]
 let CONTACT_TABLES: [(String, [String])] = [("ZWAADDRESSBOOKCONTACT", ["ZFULLNAME", "ZWHATSAPPID", "ZLID"])]
 let LID_TABLES: [(String, [String])] = [("ZWAZACCOUNT", ["ZIDENTIFIER", "ZPHONENUMBER"])]
+/// WhatsApp's CallHistory.sqlite: a call (event), the run of calls it belongs to (aggregate), who was on it.
+let WA_CALL_TABLES: [(String, [String])] = [
+  ("ZWAAGGREGATECALLEVENT", ["Z_PK", "ZMISSEDREASON", "ZVIDEO", "ZCREATORJID", "ZGROUPJID"]),
+  ("ZWACDCALLEVENT", ["Z_PK", "ZOUTCOME", "ZVIDEO", "Z1CALLEVENTS", "ZDATE", "ZDURATION", "ZCALLIDSTRING"]),
+  ("ZWACDCALLEVENTPARTICIPANT", ["Z1PARTICIPANTS", "ZJIDSTRING"]),
+]
+/// The iPhone call log (CallHistory.storedata).
+let PHONE_TABLES: [(String, [String])] = [("ZCALLRECORD", ["ZADDRESS", "ZDATE", "ZDURATION", "ZORIGINATED", "ZANSWERED", "ZCALLTYPE"])]
+
+/// One line and what it points at, for every query that answers lines
+/// (lineOut reads these columns by index: 0-5 the line, 6-8 its parent,
+/// 9-14 its media, 15-17 its group sender, 18 its chat, 19 its place in it).
+let LINE_SELECT = """
+  SELECT m.Z_PK, m.ZISFROMME, m.ZMESSAGETYPE, m.ZMESSAGEDATE, m.ZSTANZAID, m.ZTEXT,
+         p.Z_PK, p.ZSTANZAID, p.ZCHATSESSION,
+         mi.Z_PK, mi.ZFILESIZE, mi.ZMOVIEDURATION, mi.ZMEDIALOCALPATH, mi.ZTITLE, mi.ZVCARDNAME,
+         gm.ZMEMBERJID, gm.ZCONTACTNAME, gm.ZFIRSTNAME, m.ZCHATSESSION, m.ZSORT
+  FROM ZWAMESSAGE m
+  LEFT JOIN ZWAMESSAGE p ON p.Z_PK = m.ZPARENTMESSAGE
+  LEFT JOIN ZWAMEDIAITEM mi ON mi.Z_PK = m.ZMEDIAITEM
+  LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER
+
+  """
+let LINE_CHAT = Int32(18)
+let LINE_SORT = Int32(19)
+let LINE_MEDIA_PATH = Int32(12)
+
+/// A group's own names for its members (its member rows), by person.
+typealias MemberNames = [String: (contact: String?, first: String?)]
 
 struct Session {
   let pk: Int64
@@ -538,10 +678,34 @@ final class World {
   var pushNames: [String: String] = [:]
   /// The key of any id a person has (either id, a 1:1's) -> that person.
   var personByKey: [String: String] = [:]
+  /// A person -> their 1:1s (indexes in `sessions`, newest first).
+  var dmsByPerson: [String: [Int]] = [:]
+  /// Every known number's digits, and its last NUMBER_SUFFIX_DIGITS, -> the person ("<digits>@s.whatsapp.net").
+  var personByNumber: [String: String] = [:]
+  var personBySuffix: [String: String] = [:]
   var ownerDigits: [String] = []
 
   /// A person's one id: their number's jid when known, else the id itself.
   func person(_ jid: String) -> String { jid.hasSuffix(LID_SUFFIX) ? (lidToUser[jid] ?? jid) : jid }
+
+  func isOwner(_ jid: String) -> Bool { ownerDigits.contains(String(jid.prefix { $0 != "@" })) }
+
+  func addNumber(_ jid: String) {
+    guard jid.hasSuffix(USER_SUFFIX) else { return }
+    let digits = jid.dropLast(USER_SUFFIX.count)
+    guard isAsciiDigits(digits) else { return }
+    if personByNumber[String(digits)] == nil { personByNumber[String(digits)] = jid }
+    let tail = String(digits.suffix(NUMBER_SUFFIX_DIGITS))
+    if digits.count >= NUMBER_SUFFIX_DIGITS, personBySuffix[tail] == nil { personBySuffix[tail] = jid }
+  }
+
+  /// The person a dialled number is: all its digits, else its last ones; nil for a number nobody has.
+  func person(number raw: String) -> String? {
+    guard raw.unicodeScalars.allSatisfy({ NUMBER_CHARS.contains($0) }) else { return nil }
+    let digits = digitsIn(raw)
+    if let p = personByNumber[digits] { return p }
+    return digits.count >= NUMBER_SUFFIX_DIGITS ? personBySuffix[String(digits.suffix(NUMBER_SUFFIX_DIGITS))] : nil
+  }
 
   /// Every key a person goes by (their 1:1s under either id, either id's
   /// own key), from any one of them; empty for a key that isn't a person's.
@@ -656,6 +820,77 @@ struct AmbiguousOut: Encodable {
   let total: Int
 }
 
+struct HitOut: Encodable {
+  let chatKey: String
+  let chatName: String
+  let msgKey: String
+  let at: String
+  let fromMe: Bool
+  let sender: String
+  let snippet: String
+}
+
+struct SearchOut: Encodable { let hits: [HitOut] }
+
+struct CursorOut: Encodable {
+  let pk: Int64
+  let at: String
+}
+
+struct NewChatOut: Encodable {
+  let chat: ChatOut
+  let messages: [MessageOut]
+  let earlier: [MessageOut]
+}
+
+struct NewSinceOut: Encodable {
+  let chats: [NewChatOut]
+  let nextCursor: CursorOut
+  let truncated: Bool
+  let reset: Bool
+}
+
+/// Each chat key asked for and a time, or null (never left out).
+struct TimesOut: Encodable {
+  let times: [(key: String, at: String?)]
+
+  struct Key: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+  }
+
+  func encode(to encoder: Encoder) throws {
+    var c = encoder.container(keyedBy: Key.self)
+    for t in times {
+      if let at = t.at { try c.encode(at, forKey: Key(stringValue: t.key)) } else { try c.encodeNil(forKey: Key(stringValue: t.key)) }
+    }
+  }
+}
+
+struct MediaFileOut: Encodable {
+  let file: String
+  let bytes: Int64
+  let kind: String
+  let mime: String
+  let fileName: String?
+}
+
+struct CallOut: Encodable {
+  let callKey: String
+  let at: String
+  let who: String
+  let chatKey: String?
+  let via: String
+  let incoming: Bool
+  let missed: Bool
+  let video: Bool
+  let durationS: Double
+}
+
+struct CallsOut: Encodable { let calls: [CallOut] }
+
 struct WhatsAppOut: Encodable {
   let found: Bool
   let running: Bool
@@ -750,6 +985,44 @@ struct Args {
     guard let s = value("chatKey") as? String, isChatKey(s) else { throw bad("chatKey") }
     return s
   }
+
+  /// A time that must be there.
+  func at(_ k: String) throws -> Int64 {
+    guard let t = try time(k) else { throw bad(k) }
+    return t
+  }
+
+  func int(_ k: String, _ range: ClosedRange<Int>) throws -> Int {
+    guard let n = value(k) as? NSNumber, !isBool(n), let i = Int(exactly: n.doubleValue), range.contains(i) else { throw bad(k) }
+    return i
+  }
+
+  func chatKeyIfAny() throws -> String? { value("chatKey") == nil ? nil : try chatKey() }
+
+  func chatKeys(_ k: String, max: Int) throws -> [String] {
+    guard let list = value(k) as? [Any], list.count <= max else { throw bad(k) }
+    return try list.map {
+      guard let s = $0 as? String, isChatKey(s) else { throw bad(k) }
+      return s
+    }
+  }
+
+  /// `{pk, at}`, or nil when left out or null; `at` as milliseconds.
+  func cursor() throws -> (pk: Int64, atMs: Int64)? {
+    guard let v = value("cursor") else { return nil }
+    guard let c = v as? [String: Any], let n = c["pk"] as? NSNumber, !isBool(n), let pk = Int64(exactly: n.doubleValue), pk >= 0,
+          let at = try? Args(raw: c).at("at") else { throw bad("cursor") }
+    return (pk, at)
+  }
+
+  /// "<chatKey>.<stanza id>" (or "<chatKey>._<row id>"), split; malformed is bad_request.
+  func msgKey() throws -> (chatKey: String, stanza: String) {
+    guard let s = value("msgKey") as? String, let dot = s.firstIndex(of: ".") else { throw bad("msgKey") }
+    let chat = String(s[..<dot])
+    let stanza = String(s[s.index(after: dot)...])
+    guard isChatKey(chat), (1...STANZA_MAX).contains(stanza.utf8.count) else { throw bad("msgKey") }
+    return (chat, stanza)
+  }
 }
 
 // ---------------------------------------------------------------- the reader
@@ -761,9 +1034,11 @@ final class Reader {
   let chat: Source
   let contacts: Source
   let lid: Source
+  let calls: Source
   private var world: World?
   private var worldStamp: [Int64] = []
   private var owner: (generation: Int, digits: [String])?
+  private var lastSweep = Date.distantPast
 
   init(_ opts: Options, salt: [UInt8]) {
     self.opts = opts
@@ -772,15 +1047,24 @@ final class Reader {
     chat = Source(opts.container + "/ChatStorage.sqlite", CHAT_TABLES, required: true)
     contacts = Source(opts.container + "/ContactsV2.sqlite", CONTACT_TABLES, required: false)
     lid = Source(opts.container + "/LID.sqlite", LID_TABLES, required: false)
+    calls = Source(opts.container + "/CallHistory.sqlite", WA_CALL_TABLES, required: false)
   }
 
   var now: Date { opts.now ?? Date() }
+  /// `now` in Core Data milliseconds (as Args.time gives a time).
+  var nowMs: Int64 { Int64((now.timeIntervalSinceReferenceDate * 1000).rounded()) }
 
   func key(_ id: String) -> String { hmacKey(salt, id) }
+  func callKey(_ id: String) -> String { hmacKey(salt, "call " + id, prefix: UInt8(ascii: "k")) }
 
+  /// Between requests: idle databases closed, old spool copies deleted (by the real clock, never --now).
   func closeIdle() {
     let t = Date()
-    for s in [chat, contacts, lid] { s.closeIfIdle(t) }
+    for s in [chat, contacts, lid, calls] { s.closeIfIdle(t) }
+    if t.timeIntervalSince(lastSweep) > SPOOL_SWEEP_S {
+      lastSweep = t
+      sweepSpool()
+    }
   }
 
   // ---- one request
@@ -796,7 +1080,7 @@ final class Reader {
       guard let op = req["op"] as? String else { throw bad("op") }
       let rawArgs = req["args"] ?? [String: Any]()
       guard let args = rawArgs as? [String: Any] else { throw bad("args") }
-      deadlineNs = DispatchTime.now().uptimeNanoseconds + REQUEST_NS
+      deadlineNs = DispatchTime.now().uptimeNanoseconds + (op == "search" ? SEARCH_NS : REQUEST_NS)
       defer { deadlineNs = .max }
       let data = try run(op, Args(raw: args))
       return Array(try encoder.encode(OkReply(id: id, data: AnyEncodable(value: data))))
@@ -822,6 +1106,16 @@ final class Reader {
     case "readByName":
       guard let name = try args.string("name", max: NAME_MAX) else { throw bad("name") }
       return try readByName(name, since: args.time("since"), before: args.time("before"), limit: args.limit(max: READ_MAX, def: READ_DEFAULT))
+    case "search":
+      guard let q = try args.string("q", max: QUERY_MAX) else { throw bad("q") }
+      return try search(q, since: args.time("since"), chatKey: args.chatKeyIfAny(), limit: args.limit(max: SEARCH_MAX, def: SEARCH_DEFAULT))
+    case "newSince":
+      return try newSince(cursor: args.cursor(), guardHours: args.int("guardHours", 1...HOURS_MAX),
+                          firstRunHours: args.int("firstRunHours", 1...HOURS_MAX), maxRows: args.int("maxRows", 1...NEW_ROWS_MAX))
+    case "lastFromMe": return try lastFromMe(args.chatKeys("chatKeys", max: KEYS_MAX))
+    case "media": return try media(args.msgKey(), maxBytes: args.int("maxBytes", 1...MEDIA_MAX_BYTES))
+    case "waCalls": return try waCalls(since: args.at("since"))
+    case "phoneCalls": return try phoneCalls(since: args.at("since"))
     default: throw bad("unknown op")
     }
   }
@@ -938,12 +1232,14 @@ final class Reader {
       }
     }
     var named: [(String, String)] = []
+    var numbers: [String] = []
     if let contactsDb {
       let s = try contactsDb.prepare("SELECT ZWHATSAPPID, ZLID, ZFULLNAME FROM ZWAADDRESSBOOKCONTACT")
       while try s.step() {
         let u = userJid(s.text(0))
         let l = lidJid(s.text(1))
         if let u, let l, w.lidToUser[l] == nil { w.lidToUser[l] = u }
+        if let u { numbers.append(u) }
         if let name = nonEmpty(s.text(2)), let id = u ?? l { named.append((id, name)) }
       }
     }
@@ -974,13 +1270,18 @@ final class Reader {
                             lastAt: s.double(6), shown: shown, key: key(jid), name: name)
       w.byKey[session.key] = w.sessions.count
       w.byPk[session.pk] = w.sessions.count
+      if type == SESSION_DM && !leftOut {
+        w.personByKey[session.key] = person
+        w.dmsByPerson[person, default: []].append(w.sessions.count)
+        numbers.append(person)
+      }
       w.sessions.append(session)
-      if type == SESSION_DM && !leftOut { w.personByKey[session.key] = person }
     }
     for (l, u) in w.lidToUser {
       w.personByKey[key(l)] = u
       w.personByKey[key(u)] = u
     }
+    for u in numbers + w.lidToUser.values.sorted() { w.addNumber(u) }
     w.ownerDigits = try ownerDigits(chatDb)
     return w
   }
@@ -1059,11 +1360,11 @@ final class Reader {
   // ---- reading a chat
 
   /// A group's own names for its members (the group's member rows), by person.
-  func memberNames(_ s: Session, _ w: World) throws -> [String: (contact: String?, first: String?)] {
+  func memberNames(_ s: Session, _ w: World) throws -> MemberNames {
     guard s.type != SESSION_DM, let db = try chat.get() else { return [:] }
     let q = try db.prepare("SELECT ZMEMBERJID, ZCONTACTNAME, ZFIRSTNAME FROM ZWAGROUPMEMBER WHERE ZCHATSESSION = ? AND ZMEMBERJID IS NOT NULL")
       .bind(s.pk)
-    var names: [String: (contact: String?, first: String?)] = [:]
+    var names: MemberNames = [:]
     while try q.step() {
       if let jid = q.text(0) { names[w.person(jid)] = (q.text(1), q.text(2)) }
     }
@@ -1157,96 +1458,90 @@ final class Reader {
   }
 
   /// Up to `limit` of a chat's lines, newest first (WhatsApp's order), each
-  /// with its millisecond; `fromMs`: only those at or after it. Every bound
-  /// is a millisecond compared as appleMs cuts it (`ZMESSAGEDATE * 1000`).
-  func lines(_ s: Session, _ w: World, _ hide: Hidden, since: Int64?, before: Int64?, fromMs: Int64?,
+  /// with its millisecond; `fromMs`: only those at or after it; `beforeSort`:
+  /// only those before that place in the chat. Every time bound is a
+  /// millisecond compared as appleMs cuts it (`ZMESSAGEDATE * 1000`).
+  func lines(_ s: Session, _ w: World, _ hide: Hidden, since: Int64?, before: Int64?, fromMs: Int64?, beforeSort: Int64? = nil,
              limit: Int) throws -> [(ms: Int64, message: MessageOut)] {
     guard let db = try chat.get() else { throw Failure("no_access") }
-    var sql = """
-      SELECT m.Z_PK, m.ZISFROMME, m.ZMESSAGETYPE, m.ZMESSAGEDATE, m.ZSTANZAID, m.ZTEXT,
-             p.Z_PK, p.ZSTANZAID, p.ZCHATSESSION,
-             mi.Z_PK, mi.ZFILESIZE, mi.ZMOVIEDURATION, mi.ZMEDIALOCALPATH, mi.ZTITLE, mi.ZVCARDNAME,
-             gm.ZMEMBERJID, gm.ZCONTACTNAME, gm.ZFIRSTNAME
-      FROM ZWAMESSAGE m
-      LEFT JOIN ZWAMESSAGE p ON p.Z_PK = m.ZPARENTMESSAGE
-      LEFT JOIN ZWAMEDIAITEM mi ON mi.Z_PK = m.ZMEDIAITEM
-      LEFT JOIN ZWAGROUPMEMBER gm ON gm.Z_PK = m.ZGROUPMEMBER
-      WHERE m.ZCHATSESSION = ?
-      """
+    var sql = LINE_SELECT + "WHERE m.ZCHATSESSION = ?"
     if since != nil { sql += " AND m.ZMESSAGEDATE * 1000 >= ?" }
     if before != nil { sql += " AND m.ZMESSAGEDATE * 1000 < ?" }
     if fromMs != nil { sql += " AND m.ZMESSAGEDATE * 1000 >= ?" }
+    if beforeSort != nil { sql += " AND m.ZSORT < ?" }
     sql += " ORDER BY m.ZSORT DESC LIMIT ?"
     var binds: [Any?] = [s.pk]
     if let since { binds.append(since) }
     if let before { binds.append(before) }
     if let fromMs { binds.append(fromMs) }
+    if let beforeSort { binds.append(beforeSort) }
     binds.append(limit)
     let q = try db.prepare(sql).bindAll(binds)
-
-    // Read once, on the first line that may hold a mention.
-    var members: [String: (contact: String?, first: String?)]?
+    var members: [Int64: MemberNames] = [:]
     var out: [(ms: Int64, message: MessageOut)] = []
-    while try q.step() {
-      let pk = q.int(0)
-      let fromMe = q.int(1) == 1
-      let type = Int(q.int(2))
-      let mk = msgKey(s.key, q.text(4), pk)
-      let ms = appleMs(q.double(3))
-      let at = isoApple(q.double(3))
-      let raw = q.text(5)
-
-      var sender = ME
-      if !fromMe {
-        if s.type == SESSION_DM {
-          sender = s.name
-        } else if let memberJid = q.text(15) {
-          let person = w.person(memberJid)
-          if hide.persons.contains(person) {
-            out.append((ms, MessageOut(msgKey: mk, at: at, fromMe: false, sender: SKIPPED, kind: "other", skippedSender: true)))
-            continue
-          }
-          sender = senderName(person, contact: q.text(16), first: q.text(17), w) ?? UNKNOWN
-        } else {
-          sender = UNKNOWN
-        }
-      }
-
-      let kind = MESSAGE_KINDS[type] ?? (nonEmpty(raw) != nil ? "text" : "other")
-      var m = MessageOut(msgKey: mk, at: at, fromMe: fromMe, sender: sender, kind: kind)
-      if !SILENT_KINDS.contains(kind) {
-        let title = q.isNull(9) ? nil : nonEmpty(q.text(13))
-        let captioned = CAPTIONED_KINDS.contains(kind) ? title : nil
-        if members == nil, (raw?.contains("@") ?? false) || (captioned?.contains("@") ?? false) { members = try memberNames(s, w) }
-        let named = members ?? [:]
-        let name = { (p: String) in self.senderName(p, contact: named[p]?.contact, first: named[p]?.first, w) }
-        if let raw = nonEmpty(raw) {
-          let (text, me) = mentions(raw, w, hide, name)
-          m.text = text
-          if me { m.mentionsMe = true }
-        }
-        if let captioned {
-          let (caption, me) = mentions(captioned, w, hide, name)
-          m.caption = caption
-          if me { m.mentionsMe = true }
-        }
-        if !q.isNull(9) {
-          if kind == "contact" { m.caption = nonEmpty(q.text(14)) }
-          if MEDIA_KINDS.contains(kind) {
-            let bytes = q.int(10)
-            let duration = q.double(11)
-            m.media = MediaOut(kind: kind, fileName: kind == "document" ? title : nil, bytes: bytes > 0 ? bytes : nil,
-                               durationS: duration > 0 ? duration : nil, local: mediaIsLocal(q.text(12)))
-          }
-        }
-        if let parentPk = q.intOrNil(6), let parentChat = q.intOrNil(8) {
-          let parent: Session? = parentChat == s.pk ? s : w.byPk[parentChat].map { w.sessions[$0] }
-          if let ps = parent, ps.shown, !hide.hides(ps, w) { m.replyTo = msgKey(ps.key, q.text(7), parentPk) }
-        }
-      }
-      out.append((ms, m))
-    }
+    while try q.step() { out.append((appleMs(q.double(3)), try lineOut(q, s, w, hide, &members))) }
     return out
+  }
+
+  /// One line of `s` from a LINE_SELECT row, as every answer shows it: a
+  /// skipped person's group line is "[skipped]" and nothing more, system
+  /// and deleted lines carry no text, mentions are names. `members` holds
+  /// each group's member names, read on its first line that may mention someone.
+  func lineOut(_ q: Statement, _ s: Session, _ w: World, _ hide: Hidden, _ members: inout [Int64: MemberNames]) throws -> MessageOut {
+    let pk = q.int(0)
+    let fromMe = q.int(1) == 1
+    let type = Int(q.int(2))
+    let mk = msgKey(s.key, q.text(4), pk)
+    let at = isoApple(q.double(3))
+    let raw = q.text(5)
+
+    var sender = ME
+    if !fromMe {
+      if s.type == SESSION_DM {
+        sender = s.name
+      } else if let memberJid = q.text(15) {
+        let person = w.person(memberJid)
+        if hide.persons.contains(person) {
+          return MessageOut(msgKey: mk, at: at, fromMe: false, sender: SKIPPED, kind: "other", skippedSender: true)
+        }
+        sender = senderName(person, contact: q.text(16), first: q.text(17), w) ?? UNKNOWN
+      } else {
+        sender = UNKNOWN
+      }
+    }
+
+    let kind = MESSAGE_KINDS[type] ?? (nonEmpty(raw) != nil ? "text" : "other")
+    var m = MessageOut(msgKey: mk, at: at, fromMe: fromMe, sender: sender, kind: kind)
+    guard !SILENT_KINDS.contains(kind) else { return m }
+    let title = q.isNull(9) ? nil : nonEmpty(q.text(13))
+    let captioned = CAPTIONED_KINDS.contains(kind) ? title : nil
+    if members[s.pk] == nil, (raw?.contains("@") ?? false) || (captioned?.contains("@") ?? false) { members[s.pk] = try memberNames(s, w) }
+    let named = members[s.pk] ?? [:]
+    let name = { (p: String) in self.senderName(p, contact: named[p]?.contact, first: named[p]?.first, w) }
+    if let raw = nonEmpty(raw) {
+      let (text, me) = mentions(raw, w, hide, name)
+      m.text = text
+      if me { m.mentionsMe = true }
+    }
+    if let captioned {
+      let (caption, me) = mentions(captioned, w, hide, name)
+      m.caption = caption
+      if me { m.mentionsMe = true }
+    }
+    if !q.isNull(9) {
+      if kind == "contact" { m.caption = nonEmpty(q.text(14)) }
+      if MEDIA_KINDS.contains(kind) {
+        let bytes = q.int(10)
+        let duration = q.double(11)
+        m.media = MediaOut(kind: kind, fileName: kind == "document" ? title : nil, bytes: bytes > 0 ? bytes : nil,
+                           durationS: duration > 0 ? duration : nil, local: mediaIsLocal(q.text(LINE_MEDIA_PATH)))
+      }
+    }
+    if let parentPk = q.intOrNil(6), let parentChat = q.intOrNil(8) {
+      let parent: Session? = parentChat == s.pk ? s : w.byPk[parentChat].map { w.sessions[$0] }
+      if let ps = parent, ps.shown, !hide.hides(ps, w) { m.replyTo = msgKey(ps.key, q.text(7), parentPk) }
+    }
+    return m
   }
 
   func readByName(_ name: String, since: Int64?, before: Int64?, limit: Int) throws -> any Encodable {
@@ -1258,6 +1553,309 @@ final class Reader {
     guard let first = hits.first else { throw Failure("not_found") }
     if hits.count == 1 { return try read(first, w, hide, since: since, before: before, limit: limit) }
     return AmbiguousOut(ambiguous: try hits.prefix(AMBIGUOUS_MAX).map { try chatOut($0, w, withPhone: false) }, total: hits.count)
+  }
+
+  /// A chat the skip list and the left-out rules let through, by key; `not_found` otherwise.
+  func visible(_ chatKey: String, _ w: World, _ hide: Hidden) throws -> Session {
+    guard let i = w.byKey[chatKey], w.sessions[i].shown, !hide.hides(w.sessions[i], w) else { throw Failure("not_found") }
+    return w.sessions[i]
+  }
+
+  // ---- search
+
+  /// Lines whose text, caption or file name holds `q` (LIKE, its wildcards
+  /// taken literally), newest first, from `since` (SEARCH_BACK_MS without
+  /// it). Each hit is checked again on the line as shown: the digits inside
+  /// a mention never match, and a skipped person's lines never come.
+  func search(_ text: String, since: Int64?, chatKey: String?, limit: Int) throws -> SearchOut {
+    let (w, hide) = try load()
+    guard let db = try chat.get() else { throw Failure("no_access") }
+    let only = try chatKey.map { try visible($0, w, hide) }
+    let from = since ?? nowMs - SEARCH_BACK_MS
+    let pattern = likeEscaped(text)
+    var sql = LINE_SELECT + """
+      WHERE m.ZMESSAGEDATE >= ? AND m.ZMESSAGEDATE * 1000 >= ? AND m.ZMESSAGETYPE NOT IN (\(SILENT_TYPES))
+        AND (m.ZTEXT LIKE '%' || ? || '%' ESCAPE '\\' OR mi.ZTITLE LIKE '%' || ? || '%' ESCAPE '\\')
+      """
+    var binds: [Any?] = [indexBound(from), from, pattern, pattern]
+    if let only {
+      sql += " AND m.ZCHATSESSION = ?"
+      binds.append(only.pk)
+    }
+    let q = try db.prepare(sql + " ORDER BY m.ZMESSAGEDATE DESC").bindAll(binds)
+    var members: [Int64: MemberNames] = [:]
+    var hits: [HitOut] = []
+    while hits.count < limit, try q.step() {
+      guard let i = w.byPk[q.int(LINE_CHAT)], w.sessions[i].shown, !hide.hides(w.sessions[i], w) else { continue }
+      let s = w.sessions[i]
+      let m = try lineOut(q, s, w, hide, &members)
+      guard m.skippedSender == nil,
+            let cut = [m.text, m.caption, m.media?.fileName].lazy.compactMap({ $0.flatMap { snippet($0, text) } }).first else { continue }
+      hits.append(HitOut(chatKey: s.key, chatName: s.name, msgKey: m.msgKey, at: m.at, fromMe: m.fromMe, sender: m.sender, snippet: cut))
+    }
+    return SearchOut(hits: hits)
+  }
+
+  // ---- the morning feed
+
+  /// Lines after `cursor.pk` (WhatsApp's row ids grow as lines arrive) from
+  /// the last `guardHours`; with no cursor, or one above the newest row id
+  /// (re-linked: `reset`), the last `firstRunHours`. Each chat with new lines
+  /// comes with up to EARLIER_MAX lines before the first, newest chat first.
+  /// After `maxRows` lines it stops (`truncated`), and `nextCursor` is the
+  /// last row it got to; else the newest row id. Its `at` is the newest
+  /// line's time up to there.
+  func newSince(cursor: (pk: Int64, atMs: Int64)?, guardHours: Int, firstRunHours: Int, maxRows: Int) throws -> NewSinceOut {
+    let (w, hide) = try load()
+    guard let db = try chat.get() else { throw Failure("no_access") }
+    let top = try db.prepare("SELECT max(Z_PK) FROM ZWAMESSAGE")
+    let maxPk = try top.step() ? top.int(0) : 0
+    let reset = cursor.map { $0.pk > maxPk } ?? false
+    let fromPk = reset ? 0 : cursor?.pk ?? 0
+    let hours = cursor == nil || reset ? firstRunHours : guardHours
+    // After this millisecond: appleMs(date) > afterMs, i.e. date * 1000 >= afterMs + 1.
+    let afterMs = nowMs - Int64(hours) * MS_PER_HOUR
+    // `+` keeps the row id off the primary key, even for the order (else
+    // SQLite walks the whole table in row-id order): the date index bounds
+    // the scan, and only that window is sorted.
+    let q = try db.prepare(LINE_SELECT + """
+      WHERE +m.Z_PK > ? AND +m.Z_PK <= ? AND m.ZMESSAGEDATE >= ? AND m.ZMESSAGEDATE * 1000 >= ?
+      ORDER BY +m.Z_PK
+      """).bind(fromPk, maxPk, indexBound(afterMs + 1), afterMs + 1)
+
+    struct NewChat {
+      let index: Int
+      var lines: [(sort: Int64, pk: Int64, ms: Int64, m: MessageOut)]
+    }
+    var chats: [Int64: NewChat] = [:]
+    var members: [Int64: MemberNames] = [:]
+    var kept = 0
+    var lastPk = fromPk
+    var newestMs: Int64?
+    var truncated = false
+    while try q.step() {
+      let pk = q.int(0)
+      if let i = w.byPk[q.int(LINE_CHAT)], w.sessions[i].shown, !hide.hides(w.sessions[i], w) {
+        if kept == maxRows {
+          truncated = true
+          break
+        }
+        let s = w.sessions[i]
+        let line = (sort: q.int(LINE_SORT), pk: pk, ms: appleMs(q.double(3)), m: try lineOut(q, s, w, hide, &members))
+        chats[s.pk, default: NewChat(index: i, lines: [])].lines.append(line)
+        kept += 1
+      }
+      lastPk = pk
+      newestMs = max(newestMs ?? Int64.min, appleMs(q.double(3)))
+    }
+
+    var atMs: Int64
+    if truncated {
+      atMs = max(newestMs ?? Int64.min, reset ? Int64.min : cursor?.atMs ?? Int64.min)
+    } else {
+      let newest = try db.prepare("SELECT max(ZMESSAGEDATE) FROM ZWAMESSAGE")
+      atMs = try newest.step() && !newest.isNull(0) ? appleMs(newest.double(0)) : nowMs
+    }
+    if atMs == Int64.min { atMs = nowMs }
+
+    var out: [(newest: Int64, index: Int, chat: NewChatOut)] = []
+    for c in chats.values {
+      let s = w.sessions[c.index]
+      let lines = c.lines.sorted { ($0.sort, $0.pk) < ($1.sort, $1.pk) }
+      let earlier = try self.lines(s, w, hide, since: nil, before: nil, fromMs: nil, beforeSort: lines[0].sort, limit: EARLIER_MAX)
+      out.append((lines.map(\.ms).max() ?? .min, c.index,
+                  NewChatOut(chat: try chatOut(s, w, withPhone: true), messages: lines.map(\.m), earlier: earlier.reversed().map(\.message))))
+    }
+    out.sort { ($0.newest, -$0.index) > ($1.newest, -$1.index) }
+    return NewSinceOut(chats: out.map(\.chat), nextCursor: CursorOut(pk: truncated ? lastPk : maxPk, at: isoMs(atMs)), truncated: truncated,
+                       reset: reset)
+  }
+
+  /// When the owner last wrote to each chat (system and deleted lines
+  /// aside). A 1:1's key, under either of the person's ids, counts all their
+  /// 1:1s. Unknown, left-out and skipped chats are null alike.
+  func lastFromMe(_ keys: [String]) throws -> TimesOut {
+    let (w, hide) = try load()
+    guard let db = try chat.get() else { throw Failure("no_access") }
+    var seen = Set<String>()
+    var times: [(key: String, at: String?)] = []
+    for k in keys where seen.insert(k).inserted {
+      let indexes = w.personByKey[k].map { w.dmsByPerson[$0] ?? [] } ?? w.byKey[k].map { [$0] } ?? []
+      var best: Double?
+      for s in indexes.map({ w.sessions[$0] }) where s.shown && !hide.hides(s, w) {
+        let q = try db.prepare("""
+          SELECT ZMESSAGEDATE FROM ZWAMESSAGE WHERE ZCHATSESSION = ? AND ZISFROMME = 1 AND ZMESSAGETYPE NOT IN (\(SILENT_TYPES))
+          ORDER BY ZSORT DESC LIMIT 1
+          """).bind(s.pk)
+        if try q.step(), !q.isNull(0) { best = max(best ?? q.double(0), q.double(0)) }
+      }
+      times.append((k, best.map(isoApple)))
+    }
+    return TimesOut(times: times)
+  }
+
+  // ---- media
+
+  /// <state>/spool (0700, made if missing).
+  func spoolDir() throws -> String {
+    let dir = opts.state + "/spool"
+    var st = stat()
+    if lstat(dir, &st) != 0 {
+      guard errno == ENOENT, mkdir(dir, 0o700) == 0 || errno == EEXIST, lstat(dir, &st) == 0 else { throw Failure("busy", "the spool can't be made") }
+    }
+    guard (st.st_mode & S_IFMT) == S_IFDIR, st.st_uid == getuid(), chmod(dir, 0o700) == 0 else { throw Failure("busy", "the spool isn't a folder of ours") }
+    return dir
+  }
+
+  /// Deletes spool copies older than SPOOL_TTL_S (the daemon deletes each after use; this catches the rest).
+  func sweepSpool() {
+    let dir = opts.state + "/spool"
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+    let cutoff = Date().timeIntervalSince1970 - SPOOL_TTL_S
+    for name in names {
+      var st = stat()
+      let path = dir + "/" + name
+      if lstat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, Double(st.st_mtimespec.tv_sec) < cutoff { unlink(path) }
+    }
+  }
+
+  /// A message's file, copied into the spool (0600): the daemon reads and
+  /// deletes it. WhatsApp's own file is only read. `not_found` unless the
+  /// line is in a chat shown, not a skipped person's, and its file is here.
+  func media(_ key: (chatKey: String, stanza: String), maxBytes: Int) throws -> MediaFileOut {
+    let (w, hide) = try load()
+    let s = try visible(key.chatKey, w, hide)
+    guard let db = try chat.get() else { throw Failure("no_access") }
+    // A key without a stanza id names its row ("_" and the row id).
+    let rowPk = key.stanza.hasPrefix("_") ? Int64(key.stanza.dropFirst()) : nil
+    // `+`: found by its stanza id's index (or row id), never by walking the chat.
+    let q = try db.prepare(LINE_SELECT + (rowPk == nil ? "WHERE m.ZSTANZAID = ?" : "WHERE m.Z_PK = ?") + " AND +m.ZCHATSESSION = ? LIMIT 1")
+    if let rowPk { q.bind(rowPk, s.pk) } else { q.bind(key.stanza, s.pk) }
+    guard try q.step() else { throw Failure("not_found") }
+    var members: [Int64: MemberNames] = [:]
+    let m = try lineOut(q, s, w, hide, &members)
+    guard m.msgKey == "\(key.chatKey).\(key.stanza)", m.skippedSender == nil, let media = m.media, media.local,
+          let rel = q.text(LINE_MEDIA_PATH) else { throw Failure("not_found", "no file for this message on this Mac") }
+
+    let src = open(opts.container + "/Message/" + rel, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    guard src >= 0 else { throw Failure("not_found", "no file for this message on this Mac") }
+    defer { close(src) }
+    var st = stat()
+    guard fstat(src, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { throw Failure("not_found", "no file for this message on this Mac") }
+    guard st.st_size <= maxBytes else { throw bad("the file is larger than maxBytes") }
+
+    let dir = try spoolDir()
+    lastSweep = Date()
+    sweepSpool()
+    let ext = (rel as NSString).pathExtension.lowercased()
+    let useExt = (1...EXT_MAX).contains(ext.utf8.count) && ext.utf8.allSatisfy({ ($0 >= 48 && $0 <= 57) || ($0 >= 97 && $0 <= 122) })
+      ? ext : EXT_BY_KIND[m.kind] ?? "bin"
+    let file = "\(dir)/\(randomHex(SPOOL_NAME_BYTES)).\(useExt)"
+    let dst = open(file, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
+    guard dst >= 0 else { throw Failure("busy", "the spool can't be written") }
+    var copied = stat()
+    let ok = fcopyfile(src, dst, nil, copyfile_flags_t(COPYFILE_DATA)) == 0 && fchmod(dst, 0o600) == 0 && fstat(dst, &copied) == 0
+    close(dst)
+    guard ok, copied.st_size <= maxBytes else {
+      unlink(file)
+      throw ok ? bad("the file is larger than maxBytes") : Failure("busy", "the file can't be copied")
+    }
+    return MediaFileOut(file: file, bytes: Int64(copied.st_size), kind: m.kind, mime: MIME_BY_EXT[useExt] ?? MIME_DEFAULT, fileName: media.fileName)
+  }
+
+  // ---- calls
+
+  /// What the owner calls a person: the address book, their 1:1's name,
+  /// their push name, else their number.
+  func personName(_ p: String, _ w: World) -> String {
+    if let n = nonEmpty(w.contactNames[p]) { return n }
+    if let i = w.dmsByPerson[p]?.first, w.sessions[i].name != UNKNOWN { return w.sessions[i].name }
+    if let n = nonEmpty(w.pushNames[p]) { return n }
+    return p.hasSuffix(USER_SUFFIX) ? formatNumber("+" + p.dropLast(USER_SUFFIX.count)) : UNKNOWN
+  }
+
+  /// The person's 1:1 (the newest, when they have one under each id), if it is shown.
+  func dmKey(_ p: String, _ w: World, _ hide: Hidden) -> String? {
+    (w.dmsByPerson[p] ?? []).lazy.map { w.sessions[$0] }.first { $0.shown && !hide.hides($0, w) }?.key
+  }
+
+  /// WhatsApp calls from `since`, oldest first: one per call (a run of
+  /// calls is several). Incoming when someone else started it; a 1:1's
+  /// other side names it and gives its chat key, a group call its group.
+  /// A skipped person's calls and a skipped group's never come.
+  func waCalls(since: Int64) throws -> CallsOut {
+    let (w, hide) = try load()
+    guard let db = try calls.get() else { return CallsOut(calls: []) }
+    let q = try db.prepare("""
+      SELECT e.Z_PK, e.ZDATE, e.ZDURATION, e.ZOUTCOME, e.ZVIDEO, e.ZCALLIDSTRING, a.ZMISSEDREASON, a.ZVIDEO, a.ZCREATORJID, a.ZGROUPJID,
+             (SELECT group_concat(pt.ZJIDSTRING, ' ') FROM ZWACDCALLEVENTPARTICIPANT pt WHERE pt.Z1PARTICIPANTS = e.Z_PK)
+      FROM ZWACDCALLEVENT e LEFT JOIN ZWAAGGREGATECALLEVENT a ON a.Z_PK = e.Z1CALLEVENTS
+      WHERE e.ZDATE >= ? AND e.ZDATE * 1000 >= ?
+      ORDER BY e.ZDATE DESC LIMIT ?
+      """).bind(indexBound(since), since, CALLS_MAX)
+    var out: [CallOut] = []
+    while try q.step() {
+      let creator = nonEmpty(q.text(8))
+      let incoming = creator.map { !w.isOwner($0) } ?? false
+      if let creator, hide.persons.contains(w.person(creator)) { continue }
+      let who: String
+      let chatKey: String?
+      if let group = nonEmpty(q.text(9)) {
+        guard let i = w.byKey[key(group)], w.sessions[i].shown, !hide.hides(w.sessions[i], w) else { continue }
+        who = w.sessions[i].name
+        chatKey = w.sessions[i].key
+      } else {
+        let others = (q.text(10) ?? "").split(separator: " ").map(String.init).filter { !w.isOwner($0) }
+        guard let other = incoming ? creator : others.first else { continue }
+        let p = w.person(other)
+        if hide.persons.contains(p) { continue }
+        who = personName(p, w)
+        chatKey = dmKey(p, w, hide)
+      }
+      let id = nonEmpty(q.text(5)) ?? "row \(q.int(0))"
+      out.append(CallOut(callKey: callKey("whatsapp \(id)"), at: isoApple(q.double(1)), who: who, chatKey: chatKey, via: "whatsapp",
+                         incoming: incoming, missed: incoming && (Int(q.int(3)) == WA_OUTCOME_MISSED || q.int(6) != 0),
+                         video: q.int(4) == 1 || q.int(7) == 1, durationS: max(0, q.double(2))))
+    }
+    return CallsOut(calls: out.reversed())
+  }
+
+  /// The iPhone call log from `since`, oldest first. It needs Full Disk
+  /// Access on the reader (`no_access` until then) and is never kept open;
+  /// WhatsApp's own store too (names, and who is skipped). A number is
+  /// matched to a person through WhatsApp's ids (the address book's, the
+  /// chats'); `who` is then their name, else the number.
+  func phoneCalls(since: Int64) throws -> CallsOut {
+    let (w, hide) = try load()
+    switch fileState(opts.phoneDb) {
+    case .missing: throw Failure("no_access", "the iPhone call log isn't on this Mac")
+    case .denied: throw Failure("no_access", "macOS refused the iPhone call log to the reader")
+    case .present: break
+    }
+    let db: Database
+    do {
+      db = try Database.open(opts.phoneDb)
+    } catch let f as Failure where f.code == "busy" {
+      throw Failure("busy", "the iPhone call log is closed for now")
+    }
+    let missing = try db.missingColumns(PHONE_TABLES)
+    guard missing.isEmpty else { throw Failure("unsupported", "the iPhone call log lacks \(missing.prefix(3).joined(separator: ", "))") }
+    let q = try db.prepare("""
+      SELECT ZADDRESS, ZDATE, ZDURATION, ZORIGINATED, ZANSWERED, ZCALLTYPE FROM ZCALLRECORD
+      WHERE ZDATE >= ? AND ZDATE * 1000 >= ? ORDER BY ZDATE DESC LIMIT ?
+      """).bind(indexBound(since), since, CALLS_MAX)
+    var out: [CallOut] = []
+    while try q.step() {
+      let address = q.text(0) ?? ""
+      let p = w.person(number: address)
+      if let p, hide.persons.contains(p) { continue }
+      let incoming = q.int(3) == 0
+      out.append(CallOut(callKey: callKey("phone \(address) \(appleMs(q.double(1)))"), at: isoApple(q.double(1)),
+                         who: p.map { personName($0, w) } ?? formatNumber(address), chatKey: p.flatMap { dmKey($0, w, hide) }, via: "phone",
+                         incoming: incoming, missed: incoming && q.int(4) == 0, video: Int(q.int(5)) == PHONE_CALL_VIDEO,
+                         durationS: max(0, q.double(2))))
+    }
+    return CallsOut(calls: out.reversed())
   }
 }
 
