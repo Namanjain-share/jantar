@@ -145,6 +145,21 @@ describe('Messages: Today', () => {
     expect(await screen.findByText(/This morning was undone/)).toBeTruthy();
   });
 
+  it("a later Run now that made nothing keeps the morning's summary, the todos it made and its Undo", async () => {
+    const noon = run({ id: '01JMSGRVN00000000000000002', trigger: 'now', at: '2026-01-15T13:00:00.000Z', counts: { chats: 0, messages: 0, calls: 0, todos: 0, replies: 0, callbacks: 0, dropped: 0 }, todoIds: [], summary: undefined });
+    const api = messagesApi({ 'GET /v1/messages/today': today({ run: noon, made: run() }), 'POST /v1/messages/morning/:runId/undo': { ok: true } });
+    open(api);
+    // The newest run's line; the morning's summary and todos.
+    expect(await screen.findByText(/^Last run Thu 13:00/)).toBeTruthy();
+    expect(await screen.findByText('Asha Test asked for the deck by Friday. Group One wants the invoice checked.')).toBeTruthy();
+    expect(await within(await section('Todos made')).findByRole('link', { name: /Send the deck to Asha Test/ })).toBeTruthy();
+    // Undo this morning undoes the morning's run, not the empty one.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo this morning' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo it' }));
+    await waitFor(() => expect(requested(api, 'POST', '/v1/messages/morning/:runId/undo')).toEqual([expect.objectContaining({ params: { runId: IDS.run } })]));
+    expect(await screen.findByText(/This morning was undone/)).toBeTruthy();
+  });
+
   it("a failed run says why, and a run still going says so", async () => {
     const a = open(messagesApi({ 'GET /v1/messages/today': today({ run: run({ state: 'failed', why: "Claude's answer couldn't be used, so nothing was made. Try again." }) }) }));
     expect(await screen.findByText("Claude's answer couldn't be used, so nothing was made. Try again.")).toBeTruthy();

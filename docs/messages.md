@@ -142,6 +142,13 @@ command line or the morning run.
 - A name that matches several chats (two called "Mom") lists them all and
   stops (exit 2): say which by its chat id, the first column of `jantar
   messages chats`.
+- **What the morning made from a chat goes with it**: its reply drafts
+  leave Waiting on you, the open todos and call-backs made from it leave
+  Life (as Undo removes them; one you already did stays), and a run that
+  read it loses its summary and its line in the report. A skip while a
+  morning run is going stops that run: it makes nothing, and you run it
+  again. A todo made from a skipped person's line in a group came from
+  the group, so it stays: remove it in Life.
 - Status updates, channels and broadcast lists are never read, skipped or
   not.
 
@@ -219,11 +226,17 @@ dropped.
 - **Todos**, in a "WhatsApp" project in Life (made once; made again if you
   delete it). Each todo's notes name the chat and the time and quote the
   message. A todo gets a time only when the message states one ("5pm",
-  "17:30", "5 baje"); otherwise it is due that day with no time. It stops
-  cleanly at Life's limit of open todos.
+  "17:30", "at 5", "5 baje", "5 बजे"; with no day named, on the message's
+  own day); otherwise it is due that day with no time. A time that
+  had already passed when the run made it is dropped (the todo keeps its
+  day), since it could never ring. It stops cleanly at Life's limit of
+  open todos.
 - **Call-backs**: a todo "Call back {name}" for today (or a later day the
   message names), at the time the message states, else at your call-back
-  time (11:00 unless you change it or turn it off: then no time).
+  time (11:00 unless you change it or turn it off: then no time). If that
+  time had already passed when the run made it (a run late in the day,
+  Run now after lunch, a morning time after the call-back time), it rings
+  at the next quarter hour instead.
 - **Reply drafts**, under Waiting on you: who, what they asked, and a
   short reply in the chat's own language and tone.
 - **One push**: "Morning: 6 todos, 3 replies waiting, 2 call-backs".
@@ -248,7 +261,9 @@ on a phone), on devices paired with control.
 
 - **Today**: how fresh WhatsApp's data was (and a warning when WhatsApp
   wasn't synced in time), any problem the reader has, the last run, **Run
-  now** and **Undo this morning**, the run's summary, then:
+  now** and **Undo this morning**, the run's summary, then (a later Run now
+  that made nothing, or one that failed, keeps the morning's summary, its
+  todos and its Undo):
   - **Waiting on you**: who, what they asked and the draft, with **Copy**,
     **Open in WhatsApp** (a 1:1 with a known number only: WhatsApp opens
     with the draft typed in, and you press send), **Done** and

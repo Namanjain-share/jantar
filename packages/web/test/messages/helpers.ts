@@ -81,6 +81,7 @@ export function draft(id: string, over: Partial<Draft> = {}): Draft {
 export function today(over: Partial<MessagesTodayResponse> = {}): MessagesTodayResponse {
   return {
     run: run(),
+    made: null,
     drafts: [draft(IDS.draftAsha), draft(IDS.draftGroup, { chatKey: IDS.group, chatName: 'Group One', phone: undefined, theyAsked: 'Can you check the invoice?', draft: 'Checking it now.' })],
     callbacks: [{ todoId: IDS.callback, who: 'Ravi Test', at: '2026-01-15T11:00:00.000Z' }],
     ...over,

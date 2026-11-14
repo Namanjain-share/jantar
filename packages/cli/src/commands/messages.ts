@@ -632,6 +632,13 @@ const LEFT_OUT: Record<MorningPreview['dropped'][number]['why'], string> = {
   limit: "Life's open-todo limit",
   life_refused: "Life wouldn't take it (is Life on?)",
   time_not_stated: 'its message states no time',
+  time_passed: 'its time had passed',
+};
+/** What a run does with an item whose time had passed (time_passed). */
+const LATE: Record<MorningPreview['dropped'][number]['kind'], string> = {
+  todo: 'so it keeps its day only',
+  reply: '',
+  callback: 'so it rings at the next quarter hour',
 };
 /** Why Life took no more of a run's todos. */
 const LIFE_REFUSED: Record<NonNullable<MorningRun['lifeRefused']>, string> = {
@@ -652,7 +659,10 @@ function previewTable(p: MorningPreview, zone: string): string {
     ...p.callbacks.map((c) => row('call-back', `${clip(c.who, WHO_MAX)}, ${c.at ? when(c.at, zone) : 'no time'}`)),
     ...p.replies.map((d) => row('reply', `${clip(d.chatName, WHO_MAX)}: ${clip(d.draft, DRAFT_SHOWN)}`)),
   ];
-  const left = p.dropped.map((x) => row(x.why === 'time_not_stated' ? 'no time' : 'left out', `${x.kind} ${x.ref}: ${LEFT_OUT[x.why]}`));
+  const left = p.dropped.map((x) => {
+    if (x.why === 'time_passed') return row('late', `${x.kind} ${x.ref}: ${LEFT_OUT[x.why]}${LATE[x.kind] ? `, ${LATE[x.kind]}` : ''}`);
+    return row(x.why === 'time_not_stated' ? 'no time' : 'left out', `${x.kind} ${x.ref}: ${LEFT_OUT[x.why]}`);
+  });
   return `What it would make:\n${rows.length ? rows.join('') : '  nothing\n'}${left.join('')}`;
 }
 

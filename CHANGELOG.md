@@ -58,8 +58,9 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   then what mentions you, within about 50,000 tokens, and lists what it
   left out. One Claude run with no tools makes todos in a "WhatsApp"
   project (a time only when the message states one), "Call back" todos
-  (at the time the message states, else your call-back time, 11:00), and
-  reply drafts; anything that doesn't cite a message it was given is
+  (at the time the message states, else your call-back time, 11:00; a
+  time already gone when the run makes it rings at the next quarter hour),
+  and reply drafts; anything that doesn't cite a message it was given is
   dropped. One push holds counts only ("Morning: 6 todos, 3 replies
   waiting, 2 call-backs") and follows your notification mute. A run never
   makes the same thing twice, and Undo this morning takes a run back.
@@ -72,15 +73,19 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   Terminal, the phone or the morning run, which chat and how much.
 - **The skip list.** Skipping a 1:1 skips that person everywhere: their
   chat, their calls, and their lines in groups (shown as "[skipped]").
-  The reader enforces it, below everything else. A phone can add a skip
-  but never remove one: that is `jantar messages skip remove` at the Mac.
+  The reader enforces it, below everything else. What the morning already
+  made from a skipped chat goes too (its drafts, its open todos and
+  call-backs, a summary that read it), and a run going when you skip
+  stops. A phone can add a skip but never remove one: that is
+  `jantar messages skip remove` at the Mac.
   A person WhatsApp never linked to a number can still show in groups.
 - **At the Mac**: `jantar messages chats`, `read`, `search`, `calls`,
   `skip` and `morning`. A name two chats share lists both and stops.
 - In Chat, todos the morning made are someone else's words: Chat reads them
   as data, and a change it then wants waits for your tap. Its "Looking
   at" chip names a todo from a meeting or WhatsApp by kind only, never by
-  its title. Work marks a follow-up the morning made "from WhatsApp".
+  its title. `todos_here` in a Claude session frames such a todo's words
+  as data too. Work marks a follow-up the morning made "from WhatsApp".
 - `jantar uninstall` stops and removes the reader's LaunchAgent too.
 
 ## 0.14.1 (20 November 2026)

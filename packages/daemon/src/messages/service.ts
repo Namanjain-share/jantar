@@ -27,7 +27,14 @@
  *   after a run that went well and wasn't dry. A run the reader or Claude
  *   fails is stored failed with a fixed sentence; nothing new makes no
  *   Claude run. A timer or Run now run that made anything sends one push,
- *   counts only. Every chat sent to Claude is in the read log (`morning`).
+ *   counts only. Every chat sent to Claude is in the read log (`morning`)
+ *   and in run_chats. A skip added while a run is going stops it (stored
+ *   failed, nothing made), whatever step it is at.
+ * - A skip takes from view what the morning made from that chat: its open
+ *   drafts are dismissed and a run that read it loses its summary (in the
+ *   skip's transaction), then its open todos and call-backs leave Life, as
+ *   Undo takes them. Today leaves out a skipped chat's drafts and
+ *   call-backs whatever happened before.
  * - The morning timer (morning/timer.ts) runs while messages.db is open
  *   (never under --read-only), at the morning time in the Life zone; a time
  *   or zone change rearms it, and a timer run that went well marks its day.
@@ -94,9 +101,12 @@ import {
   LAST_DAY_KEY,
   READS_KEEP,
   addRead,
+  addRunChats,
   failRunning,
+  forgetChat,
   lastRunAt,
   listReads,
+  madeRun,
   newestRun,
   openMessagesDb,
   putRun,
@@ -107,7 +117,7 @@ import {
   type MessagesDb,
 } from './db.js';
 import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
-import { CALLBACK_TITLE, applyMorning, undoMorning, type ApplyResult } from './morning/apply.js';
+import { CALLBACK_TITLE, applyMorning, removeChatTodos, undoMorning, type ApplyResult } from './morning/apply.js';
 import { budget } from './morning/budget.js';
 import { collect, missedCalls, type Batch } from './morning/collect.js';
 import { OWNER_NAME, morningInput } from './morning/input.js';
@@ -187,6 +197,21 @@ function previewOf(a: ApplyResult): MorningPreview {
   };
 }
 
+/** The run going, when a skip lands: it stops (see Going). */
+class SkippedDuringRun extends Error {
+  constructor() {
+    super('a chat was skipped during the morning run');
+    this.name = 'SkippedDuringRun';
+  }
+}
+
+/** The morning run going: `skipped` once a skip landed during it (it then stops and makes nothing). */
+interface Going {
+  id: string;
+  abort: AbortController;
+  skipped: boolean;
+}
+
 interface DraftRow {
   id: string;
   run_id: string;
@@ -228,7 +253,7 @@ class MessagesShell implements MessagesService {
   /** Options claude refused that the morning run can do without (this daemon's life). */
   private readonly learned = new Set<string>();
   /** The morning run going (one at a time). */
-  private going: { id: string; abort: AbortController } | null = null;
+  private going: Going | null = null;
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -448,10 +473,12 @@ class MessagesShell implements MessagesService {
     const { db, skip } = this.need();
     // Messages may have gone off and on during the read: a skip.json the new open couldn't keep is never written over.
     if (!this.keepSkipFile()) return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
+    let dismissed = 0;
     try {
       db.tx(() => {
         skip.add({ chatKey, name: chat.name, kind: chat.kind, addedAt: this.ctx.clock.iso() });
         skip.writeMirror();
+        dismissed = forgetChat(db, chatKey);
       });
       this.wrote();
     } catch (e) {
@@ -460,8 +487,26 @@ class MessagesShell implements MessagesService {
       this.mirror();
       return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     }
-    this.log.info('messages: a chat is skipped', { chatKey, by: actor.kind });
+    // A run going may have read the chat already: it stops, and makes nothing.
+    if (this.going) {
+      this.going.skipped = true;
+      this.going.abort.abort();
+    }
+    const removed = this.removeSkippedTodos(db, chatKey, actor);
+    this.log.info('messages: a chat is skipped', { chatKey, by: actor.kind, dismissed, removed });
     return OK;
+  }
+
+  /** The open todos and call-backs the morning made from a chat just skipped leave Life; how many (-1: Life refused, logged). */
+  private removeSkippedTodos(db: MessagesDb, chatKey: string, actor: Actor): number {
+    try {
+      const r = removeChatTodos({ life: this.deps.life, db }, chatKey, actor);
+      if (r.ok) return r.value;
+      this.log.warn("messages: a skipped chat's todos were not removed", { chatKey, code: r.code });
+    } catch (e) {
+      this.log.warn("messages: a skipped chat's todos were not removed", { chatKey, error: errorKind(e) });
+    }
+    return -1;
   }
 
   private skipRemove(chatKey: string, actor: Actor): LifeResult {
@@ -533,19 +578,21 @@ class MessagesShell implements MessagesService {
     if (this.readOnly) throw new ApiError('forbidden', MESSAGES_SAYS.morningReadOnly);
     if (this.going) throw new ApiError('conflict', MESSAGES_SAYS.morningBusy);
     this.needReads();
-    const going = { id: newId(), abort: new AbortController() };
+    const going: Going = { id: newId(), abort: new AbortController(), skipped: false };
     this.going = going;
     try {
       const base: MorningRun = { id: going.id, at: this.ctx.clock.iso(), trigger, state: 'running', stale: false, newestAt: null, counts: NO_COUNTS, dropped: [], todoIds: [] };
       putRun(db, base);
       let run: MorningRun;
       try {
-        run = await this.morningPass(db, base, timerStale, going.abort.signal);
+        run = await this.morningPass(db, base, timerStale, going);
       } catch (e) {
         this.live(db);
-        if (!(e instanceof ReaderFailure)) this.log.error('messages: the morning run failed', { event: 'messages.morning', error: errorKind(e) });
+        if (!(e instanceof ReaderFailure) && !going.skipped) this.log.error('messages: the morning run failed', { event: 'messages.morning', error: errorKind(e) });
         run = { ...base, state: 'failed', why: morningFailSays(e) };
       }
+      // A skip during the run: whatever stopped it (Claude aborted, a read refused), that is why.
+      if (going.skipped && run.state !== 'ok') run = { ...base, state: 'failed', why: MESSAGES_SAYS.morningSkipped };
       putRun(db, run);
       const c = run.counts;
       this.log.info('messages: a morning run', { event: 'messages.morning', runId: run.id, trigger, state: run.state, stale: run.stale, ...c });
@@ -558,14 +605,19 @@ class MessagesShell implements MessagesService {
     }
   }
 
-  private async morningPass(db: MessagesDb, base: MorningRun, timerStale: boolean | undefined, signal: AbortSignal): Promise<MorningRun> {
+  private async morningPass(db: MessagesDb, base: MorningRun, timerStale: boolean | undefined, going: Going): Promise<MorningRun> {
     const dry = base.trigger === 'dry';
+    // After every wait: messages.db is still the run's, and no skip landed (what was read may hold that chat).
+    const still = () => {
+      this.live(db);
+      if (going.skipped) throw new SkippedDuringRun();
+    };
     const st = await this.reader.call('status', {});
-    this.live(db);
+    still();
     const now = new Date(this.ctx.clock.now());
     const tz = this.zone();
     const batch = await collect(this.reader, readCursor(db), now);
-    this.live(db);
+    still();
     const { kept, dropped } = budget(batch);
     const head: MorningRun = {
       ...base,
@@ -587,12 +639,13 @@ class MessagesShell implements MessagesService {
     if (kept.chats.length === 0 && kept.calls.length === 0) return this.ranWell(db, batch, { ...head, state: 'ok', ...(dry ? { preview: NO_PREVIEW } : {}) });
     const { text, refs } = morningInput(kept, { now, tz, ownerName: OWNER_NAME });
     const images = await morningImages(pickImages(kept, refs), { reader: this.reader, messagesDir: this.ctx.paths.messagesDir, shrinker: this.shrinker, log: this.log });
-    this.live(db);
-    // What goes to Claude, in the read log: each chat and the calls.
+    still();
+    // What goes to Claude, in the read log (each chat and the calls) and run_chats (a later skip of one takes the summary).
     for (const c of kept.chats) this.logRead('morning', { via: 'morning' }, c.chat.chatKey, c.messages.length + c.earlier.length);
     if (kept.calls.length > 0) this.logRead('morning', { via: 'morning' }, undefined, kept.calls.length);
-    const r = await runMorning({ ctx: this.ctx, usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy, log: this.log, learned: this.learned }, { text, images }, signal);
-    this.live(db);
+    addRunChats(db, base.id, [...kept.chats.map((c) => c.chat.chatKey), ...kept.calls.flatMap((c) => (c.chatKey ? [c.chatKey] : []))]);
+    const r = await runMorning({ ctx: this.ctx, usage: this.deps.usage, ccwLegacy: this.deps.ccwLegacy, log: this.log, learned: this.learned }, { text, images }, going.abort.signal);
+    still();
     if (!r.ok) return { ...head, state: 'failed', why: CLAUDE_SAYS[r.why] };
     const applied = applyMorning(r.answer, refs, kept, { life: this.deps.life, db, now, tz, prefs: readPrefs(db), runId: base.id, dryRun: dry });
     const summary = r.answer.summary.replace(LINE_END, '\n').replace(CONTROL, '').trim();
@@ -624,10 +677,12 @@ class MessagesShell implements MessagesService {
     return OK;
   }
 
-  /** The newest run (not a dry one), the open reply drafts and the call-back todos still open, newest first. */
+  /** The newest run (not a dry one), the run Today reports on, the open reply drafts and the call-back todos still open, newest first; never a skipped chat's. */
   private today(): MessagesTodayResponse {
     const { db } = this.need();
-    const rows = db.prepare("SELECT id, run_id, chat_key, chat_name, phone, they_asked, draft, at, state FROM drafts WHERE state = 'open' ORDER BY at DESC, rowid DESC LIMIT ?").all(TODAY_MAX) as unknown as DraftRow[];
+    const rows = db
+      .prepare("SELECT id, run_id, chat_key, chat_name, phone, they_asked, draft, at, state FROM drafts WHERE state = 'open' AND chat_key NOT IN (SELECT chat_key FROM skip) ORDER BY at DESC, rowid DESC LIMIT ?")
+      .all(TODAY_MAX) as unknown as DraftRow[];
     const drafts = rows.flatMap((r): Draft[] => {
       const d = DraftSchema.safeParse({
         id: r.id,
@@ -642,12 +697,16 @@ class MessagesShell implements MessagesService {
       });
       return d.success ? [d.data] : [];
     });
-    return { run: newestRun(db, true), drafts, callbacks: this.callbacks(db) };
+    return { run: newestRun(db, true), made: madeRun(db), drafts, callbacks: this.callbacks(db) };
   }
 
-  /** The call-back todos the morning made that are still open in Life (who: the title after CALLBACK_TITLE; at: when it rings). */
+  /** The call-back todos the morning made that are still open in Life, none from a skipped chat (who: the title after CALLBACK_TITLE; at: when it rings). */
   private callbacks(db: MessagesDb): MessagesTodayResponse['callbacks'] {
-    const ids = (db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND target_id IS NOT NULL ORDER BY rowid DESC").all() as { target_id: string }[]).map((r) => r.target_id);
+    const ids = (
+      db
+        .prepare("SELECT target_id FROM made WHERE kind = 'callback' AND target_id IS NOT NULL AND (chat_key IS NULL OR chat_key NOT IN (SELECT chat_key FROM skip)) ORDER BY rowid DESC")
+        .all() as { target_id: string }[]
+    ).map((r) => r.target_id);
     if (ids.length === 0) return [];
     let open;
     try {

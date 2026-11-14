@@ -13,10 +13,11 @@
  *   on, so a dismissed draft's text is overwritten, not left in free pages.
  *
  * It holds the skip list (mirrored to the reader's skip.json), reply drafts,
- * morning run reports, what each run made (so a re-run makes nothing
- * twice), the read log (ids and counts only) and Messages' own settings
- * (the morning and call-back times, the "ran today" mark). No message
- * text but a draft's quote of what they asked, never a WhatsApp id.
+ * morning run reports, what each run made and from which chat (so a re-run
+ * makes nothing twice, and a skip takes it from view), the chats each run
+ * sent to Claude, the read log (ids and counts only) and Messages' own
+ * settings (the morning and call-back times, the "ran today" mark). No
+ * message text but a draft's quote of what they asked, never a WhatsApp id.
  */
 import { basename } from 'node:path';
 import {
@@ -107,6 +108,24 @@ export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
       );
 
       CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    `,
+  },
+  {
+    // What a skip takes from view: each item made, by the chat it came from; the chats each run sent to Claude.
+    version: 2,
+    name: 'chats',
+    sql: `
+      ALTER TABLE made ADD COLUMN chat_key TEXT;      -- a line's chat, a call's 1:1 (null: not known)
+      UPDATE made SET chat_key = substr(src_key, instr(src_key, ':') + 1, instr(src_key, '.') - instr(src_key, ':') - 1)
+        WHERE instr(src_key, '.') > 0;
+      CREATE INDEX made_chat ON made (chat_key);
+
+      CREATE TABLE run_chats (
+        run_id   TEXT NOT NULL,
+        chat_key TEXT NOT NULL,
+        PRIMARY KEY (run_id, chat_key)
+      );
+      CREATE INDEX run_chats_chat ON run_chats (chat_key);
     `,
   },
 ];
@@ -209,30 +228,77 @@ export function putRun(db: MessagesDb, run: MorningRun): void {
   );
 }
 
-/** The newest run's report (`real`: not a dry run), or null; a report that doesn't check counts as none. */
-export function newestRun(db: MessagesDb, real: boolean): MorningRun | null {
-  const sql = `SELECT json FROM runs ${real ? "WHERE trigger <> 'dry' " : ''}ORDER BY at DESC, rowid DESC LIMIT 1`;
-  const row = db.prepare(sql).get() as { json: string } | undefined;
-  if (!row) return null;
+/** A stored report, or null when it doesn't check. */
+function parseRun(json: string): MorningRun | null {
   try {
-    const r = MorningRunSchema.safeParse(JSON.parse(row.json));
+    const r = MorningRunSchema.safeParse(JSON.parse(json));
     return r.success ? r.data : null;
   } catch {
     return null;
   }
 }
 
+/** The newest run's report (`real`: not a dry run), or null; a report that doesn't check counts as none. */
+export function newestRun(db: MessagesDb, real: boolean): MorningRun | null {
+  const sql = `SELECT json FROM runs ${real ? "WHERE trigger <> 'dry' " : ''}ORDER BY at DESC, rowid DESC LIMIT 1`;
+  const row = db.prepare(sql).get() as { json: string } | undefined;
+  return row ? parseRun(row.json) : null;
+}
+
+/** Runs looked at for Today's `made`, newest first, at most. */
+const MADE_SCAN = 50;
+
+/**
+ * The run Today reports on (MessagesTodayResponse `made`): the newest one,
+ * not dry, that went well and made anything, since the newest timer run
+ * started (from any run while there is none); null when none did.
+ */
+export function madeRun(db: MessagesDb): MorningRun | null {
+  const since = (db.prepare("SELECT max(at) AS at FROM runs WHERE trigger = 'timer'").get() as { at: string | null } | undefined)?.at ?? null;
+  const rows = db
+    .prepare(`SELECT json FROM runs WHERE trigger <> 'dry' AND state = 'ok'${since ? ' AND at >= ?' : ''} ORDER BY at DESC, rowid DESC LIMIT ?`)
+    .all(...(since ? [since, MADE_SCAN] : [MADE_SCAN])) as { json: string }[];
+  for (const row of rows) {
+    const run = parseRun(row.json);
+    if (run && run.counts.todos + run.counts.replies + run.counts.callbacks > 0) return run;
+  }
+  return null;
+}
+
+/** The chats a run sends to Claude (a skip later takes that run's summary away). */
+export function addRunChats(db: MessagesDb, runId: string, chatKeys: readonly string[]): void {
+  const add = db.prepare('INSERT OR IGNORE INTO run_chats (run_id, chat_key) VALUES (?, ?)');
+  db.tx(() => {
+    for (const k of chatKeys) add.run(runId, k);
+  });
+}
+
+/**
+ * A chat just skipped, in the skip's own transaction: its open drafts are
+ * dismissed, a run that sent it to Claude loses its summary (the model's
+ * words about it), and every report its left-out line. Answers how many
+ * drafts were dismissed.
+ */
+export function forgetChat(db: MessagesDb, chatKey: string): number {
+  const dismissed = Number(db.prepare("UPDATE drafts SET state = 'dismissed' WHERE chat_key = ? AND state = 'open'").run(chatKey).changes);
+  const read = new Set((db.prepare('SELECT run_id FROM run_chats WHERE chat_key = ?').all(chatKey) as { run_id: string }[]).map((r) => r.run_id));
+  // The key is in a report's JSON only where its left-out line names it.
+  const rows = db.prepare("SELECT id, json FROM runs WHERE id IN (SELECT run_id FROM run_chats WHERE chat_key = ?) OR instr(json, ?) > 0").all(chatKey, `"${chatKey}"`) as { id: string; json: string }[];
+  for (const row of rows) {
+    const run = parseRun(row.json);
+    if (!run) continue;
+    const kept: MorningRun = { ...run, dropped: run.dropped.filter((d) => d.chatKey !== chatKey) };
+    if (read.has(run.id)) delete kept.summary;
+    putRun(db, kept);
+  }
+  return dismissed;
+}
+
 /** Runs still `running` (the daemon stopped during them) become failed with `why`. */
 export function failRunning(db: MessagesDb, why: string): number {
   const rows = db.prepare("SELECT id, json FROM runs WHERE state = 'running'").all() as { id: string; json: string }[];
   for (const row of rows) {
-    let run: MorningRun | null = null;
-    try {
-      const r = MorningRunSchema.safeParse(JSON.parse(row.json));
-      run = r.success ? r.data : null;
-    } catch {
-      run = null;
-    }
+    const run = parseRun(row.json);
     if (run) putRun(db, { ...run, state: 'failed', why });
     else db.prepare("UPDATE runs SET state = 'failed' WHERE id = ?").run(row.id);
   }

@@ -3,9 +3,12 @@
  * module (in-memory life.db) and messages.db in memory:
  * - todos go to the "WhatsApp" project (made once, again when deleted),
  *   marked `from: 'messages'`, with the chat, the time and a quote in
- *   their notes; a time only when the cited line states one;
+ *   their notes; a time only when the cited line states one ("at 5", "5
+ *   बजे" too), a time with no day today's, one already past dropped;
  * - call-backs are todos due today (or the day the line states), at the
- *   time it states, else at the call-back time;
+ *   time it states, else at the call-back time, and one whose time has
+ *   passed rings at the next quarter hour;
+ * - `made` keeps the chat each item came from (a file from before gets it);
  * - replies are drafts (a 1:1's number, none for a group);
  * - every ref must be the batch's, `made` keeps a re-run from making
  *   anything twice (a person still waiting gets one draft, however little
@@ -16,6 +19,9 @@
  * - Chat frames a `from: 'messages'` todo as WhatsApp's words and taints
  *   its turn, so a write then waits for a tap.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { instantAt } from '@jantar/life-core';
 import { LIFE_LIMITS, type Todo } from '@jantar/protocol';
@@ -25,7 +31,8 @@ import type { Actor, TodosModule } from '../../src/contracts.js';
 import { createTestContext, createTestLifeCore, type TestLifeCore } from '../../src/core/testing.js';
 import { MORNING_PUSH_TAG, morningPush } from '../../src/life/push.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
-import { openMessagesDb, type MessagesDb } from '../../src/messages/db.js';
+import { openCheckedDb } from '../../src/life/db.js';
+import { MESSAGES_MIGRATIONS, openMessagesDb, type MessagesDb } from '../../src/messages/db.js';
 import { WHATSAPP_PROJECT, applyMorning, undoMorning, type ApplyDeps } from '../../src/messages/morning/apply.js';
 import { WAITING_FIRST, budget } from '../../src/messages/morning/budget.js';
 import { morningInput, type RefMap } from '../../src/messages/morning/input.js';
@@ -112,8 +119,10 @@ describe('applyMorning', () => {
       { id: expect.any(String), title: 'Check on Mom', src: s.l.ok.msgKey },
       { id: expect.any(String), title: 'Look at the invoice', src: s.l.invoice.msgKey },
     ]);
-    // "Friday 5pm" states a time; "ok" doesn't, so that todo keeps its day only; a time with no day goes.
+    // "Friday 5pm" states a time, but Friday 17:00 had passed by the run: that todo keeps its day only (it can't
+    // ring); "ok" states none, so that todo keeps its day only; a time the line doesn't state, with no day, goes.
     expect(out.dropped).toEqual([
+      { kind: 'todo', ref: deck, why: 'time_passed' },
       { kind: 'todo', ref: ok, why: 'time_not_stated' },
       { kind: 'todo', ref: idFor(refs, s.l.invoice.msgKey), why: 'time_not_stated' },
     ]);
@@ -121,8 +130,8 @@ describe('applyMorning', () => {
     const project = r.core.db.prepare('SELECT json FROM projects').all() as { json: string }[];
     expect(project.map((p) => JSON.parse(p.json))).toEqual([expect.objectContaining({ name: WHATSAPP_PROJECT.name, emoji: WHATSAPP_PROJECT.emoji })]);
     const projectId = (JSON.parse(project[0]!.json) as { id: string }).id;
+    expect(byTitle(open, 'Send Asha the deck').due).toEqual({ day: '2026-11-13' });
     expect(byTitle(open, 'Send Asha the deck')).toMatchObject({
-      due: { day: '2026-11-13', time: '17:00' },
       priority: 'high',
       projectId,
       from: 'messages',
@@ -134,13 +143,24 @@ describe('applyMorning', () => {
     expect(byTitle(open, 'Look at the invoice').notes).toBe('WhatsApp · Group One · Sat 14 Nov 01:15\n"[image: invoice]"');
     // Made once: its id in meta, each todo's source in `made`.
     expect(r.db.meta('project_id')).toBe(projectId);
-    expect(r.rows('made')).toEqual(out.todos.map((t) => ({ src_key: `todo:${t.src}`, run_id: RUN_A, kind: 'todo', target_id: t.id })));
+    expect(r.rows('made')).toEqual(out.todos.map((t) => ({ src_key: `todo:${t.src}`, run_id: RUN_A, kind: 'todo', target_id: t.id, chat_key: t.src.slice(0, t.src.indexOf('.')) })));
   });
 
   it('a time stated in the cited message is kept however it is written; a quote is cut at 200 characters', () => {
     const r = build();
     const c = chat(9, 'Kiran Test');
-    const lines = ['Meet at 17:30?', 'call at 5 pm', 'kal 5 baje milte hain', 'Lunch at noon', 'Room 12 on floor 3', `${'😀'.repeat(150)} नमस्ते, by 4pm`];
+    const lines = [
+      'Meet at 17:30?',
+      'call at 5 pm',
+      'kal 5 baje milte hain',
+      'Lunch at noon',
+      'Room 12 on floor 3',
+      `${'😀'.repeat(150)} नमस्ते, by 4pm`,
+      // The design's own example, and Hindi in Devanagari.
+      'call me at 5',
+      'शाम 5 बजे फ़ोन करना',
+      '5 बजे call karna',
+    ];
     const msgs = lines.map((text, i) => line(c, `2026-11-13T1${i}:00:00.000Z`, { text }));
     const { kept, refs } = prepared(batchOf([bc(c, msgs, { waiting: true })]));
     const out = applyMorning({ ...EMPTY, todos: msgs.map((m, i) => ({ title: `Todo ${i}`, due_day: TODAY, due_time: '18:00', ref: idFor(refs, m.msgKey) })) }, refs, kept, r.deps());
@@ -151,6 +171,9 @@ describe('applyMorning', () => {
       { day: TODAY, time: '18:00' },
       { day: TODAY },
       { day: TODAY },
+      { day: TODAY, time: '18:00' },
+      { day: TODAY, time: '18:00' },
+      { day: TODAY, time: '18:00' },
       { day: TODAY, time: '18:00' },
     ]);
     expect(out.dropped.map((d) => d.why)).toEqual(['time_not_stated', 'time_not_stated']);
@@ -196,6 +219,82 @@ describe('applyMorning', () => {
     const out2 = applyMorning({ ...EMPTY, callbacks: [answer.callbacks[0]!] }, refs, kept, r2.deps({ prefs: { morningAt: null, callbackAt: null } }));
     expect(out2.callbacks).toEqual([{ id: expect.any(String), who: 'Ravi Test' }]);
     expect(byTitle(r2.open(), 'Call back Ravi Test').due).toEqual({ day: TODAY });
+  });
+
+  it('a time that has passed when the run applies: a call-back rings at the next quarter hour, a todo keeps its day', () => {
+    // 12:31 in the Life zone (a late timer, Run now or --now after lunch): the call-back time, 11:00, has passed.
+    const late = new Date('2026-11-14T07:01:00.000Z');
+    const r = build();
+    r.core.clock.set(late.toISOString());
+    const s = sample();
+    const { kept, refs } = prepared(s.batch);
+    const call = idFor(refs, s.calls.raviWa.callKey);
+    const callMe = idFor(refs, s.l.callMe.msgKey);
+    const deck = idFor(refs, s.l.deck.msgKey);
+    const answer: MorningAnswer = {
+      ...EMPTY,
+      todos: [
+        { title: 'Send Asha the deck', due_day: '2026-11-13', due_time: '17:00', ref: deck },
+        { title: 'Talk to Asha about the deck', due_day: TODAY, due_time: '18:00', ref: callMe },
+      ],
+      callbacks: [
+        { ref: call, who: 'Ravi Test', why: 'Missed his call' },
+        { ref: callMe, who: 'Asha', why: 'She asked for a call', time_stated: '18:00' },
+      ],
+    };
+    const out = applyMorning(answer, refs, kept, r.deps({ now: late }));
+    const at = (day: string, hhmm: string) => instantAt(day, hhmm, TZ).toISOString();
+    expect(out.callbacks).toEqual([
+      { id: expect.any(String), who: 'Ravi Test', at: at(TODAY, '12:45') },
+      { id: expect.any(String), who: 'Asha Test', at: at(TODAY, '18:00') },
+    ]);
+    expect(out.dropped).toEqual([
+      { kind: 'todo', ref: deck, why: 'time_passed' },
+      { kind: 'callback', ref: call, why: 'time_passed' },
+    ]);
+    // Every call-back rings: Life has a ring set for each, at its time.
+    for (const c of out.callbacks) expect(r.core.scheduler.row('todo', c.id!)?.nextAt).toBe(c.at);
+    const open = r.open();
+    expect(byTitle(open, 'Call back Ravi Test').due).toEqual({ day: TODAY, time: '12:45' });
+    expect(byTitle(open, 'Send Asha the deck').due).toEqual({ day: '2026-11-13' });
+    const talk = byTitle(open, 'Talk to Asha about the deck');
+    expect(talk.due).toEqual({ day: TODAY, time: '18:00' });
+    expect(r.core.scheduler.row('todo', talk.id)?.nextAt).toBe(at(TODAY, '18:00'));
+
+    // At 23:50 the next quarter hour is tomorrow's 00:00.
+    const r2 = build();
+    const night = instantAt(TODAY, '23:50', TZ);
+    r2.core.clock.set(night.toISOString());
+    const out2 = applyMorning({ ...EMPTY, callbacks: [answer.callbacks[0]!] }, refs, kept, r2.deps({ now: night }));
+    expect(out2.callbacks).toEqual([{ id: expect.any(String), who: 'Ravi Test', at: at('2026-11-15', '00:00') }]);
+    expect(r2.core.scheduler.row('todo', out2.callbacks[0]!.id!)?.nextAt).toBe(at('2026-11-15', '00:00'));
+  });
+
+  it('a time the line states with no day is due today at that time (or that day only, once it has passed)', () => {
+    const r = build();
+    const asha = chat(1, 'Asha Test');
+    // Sat 07:30 and 06:30 in the Life zone; the run applies at 08:30.
+    const report = line(asha, '2026-11-14T02:00:00.000Z', { text: 'Please send me the report by 5pm' });
+    const early = line(asha, '2026-11-14T01:00:00.000Z', { text: 'Need the keys by 8am' });
+    const { kept, refs } = prepared(batchOf([bc(asha, [early, report], { waiting: true })]));
+    const out = applyMorning(
+      {
+        ...EMPTY,
+        todos: [
+          { title: 'Send Asha the report', due_time: '17:00', ref: idFor(refs, report.msgKey) },
+          { title: 'Give Asha the keys', due_time: '08:00', ref: idFor(refs, early.msgKey) },
+        ],
+      },
+      refs,
+      kept,
+      r.deps(),
+    );
+    expect(out.dropped).toEqual([{ kind: 'todo', ref: idFor(refs, early.msgKey), why: 'time_passed' }]);
+    const open = r.open();
+    const t = byTitle(open, 'Send Asha the report');
+    expect(t.due).toEqual({ day: TODAY, time: '17:00' });
+    expect(r.core.scheduler.row('todo', t.id)?.nextAt).toBe(instantAt(TODAY, '17:00', TZ).toISOString());
+    expect(byTitle(open, 'Give Asha the keys').due).toEqual({ day: TODAY });
   });
 
   it("replies become drafts: a 1:1's number, none for a group; one citing another chat's line is dropped", () => {
@@ -446,6 +545,7 @@ describe('applyMorning', () => {
     expect(dry.callbacks).toEqual([{ who: 'Ravi Test', at: instantAt(TODAY, '11:00', TZ).toISOString() }]);
     expect(dry.replies).toEqual([{ runId: RUN_A, chatKey: s.asha.chatKey, chatName: 'Asha Test', phone: '919990000001', theyAsked: 'The deck', draft: 'On it.', at: s.l.deck.at, state: 'open' }]);
     expect(dry.dropped.map((d) => [d.ref, d.why])).toEqual([
+      [deck, 'time_passed'],
       [idFor(refs, s.l.ok.msgKey), 'time_not_stated'],
       ['m500', 'unknown_ref'],
     ]);
@@ -505,6 +605,56 @@ describe('undoMorning', () => {
     // Twice is fine; an unknown run is not found.
     expect(undoMorning({ life: { todos: r.todos }, db: r.db }, RUN_A, CLI)).toEqual({ ok: true, value: { removed: 0, dismissed: 0 } });
     expect(undoMorning({ life: { todos: r.todos }, db: r.db }, '01JMORNINGRUNZ000000000000', CLI)).toMatchObject({ ok: false, code: 'not_found' });
+  });
+});
+
+describe('made', () => {
+  it('each item made keeps the chat it came from; a messages.db from before has it filled in from the line', () => {
+    const r = build();
+    const s = sample();
+    const { kept, refs } = prepared(s.batch);
+    applyMorning(
+      {
+        ...EMPTY,
+        todos: [{ title: 'Send Asha the deck', ref: idFor(refs, s.l.deck.msgKey) }],
+        replies: [{ chat: idFor(refs, s.group.chatKey), ref: idFor(refs, s.l.mention.msgKey), they_asked: 'A check', draft: 'Checking.' }],
+        callbacks: [
+          { ref: idFor(refs, s.calls.raviWa.callKey), who: 'Ravi Test', why: 'Missed call' },
+          { ref: idFor(refs, s.l.mention.msgKey), who: 'Ravi', why: 'Asked in the group' },
+        ],
+      },
+      refs,
+      kept,
+      r.deps(),
+    );
+    // A call's chat is its 1:1; a line's, the chat it was written in.
+    expect(r.rows('made').map((m) => [m.src_key, m.chat_key])).toEqual([
+      [`todo:${s.l.deck.msgKey}`, s.asha.chatKey],
+      [`callback:${s.calls.raviWa.callKey}`, s.ravi.chatKey],
+      [`callback:${s.l.mention.msgKey}`, s.group.chatKey],
+      [`reply:${s.l.mention.msgKey}`, s.group.chatKey],
+    ]);
+
+    // A file at the first schema: its rows get their chat from the line's key (a call's can't be known).
+    const dir = mkdtempSync(join(tmpdir(), 'jma-'));
+    try {
+      const file = join(dir, 'messages.db');
+      const v1 = openCheckedDb(file, { migrations: MESSAGES_MIGRATIONS.slice(0, 1), brokenReason: 'x' });
+      if (!v1.ok) throw new Error(v1.reason);
+      const add = v1.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id) VALUES (?, ?, ?, ?)');
+      add.run(`todo:${s.l.deck.msgKey}`, RUN_A, 'todo', 'x1');
+      add.run(`callback:${s.calls.raviWa.callKey}`, RUN_A, 'callback', 'x2');
+      v1.db.close();
+      const now = openMessagesDb(file);
+      if (!now.ok) throw new Error(now.reason);
+      expect(now.db.prepare('SELECT src_key, chat_key FROM made ORDER BY rowid').all()).toEqual([
+        { src_key: `todo:${s.l.deck.msgKey}`, chat_key: s.asha.chatKey },
+        { src_key: `callback:${s.calls.raviWa.callKey}`, chat_key: null },
+      ]);
+      now.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

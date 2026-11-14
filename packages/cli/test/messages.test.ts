@@ -435,6 +435,8 @@ describe('jantar messages', () => {
           { kind: 'todo', ref: 'm999', why: 'unknown_ref' },
           { kind: 'todo', ref: 'm3', why: 'time_not_stated' },
           { kind: 'callback', ref: 'k1', why: 'life_refused' },
+          { kind: 'callback', ref: 'k2', why: 'time_passed' },
+          { kind: 'todo', ref: 'm4', why: 'time_passed' },
         ],
       },
     };
@@ -458,6 +460,9 @@ describe('jantar messages', () => {
       expect(lines).toContain("  left out   todo m999: it cites a message the run didn't have");
       expect(lines).toContain('  no time    todo m3: its message states no time');
       expect(lines).toContain("  left out   callback k1: Life wouldn't take it (is Life on?)");
+      // A time that had passed by the run: a call-back rings soon, a todo keeps its day.
+      expect(lines).toContain('  late       callback k2: its time had passed, so it rings at the next quarter hour');
+      expect(lines).toContain('  late       todo m4: its time had passed, so it keeps its day only');
       expect(io.stdout).toContain('Dry run: nothing was written.');
     });
 

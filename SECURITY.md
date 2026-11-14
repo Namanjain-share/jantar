@@ -2476,6 +2476,15 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   text, no picture) and mentions of them. A skipped group hides the group.
   A request naming a skipped chat answers `not_found`, the same as a chat
   that isn't there, so a skip is never confirmed.
+- **What the morning made from it goes too.** In the skip's own
+  transaction its open reply drafts are dismissed, a run that sent the
+  chat to Claude loses its summary and every report its left-out line;
+  then the open todos and call-backs made from it leave Life, as Undo
+  removes them (a done one stays the owner's). Today leaves out a skipped
+  chat's drafts and call-backs whatever happened before. A skip while a
+  morning run is going stops that run: it is stored failed and makes
+  nothing. Items made from a skipped person's lines in a group came from
+  the group, so they stay until removed in Life.
 - **It fails closed.** Reads are refused until `skip.json` has been
   written since messages.db opened; a `skip.json` that won't parse makes
   the reader refuse reads; one that won't open is never written over, and
@@ -2547,7 +2556,9 @@ such a line and anything that happens:
   and notes as WhatsApp's words (`<data source="messages">`) and taints the
   turn: a change Chat then wants waits for his tap. Its "Looking at" chip
   names such a todo (and a meeting's) by kind and id only, never its title.
-  Work's log and `client_here` carry the mark too.
+  Work's log and `client_here` carry the mark too, and `todos_here` in a
+  Claude session shows such a todo's title and notes only inside its
+  `<data source="messages">` frame, under a data note.
 
 ### Accepted risks
 
@@ -2574,7 +2585,10 @@ the 503 sentences, no `phone` over `ctl.sock`, the phone's refused skip
 removal, audit rows by target id, the People isolation),
 `morning-run.test.ts` (no tools, made-up refs dropped, an injected line
 stays inside its `<m>`), `morning-apply.test.ts` (the mark, and Chat's
-framing and taint), `packages/cli/test/mcp-messages.test.ts` (data
-frames, the caller headers) and `mcp-install.test.ts` with
+framing and taint), `morning-timer.test.ts` (a skip takes the morning's
+drafts, todos, call-backs and summary from view, and stops a run going),
+`packages/cli/test/mcp-messages.test.ts` (data frames, the caller
+headers), `mcp.test.ts` (`todos_here` frames a WhatsApp todo) and
+`mcp-install.test.ts` with
 `packages/daemon/test/hooks/ask-rules.test.ts` (the ask rules, the
 guarded write).

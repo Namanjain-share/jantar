@@ -146,7 +146,7 @@ describe.skipIf(!bin)('the morning on the real reader', () => {
     const g = kept.chats.find((c) => c.chat.chatKey === group)!;
     expect(g.messages.map((m) => m.msgKey).sort()).toEqual([...windows].sort());
     expect(g.left).toBe(content.length - g.messages.length);
-    expect(dropped).toEqual([{ chatName: 'Group One', kept: windows.size, left: content.length - windows.size }]);
+    expect(dropped).toEqual([{ chatKey: group, chatName: 'Group One', kept: windows.size, left: content.length - windows.size }]);
     expect(dropped[0]!.left).toBeGreaterThanOrEqual(4_990);
     // The model's input stays inside the budget.
     expect(estimateTokens(morningInput(kept, { now: NOW, tz: 'Asia/Kolkata', ownerName: 'me' }).text)).toBeLessThanOrEqual(L.morningTokens);
@@ -211,11 +211,11 @@ describe('budget', () => {
     expect(of(busy)).toMatchObject({ messages: [], earlier: [], left: 10 });
     expect(of(archived)).toMatchObject({ messages: [], left: 3 });
     expect(dropped).toEqual([
-      { chatName: 'Ravi Test', kept: L.dmContext, left: 50 - L.dmContext },
-      { chatName: 'Busy Group', kept: 0, left: 10 },
-      { chatName: 'Medium Group', kept: L.smallGroupContext, left: 25 - L.smallGroupContext },
-      { chatName: 'Old Group', kept: 0, left: 3 },
-      { chatName: 'Small Group', kept: smallKept.size, left: 40 - smallKept.size },
+      { chatKey: otherDm.chatKey, chatName: 'Ravi Test', kept: L.dmContext, left: 50 - L.dmContext },
+      { chatKey: busy.chatKey, chatName: 'Busy Group', kept: 0, left: 10 },
+      { chatKey: medium.chatKey, chatName: 'Medium Group', kept: L.smallGroupContext, left: 25 - L.smallGroupContext },
+      { chatKey: archived.chatKey, chatName: 'Old Group', kept: 0, left: 3 },
+      { chatKey: small.chatKey, chatName: 'Small Group', kept: smallKept.size, left: 40 - smallKept.size },
     ]);
     expect(smallKept.size).toBe(38);
   });
@@ -281,7 +281,7 @@ describe('budget', () => {
     const { kept, dropped } = budget(batchOf([...fresh, ...quiet.map((q) => q.bc)]));
     const of = (c: ChatOwner) => kept.chats.find((k) => k.chat.chatKey === c.chatKey);
     // Every chat with new lines keeps what a light morning would: the busy group its count.
-    expect(dropped).toEqual([{ chatName: 'Busy Group', kept: 0, left: 10 }]);
+    expect(dropped).toEqual([{ chatKey: busy.chatKey, chatName: 'Busy Group', kept: 0, left: 10 }]);
     for (const c of fresh) expect(of(c.chat)?.messages, c.chat.name).toEqual(c.tier === 4 ? [] : c.messages);
     expect(of(asking[0]!)!.earlier).toEqual(fresh[0]!.earlier);
     // Each person still waiting is in with the lines they wait on; older lines only in the room left.
@@ -304,8 +304,8 @@ describe('budget', () => {
     // The newest are kept.
     expect(kept.chats[0]!.messages).toEqual(asks.slice(-n));
     expect(dropped).toEqual([
-      { chatName: 'Asha Test', kept: n, left: 30 - n },
-      { chatName: 'Ravi Test', kept: 0, left: 5 },
+      { chatKey: waitingDm.chatKey, chatName: 'Asha Test', kept: n, left: 30 - n },
+      { chatKey: otherDm.chatKey, chatName: 'Ravi Test', kept: 0, left: 5 },
     ]);
   });
 

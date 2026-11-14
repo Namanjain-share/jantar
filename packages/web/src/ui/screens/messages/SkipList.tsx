@@ -2,7 +2,8 @@
  * The skip list (0.15 Messages settings): the chats Messages never reads,
  * not in a Claude session, on this phone or in the morning run. Skipping a
  * 1:1 skips that person everywhere (their calls, their lines in groups);
- * skipping a group skips the group.
+ * skipping a group skips the group. What the morning made from the chat
+ * (its drafts, open todos and call-backs) goes with it.
  *
  *   [ Find a chat to skip ]       the chats by name, 300 ms after typing stops
  *   Asha Test   1:1     [Skip]    asks first: only the Mac can read it again
@@ -133,7 +134,8 @@ export function SkipList({ skip, error, card, offline, tz, onSkipped }: SkipList
       {asking ? (
         <div role="group" aria-label={`Skip ${asking.name}`} className="mx-16 mt-8 rounded-btn border border-line-strong px-12 py-8">
           <p className="break-words type-small text-ink">
-            Skip <span className="font-medium">{asking.name}</span>? Only the Mac can read it again.
+            Skip <span className="font-medium">{asking.name}</span>? Its reply drafts, and the open todos and call-backs the morning made from it, go too. Only
+            the Mac can read it again.
           </p>
           <div data-actions className="mt-8 flex flex-wrap items-center gap-8">
             <Button variant="primary" disabled={offline || write.busy} onClick={() => void skipIt(asking)} className="coarse:min-w-44">

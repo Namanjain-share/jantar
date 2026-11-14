@@ -14,6 +14,11 @@
  *   CALL BACK 1        CallbackRow: opens its Life todo
  *   TODOS MADE 3       each opens its Life todo
  *
+ * The lines at the top are the newest run's; the summary, Todos made and
+ * Undo are the run that made them (Today's `made`: a later Run now that
+ * made nothing, or one that failed, never hides the morning's), else the
+ * newest run's.
+ *
  * Sections are cards in columns from a pane of 640 (Columns), rails below.
  * Data comes over REST, again on lifeTick (the run's todos are Life's) and
  * on coming back into view; while a run is going (the timer's), every 10 s.
@@ -78,9 +83,11 @@ function MessagesToday() {
   const load = useLifeLoad('messages:today', () => m.today());
   const status = useLifeLoad('messages:status', () => m.status());
   const run = load.data?.run ?? null;
+  // The run whose summary, todos and Undo show.
+  const report = load.data ? (load.data.made ?? run) : null;
   // The todos it made, by their ids, from Life's open todos (while Todos are on).
   const todosOn = life && lifeStatus?.modules.todos === true;
-  const todos = useLifeLoad(todosOn && run && run.todoIds.length > 0 ? `messages:todos:${run.id}` : null, () => api.todosList());
+  const todos = useLifeLoad(todosOn && report && report.todoIds.length > 0 ? `messages:todos:${report.id}` : null, () => api.todosList());
 
   // While a run is going, ask again every 10 s (visible and online only): the run sends no tick.
   const going = run?.state === 'running';
@@ -126,11 +133,11 @@ function MessagesToday() {
   };
 
   const undoRun = async () => {
-    if (!run) return;
-    const r = await undoWrite.run(`undo:${run.id}`, (k) => m.undo(run.id, k));
+    if (!report) return;
+    const r = await undoWrite.run(`undo:${report.id}`, (k) => m.undo(report.id, k));
     if (!r.ok) return;
     setAsking(false);
-    setUndone(run.id);
+    setUndone(report.id);
     reload();
     todos.reload();
   };
@@ -166,7 +173,7 @@ function MessagesToday() {
         {run ? <p className="break-words type-mono text-ink-3">{runLine(run, tz)}</p> : null}
         {run?.state === 'failed' && run.why ? <p className="break-words type-small text-ink-2">{run.why}</p> : null}
         {going ? <p className="type-small text-ink-2">{RUNNING}</p> : null}
-        {run && undone === run.id ? <p role="status" className="type-small text-ink-2">{UNDONE}</p> : null}
+        {report && undone === report.id ? <p role="status" className="type-small text-ink-2">{UNDONE}</p> : null}
       </div>
       {load.data ? (
         <div data-actions className="flex flex-wrap items-center gap-8 px-16 pb-12">
@@ -174,14 +181,14 @@ function MessagesToday() {
             {runWrite.busy ? <Spinner label="Running" /> : null}
             {runWrite.busy ? 'Running…' : 'Run now'}
           </Button>
-          {canUndo(run) && undone !== run.id && !asking ? (
+          {canUndo(report) && undone !== report.id && !asking ? (
             <Button variant="text" disabled={offline || undoWrite.busy} onClick={() => setAsking(true)} className="coarse:min-w-44">
               Undo this morning
             </Button>
           ) : null}
         </div>
       ) : null}
-      {asking && canUndo(run) ? (
+      {asking && canUndo(report) ? (
         <div role="group" aria-label="Undo this morning" className="mx-16 mb-12 rounded-btn border border-line-strong px-12 py-8">
           <p className="type-small text-ink">Remove this morning's open todos and call-backs, and dismiss its reply drafts?</p>
           <div data-actions className="mt-8 flex flex-wrap items-center gap-8">
@@ -228,7 +235,8 @@ function Sections({
   busy: boolean;
   onState: (d: Draft, state: 'done' | 'dismissed') => void;
 }) {
-  const { run, callbacks } = today;
+  const { callbacks } = today;
+  const run = today.made ?? today.run;
   const drafts = today.drafts.filter((d) => !gone.has(d.id));
   if (!run && drafts.length === 0 && callbacks.length === 0) return <p className="px-16 py-16 type-small text-ink-2">{NO_RUN}</p>;
   const sections: ReactNode[] = [];

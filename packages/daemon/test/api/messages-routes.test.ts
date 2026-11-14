@@ -137,7 +137,7 @@ function fakeMorning(seen: string[]): MorningApi {
       seen.push(`run ${o.trigger}`);
       return { ...RUN, trigger: o.trigger };
     },
-    today: () => ({ run: RUN, drafts: [DRAFT], callbacks: [] }),
+    today: () => ({ run: RUN, made: RUN, drafts: [DRAFT], callbacks: [] }),
     setDraft: (id, state) => {
       seen.push(`draft ${id} ${state}`);
       return OK;
@@ -595,7 +595,7 @@ describe('the audit', () => {
 
   it("the morning's screens answer through the part: today, prefs", async () => {
     const t = await messagesApi({ handlers: READER });
-    expect((await tcp(t, 'GET', '/v1/messages/today')).json()).toEqual({ run: RUN, drafts: [DRAFT], callbacks: [] });
+    expect((await tcp(t, 'GET', '/v1/messages/today')).json()).toEqual({ run: RUN, made: RUN, drafts: [DRAFT], callbacks: [] });
     expect((await tcp(t, 'GET', '/v1/messages/prefs')).json()).toEqual({ morningAt: '07:30', callbackAt: '11:00' });
   });
 });

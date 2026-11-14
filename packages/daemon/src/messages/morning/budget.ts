@@ -55,6 +55,7 @@ export function estimateTokens(s: string): number {
 
 /** A chat left out, in part or whole: its new lines kept and left out. */
 export interface Dropped {
+  chatKey: string;
   chatName: string;
   kept: number;
   left: number;
@@ -173,7 +174,7 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
     const left = p.pool.length - p.firstNew - messages.length;
     const waitsOn = quiet(p) ? { waitsOn: p.pool.slice(openFrom(p.pool)).map((m) => m.msgKey) } : {};
     if (p.shown) chats.push({ ...p.bc, messages, earlier, left, ...waitsOn });
-    if (left > 0) dropped.push({ chatName: p.bc.chat.name, kept: messages.length, left });
+    if (left > 0) dropped.push({ chatKey: p.bc.chat.chatKey, chatName: p.bc.chat.name, kept: messages.length, left });
   }
   dropped.sort((a, b) => b.left - a.left);
   return { kept: { ...batch, chats, calls }, dropped };

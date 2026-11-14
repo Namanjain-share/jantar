@@ -11,7 +11,11 @@
  *   ready; the cursor moves only after a run that went well (never a failed
  *   or dry one); the push says counts only; one run at a time, none under
  *   --read-only; a 1:1 still waiting is read again but never drafted twice;
- *   Life refusing the todos is in the report; Today, drafts, Undo and the times.
+ *   Life refusing the todos is in the report; Today, drafts, Undo and the times;
+ *   a morning time after the call-back time still rings each call-back; a
+ *   skip takes what the morning made from that chat off Today, out of the
+ *   reports and out of Life, and stops a run going; a later Run now, or a
+ *   failed run, keeps the morning's summary, todos and Undo on Today.
  * Synthetic chat keys, fake numbers and invented names only.
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
@@ -24,7 +28,7 @@ import { ApiError } from '../../src/api/errors.js';
 import { resolvePaths } from '../../src/config.js';
 import type { Actor, Clock, LifeService, MessagesService, Paths } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
-import { createFakeExec, createPushSpy, createTestContext, createTestLifeCore, type ExecCall, type ExecHandler, type PushSpy, type TestContext } from '../../src/core/testing.js';
+import { createFakeExec, createPushSpy, createTestContext, createTestLifeCore, type ExecCall, type ExecHandler, type PushSpy, type TestContext, type TestLifeCore } from '../../src/core/testing.js';
 import { BACKUP_CHECK_MS } from '../../src/life/backup.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
 import { buildMessagesService } from '../../src/messages/index.js';
@@ -361,6 +365,7 @@ const RAVI = 'cb2c3d4e5f6a7b8c9';
 const DECK = 'Can you send the deck by Friday 5pm?';
 const VENUE = 'Please check the venue booking';
 const CLI: Actor = { kind: 'cli' };
+const PHONE: Actor = { kind: 'device', deviceId: 'dev1', scopes: ['control'] };
 
 const chatOf = (chatKey: string, name: string, phone: string): ChatOwner => ({
   chatKey,
@@ -461,6 +466,8 @@ interface Morning {
   life: LifeService;
   exec: ReturnType<typeof createFakeExec>;
   paths: Paths;
+  /** Life's core (its scheduler: when each todo rings). */
+  core: TestLifeCore;
 }
 
 /** The part on Messages on, messages.db in memory, Life's todos in memory, a fake reader and a fake claude answering `claude`. */
@@ -483,7 +490,7 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   cleanups.push(() => reader.close());
   cleanups.push(() => svc.stop());
   cleanups.push(() => core.close());
-  return { ctx, svc, clock, reader, push, life, exec, paths };
+  return { ctx, svc, clock, reader, push, life, exec, paths, core };
 }
 
 const claudeSays = (answer: (input: string) => MorningAnswer | string): ExecHandler => (c) => {
@@ -663,7 +670,7 @@ describe('the morning run', () => {
     // Nothing in Life, no draft, no call-back; Today's run is the newest real one (none).
     const open = t.life.todos.listTodos({ done: false });
     expect(open.ok && open.value.todos).toEqual([]);
-    expect(t.svc.morning.today()).toEqual({ run: null, drafts: [], callbacks: [] });
+    expect(t.svc.morning.today()).toEqual({ run: null, made: null, drafts: [], callbacks: [] });
     // last() is the newest report, the dry one included (stored without its preview).
     expect(t.svc.morning.last()).toEqual({ ...dry, preview: undefined });
     expect(JSON.stringify(t.svc.morning.last())).not.toContain('preview');
@@ -739,6 +746,161 @@ describe('the morning run', () => {
     expect(t.svc.morning.setPrefs({ callbackAt: null }, CLI).ok).toBe(true);
     expect(t.svc.morning.setPrefs({ morningAt: '07:15' }, CLI).ok).toBe(true);
     expect(t.svc.morning.prefs()).toEqual({ morningAt: '07:15', callbackAt: null });
+  });
+
+  it('a morning time after the call-back time: each call-back still rings, at the next quarter hour', async () => {
+    const t = await morningSetup({ handlers: readerOf({ pk: () => 42 }), claude: claudeSays(fullAnswer) });
+    expect(t.svc.morning.setPrefs({ morningAt: '11:30' }, CLI).ok).toBe(true);
+    expect(t.svc.morning.prefs().callbackAt).toBe('11:00');
+    // 11:30 in the Life zone.
+    t.clock.advance(3 * HOUR);
+    const run = await eventually(() => {
+      const r = t.svc.morning.last();
+      return r && r.state !== 'running' ? r : null;
+    });
+    expect(run).toMatchObject({ trigger: 'timer', state: 'ok', counts: { callbacks: 1 } });
+    const ringsAt = '2026-11-14T06:15:00.000Z'; // 11:45 there
+    expect(t.svc.morning.today().callbacks).toEqual([{ todoId: expect.any(String), who: 'Ravi Test', at: ringsAt }]);
+    expect(t.core.scheduler.row('todo', t.svc.morning.today().callbacks[0]!.todoId)?.nextAt).toBe(ringsAt);
+  });
+
+  it('skipping a chat takes what the morning made from it off Today, out of the reports and out of Life', async () => {
+    // Ravi has more new lines than a 1:1 keeps: the report lists him as cut for size.
+    const filler = Array.from({ length: 59 }, (_, i): Message => ({ msgKey: `${RAVI}.F${i}`, at: `2026-11-13T18:${String(i).padStart(2, '0')}:00.000Z`, fromMe: false, sender: 'Ravi Test', kind: 'text', text: `line ${i}` }));
+    const handlers: FakeHandlers = {
+      ...readerOf({ pk: () => 42 }),
+      newSince: () => ({ chats: [{ chat: ravi, messages: [...filler, venue], earlier: [] }, { chat: asha, messages: [deck], earlier: [] }], nextCursor: { pk: 42, at: venue.at }, truncated: false, reset: false }),
+      read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }),
+    };
+    const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer) });
+    const run = await t.svc.morning.run({ trigger: 'now' });
+    expect(run).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+    expect(run.summary).toBeTruthy();
+    expect(run.dropped.map((d) => d.chatName)).toEqual(['Ravi Test']);
+    const titles = (done: boolean) => {
+      const r = t.life.todos.listTodos({ done });
+      return r.ok ? r.value.todos.map((x) => x.title).sort() : r;
+    };
+    expect(titles(false)).toEqual(['Call back Ravi Test', 'Check the venue booking', 'Send Asha the deck']);
+    // The owner did Asha's todo already: a done todo stays his.
+    const deckTodo = run.todoIds.find((id) => {
+      const r = t.life.todos.listTodos({ done: false });
+      return r.ok && r.value.todos.some((x) => x.id === id && x.title === 'Send Asha the deck');
+    })!;
+    expect(t.life.todos.setDone(deckTodo, true, CLI).ok).toBe(true);
+
+    // Skipped from the phone: Asha, then Ravi.
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: true });
+    let today = t.svc.morning.today();
+    // Asha's draft is off Today, and the summary that read her chat is gone from every report.
+    expect(today.drafts).toEqual([]);
+    expect(today.run).not.toHaveProperty('summary');
+    expect(today.made).not.toHaveProperty('summary');
+    expect(t.svc.morning.last()).not.toHaveProperty('summary');
+    expect(today.callbacks.map((c) => c.who)).toEqual(['Ravi Test']);
+
+    expect(await t.svc.skip.add(RAVI, PHONE)).toEqual({ ok: true, value: true });
+    today = t.svc.morning.today();
+    expect(today.callbacks).toEqual([]);
+    expect(today.run?.dropped).toEqual([]);
+    expect(t.svc.morning.last()?.dropped).toEqual([]);
+    // Their open todos and call-backs are gone from Life, as Undo takes them; the one he did stays.
+    expect(titles(false)).toEqual([]);
+    expect(titles(true)).toEqual(['Send Asha the deck']);
+    // Nothing anywhere in messages.db's reports still names them.
+    const db = (t.svc as unknown as { db: { prepare(sql: string): { all(): unknown[] } } }).db;
+    const stored = JSON.stringify(db.prepare("SELECT json FROM runs").all());
+    expect(stored).not.toContain('Asha');
+    expect(stored).not.toContain('Ravi');
+    expect(db.prepare("SELECT state FROM drafts").all()).toEqual([{ state: 'dismissed' }]);
+  });
+
+  it('a skip while a run is going stops it: nothing is made, and the next run reads without that chat', async () => {
+    let svc: MessagesService | null = null;
+    const skipped = new Set<string>();
+    const base = readerOf({ pk: () => 42 });
+    const handlers: FakeHandlers = {
+      ...base,
+      newSince: () => ({ chats: [{ chat: ravi, messages: [venue], earlier: [] }, { chat: asha, messages: [deck], earlier: [] }].filter((c) => !skipped.has(c.chat.chatKey)), nextCursor: { pk: 42, at: venue.at }, truncated: false, reset: false }),
+      chats: () => ({ chats: [ravi, asha].filter((c) => !skipped.has(c.chatKey)), total: 2 }),
+      read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }),
+    };
+    let skips = 0;
+    const claude: ExecHandler = async (c) => {
+      if (!c.file.endsWith('claude')) return undefined;
+      const text = inputOf(c);
+      // The owner skips Asha on the phone while Claude is answering the first run.
+      if (skips === 0) {
+        skips += 1;
+        expect(await svc!.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: true });
+        skipped.add(ASHA);
+        return { stdout: `${INIT}\n${RESULT(fullAnswer(text))}\n` };
+      }
+      return { stdout: `${INIT}\n${RESULT({ ...EMPTY, todos: [{ title: 'Check the venue booking', ref: idIn(text, /<m id="(m\d+)"[^>]*>Please check the venue/) }] })}\n` };
+    };
+    const t = await morningSetup({ handlers, claude });
+    svc = t.svc;
+    const stopped = await t.svc.morning.run({ trigger: 'now' });
+    expect(stopped).toMatchObject({ state: 'failed', why: MESSAGES_SAYS.morningSkipped, todoIds: [], counts: { todos: 0, replies: 0, callbacks: 0 } });
+    expect(t.svc.morning.today()).toMatchObject({ drafts: [], callbacks: [] });
+    const open = t.life.todos.listTodos({ done: false });
+    expect(open.ok && open.value.todos).toEqual([]);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.push.pushes).toEqual([]);
+    // The cursor stayed: the next run reads the night again, Asha left out.
+    const next = await t.svc.morning.run({ trigger: 'now' });
+    expect(next).toMatchObject({ state: 'ok', counts: { chats: 1, todos: 1 } });
+    expect(cursorsAsked(t.reader)).toEqual([null, null]);
+    expect(inputOf(t.exec.calls.filter((c) => c.file.endsWith('claude')).at(-1)!)).not.toContain('Asha');
+  });
+
+  it("a Run now after the morning, or a run that failed, keeps the morning's summary, its todos and its Undo on Today", async () => {
+    let fresh = true;
+    let down = false;
+    const base = readerOf({ pk: () => 42 });
+    const quiet = { chats: [], nextCursor: { pk: 42, at: venue.at }, truncated: false, reset: false };
+    const handlers: FakeHandlers = {
+      ...base,
+      status: (a) => {
+        if (down) throw readerError('busy');
+        return base.status!(a);
+      },
+      newSince: (a) => (fresh ? base.newSince!(a) : quiet),
+      waCalls: (a) => (fresh ? base.waCalls!(a) : { calls: [] }),
+      chats: (a) => (fresh ? base.chats!(a) : { chats: [], total: 0 }),
+    };
+    const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer) });
+    const morning = await t.svc.morning.run({ trigger: 'timer' });
+    expect(morning).toMatchObject({ state: 'ok', counts: { todos: 2 } });
+    expect(t.svc.morning.today()).toMatchObject({ run: morning, made: morning });
+
+    // After lunch: Run now finds nothing new, then one fails.
+    fresh = false;
+    t.clock.advance(4 * HOUR);
+    const noon = await t.svc.morning.run({ trigger: 'now' });
+    expect(noon).toMatchObject({ state: 'ok', counts: { todos: 0, replies: 0, callbacks: 0 } });
+    let today = t.svc.morning.today();
+    // The newest run for its line; the morning's for its summary, its todos and Undo.
+    expect(today.run).toEqual(noon);
+    expect(today.made).toEqual(morning);
+    down = true;
+    t.clock.advance(HOUR);
+    const failed = await t.svc.morning.run({ trigger: 'now' });
+    expect(failed.state).toBe('failed');
+    today = t.svc.morning.today();
+    expect(today.run).toEqual(failed);
+    expect(today.made).toEqual(morning);
+    // Its Undo still works.
+    expect(t.svc.morning.undo(today.made!.id, PHONE)).toEqual({ ok: true, value: true });
+    const open = t.life.todos.listTodos({ done: false });
+    expect(open.ok && open.value.todos).toEqual([]);
+
+    // The next morning's timer run made nothing: yesterday's isn't this morning's.
+    down = false;
+    t.clock.advance(19 * HOUR);
+    const tomorrow = await t.svc.morning.run({ trigger: 'timer' });
+    expect(tomorrow.state).toBe('ok');
+    expect(t.svc.morning.today()).toMatchObject({ run: tomorrow, made: null });
   });
 });
 

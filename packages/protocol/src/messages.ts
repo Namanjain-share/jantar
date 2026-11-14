@@ -284,7 +284,10 @@ export type MorningRunState = z.infer<typeof MorningRunStateSchema>;
  * each call-back is for and when it rings, the reply drafts (no number: the
  * CLI reads it over ctl.sock), and each item of the answer left out, by kind,
  * its ref and why (`limit`: Life's open-todo limit or todosPerRun;
- * `life_refused`: Life refused it otherwise, closed or its project gone).
+ * `life_refused`: Life refused it otherwise, closed or its project gone;
+ * `time_not_stated`: its time went, the line states none; `time_passed`: its
+ * time had passed when the run applied, so a todo keeps its day only and a
+ * call-back rings at the next quarter hour).
  */
 export const MorningPreviewSchema = z.object({
   todos: z.array(z.object({ title: z.string() })),
@@ -293,7 +296,7 @@ export const MorningPreviewSchema = z.object({
   dropped: z.array(z.object({
     kind: z.enum(['todo', 'reply', 'callback']),
     ref: z.string(),
-    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'life_refused', 'time_not_stated']),
+    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'life_refused', 'time_not_stated', 'time_passed']),
   })),
 });
 export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
@@ -304,7 +307,8 @@ export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
  * failed run's fixed sentence. `counts`: the chats, new messages and missed
  * calls the model read, what it made (a dry run: would make), and `dropped`
  * the new messages left out for the budget; `dropped` (the list): per chat,
- * the messages kept and left out, most left out first. `summary`: the
+ * the messages kept and left out, most left out first (`chatKey`: whose,
+ * so a skip can take its line out). `summary`: the
  * model's (other people's words: the phone shows it, a push never does).
  * `todoIds`: the todos made (not the call-backs). `preview`: a dry run's
  * answer only, never stored. `waCalls`, `phoneCalls`: false when the run
@@ -323,7 +327,7 @@ export const MorningRunSchema = z.object({
   stale: z.boolean(),
   newestAt: IsoDateSchema.nullable(),
   counts: z.object({ chats: count, messages: count, calls: count, todos: count, replies: count, callbacks: count, dropped: count }),
-  dropped: z.array(z.object({ chatName: z.string(), kept: count, left: count })),
+  dropped: z.array(z.object({ chatKey: ChatKeySchema.optional(), chatName: z.string(), kept: count, left: count })),
   todoIds: z.array(LifeIdSchema),
   summary: z.string().max(600).optional(),
   preview: MorningPreviewSchema.optional(),
@@ -336,9 +340,17 @@ export type MorningRun = z.infer<typeof MorningRunSchema>;
 export const MorningRunBodySchema = z.strictObject({ dryRun: z.boolean().optional() });
 export type MorningRunBody = z.infer<typeof MorningRunBodySchema>;
 
-/** The Today screen: the newest run, open reply drafts and the call-back todos (`at`: when it rings). */
+/**
+ * The Today screen: the newest run (for its line: when, running, failed),
+ * open reply drafts and the call-back todos (`at`: when it rings). `made`:
+ * the run whose summary, todos and Undo Today shows, the newest that went
+ * well and made anything since the newest timer run started (any, before the
+ * first), so a later Run now that made nothing, or one that failed, never
+ * hides the morning's; null when there is none.
+ */
 export const MessagesTodayResponseSchema = z.object({
   run: MorningRunSchema.nullable(),
+  made: MorningRunSchema.nullable(),
   drafts: z.array(DraftSchema),
   callbacks: z.array(z.object({ todoId: LifeIdSchema, who: z.string(), at: IsoDateSchema.optional() })),
 });

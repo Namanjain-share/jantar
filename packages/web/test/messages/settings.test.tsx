@@ -59,6 +59,8 @@ describe('Messages: Settings', () => {
     // Asks first: only the Mac can read it again.
     expect(requested(api, 'POST', '/v1/messages/skip')).toHaveLength(0);
     expect(within(skip).getByText(/Only the Mac can read it again/)).toBeTruthy();
+    // What the morning made from it goes with it.
+    expect(within(skip).getByText(/Its reply drafts, and the open todos and call-backs the morning made from it, go too\./)).toBeTruthy();
     fireEvent.click(within(skip).getByRole('button', { name: 'Yes, skip' }));
     await waitFor(() => expect(requested(api, 'POST', '/v1/messages/skip')).toEqual([expect.objectContaining({ body: { chatKey: IDS.asha } })]));
     const list = await within(skip).findByRole('list', { name: 'Skipped chats' });

@@ -11,19 +11,25 @@
  *   is made as the model wrote it, marked as WhatsApp's words, and Chat
  *   frames it as data.
  * - `made` (messages.db) holds kind + ':' + the line's or call's key for
- *   each item made, so no run (after a re-link, a retry, an undo) makes the
- *   same one twice: `duplicate`. A 1:1 still waiting with nothing new gets
- *   no second draft: any line it waits on drafted before is a duplicate,
- *   even one budget() left out this time (its `waitsOn`).
+ *   each item made, and the chat it came from (a call's: its 1:1), so no run
+ *   (after a re-link, a retry, an undo) makes the same one twice
+ *   (`duplicate`), and a skip finds what came from that chat. A 1:1 still
+ *   waiting with nothing new gets no second draft: any line it waits on
+ *   drafted before is a duplicate, even one budget() left out this time
+ *   (its `waitsOn`).
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
  *   when the cited line states one (TIME_STATED), else the todo keeps its
- *   day (`time_not_stated`). At most todosPerRun.
+ *   day (`time_not_stated`); a time with no day is today's. At most
+ *   todosPerRun.
  * - Call-backs are todos "Call back {who}" (who: the call's or the line's
  *   sender, never the model's words but for the owner's own line in a
  *   group), due today or the day the line states, at the time it states,
  *   else at the call-back time (none: a day only).
+ * - A time already past when the run applies would never ring (Life rings a
+ *   new due time only when it is ahead): a call-back rings at the next
+ *   quarter hour instead, a todo keeps its day only; both `time_passed`.
  * - Life's first refusal stops every todo and call-back after it: `limit`
  *   for its open-todo limit, `life_refused` for any other (Life closed, the
  *   project gone), also the result's `lifeRefused` for the run's report.
@@ -56,8 +62,8 @@ export const WHATSAPP_PROJECT = { name: 'WhatsApp', emoji: '💬' } as const;
 export const PROJECT_KEY = 'project_id';
 /** A call-back todo's title before its person (Today finds who it is for by it). */
 export const CALLBACK_TITLE = 'Call back ';
-/** A line that states a time: "5pm", "5 pm", "17:30", "5 baje". */
-export const TIME_STATED = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}:\d{2}\b|\bbaje\b/i;
+/** A line that states a time: "5pm", "5 pm", "17:30", "at 5", "5 baje", "5 बजे". */
+export const TIME_STATED = /\b\d{1,2}(:\d{2})?\s?(am|pm)\b|\b\d{1,2}:\d{2}\b|\bat\s+\d{1,2}\b|\bbaje\b|बजे/i;
 /** A todo's notes quote its line up to this many characters. */
 export const QUOTE_MAX = 200;
 /** Life's caps (protocol TodoTitleSchema, LongNotesSchema). */
@@ -69,11 +75,13 @@ const ASKED_MAX = 300;
 const DRAFT_MAX = 1000;
 /** A title that cleaning left empty. */
 const NO_TITLE = 'From WhatsApp';
+/** A call-back whose time has passed rings at the next quarter hour (every zone is whole quarter hours from UTC). */
+const QUARTER_HOUR_MS = 900_000;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 export type MadeKind = 'todo' | 'reply' | 'callback';
-export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | 'time_not_stated';
+export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | 'time_not_stated' | 'time_passed';
 
 export interface ApplyDeps {
   life: Pick<LifeService, 'todos'>;
@@ -117,6 +125,12 @@ function stamp(iso: string, tz: string): string {
   const day = dayKeyOf(at, tz);
   const [, month, date] = day.split('-');
   return `${WEEKDAYS[weekdayOf(day)]} ${Number(date)} ${MONTHS[Number(month) - 1]} ${hhmmOf(at, tz)}`;
+}
+
+/** The next quarter hour after `now`, as a Life day and time. */
+function nextQuarter(now: Date, tz: string): { day: string; time: string } {
+  const at = new Date((Math.floor(now.getTime() / QUARTER_HOUR_MS) + 1) * QUARTER_HOUR_MS);
+  return { day: dayKeyOf(at, tz), time: hhmmOf(at, tz) };
 }
 
 /** The line states a time (its text or caption). */
@@ -180,19 +194,21 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     return byKey.get(key) ?? (forReply ? (waitedOn.get(key) ?? null) : null);
   };
   const today = dayKeyOf(d.now, d.tz);
+  /** A due time Life would never ring: at or before now. */
+  const passed = (day: string, time: string) => instantAt(day, time, d.tz).getTime() <= d.now.getTime();
 
   // This run's sources, and the ones made before.
   const taken = new Set<string>();
   const madeQ = d.db.prepare('SELECT 1 FROM made WHERE src_key = ?');
   const isMade = (src: string) => taken.has(src) || madeQ.get(src) !== undefined;
-  const record = (src: string, kind: MadeKind, target: string) =>
-    d.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id) VALUES (?, ?, ?, ?)').run(src, d.runId, kind, target);
+  const record = (src: string, kind: MadeKind, target: string, chatKey: string | undefined) =>
+    d.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key) VALUES (?, ?, ?, ?, ?)').run(src, d.runId, kind, target, chatKey ?? null);
 
   /** Why Life stopped taking todos (its first refusal), or null while it takes them. */
   let refused: 'limit' | 'life_refused' | null = null;
   let project: string | undefined | null = null;
-  /** A Life todo for `src`: its id (none in a dry run), or null once Life refused (`refused` says why). */
-  const todo = (src: string, kind: MadeKind, body: { title: string; notes?: string; due?: Due; priority: TodoPriority }): { id?: string } | null => {
+  /** A Life todo for `src` (from `chatKey`'s chat): its id (none in a dry run), or null once Life refused (`refused` says why). */
+  const todo = (src: string, kind: MadeKind, chatKey: string | undefined, body: { title: string; notes?: string; due?: Due; priority: TodoPriority }): { id?: string } | null => {
     if (refused) return null;
     if (d.dryRun) {
       taken.add(src);
@@ -205,7 +221,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       refused = r.code === 'conflict' ? 'limit' : 'life_refused';
       return null;
     }
-    record(src, kind, r.value.id);
+    record(src, kind, r.value.id, chatKey);
     taken.add(src);
     return { id: r.value.id };
   };
@@ -227,10 +243,14 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       continue;
     }
     const lostTime = t.due_time !== undefined && !statesTime(hit.m);
-    const time = lostTime ? undefined : t.due_time;
-    const due = t.due_day ? (time ? { day: t.due_day, time } : { day: t.due_day }) : undefined;
+    let time = lostTime ? undefined : t.due_time;
+    // A stated time with no day: today's (no line is from a later day).
+    const day = t.due_day ?? (time ? today : undefined);
+    const late = day !== undefined && time !== undefined && passed(day, time);
+    if (late) time = undefined;
+    const due = day ? (time ? { day, time } : { day }) : undefined;
     const title = oneLine(t.title, TITLE_MAX) || NO_TITLE;
-    const made = todo(src, 'todo', { title, notes: todoNotes(hit, t.notes, d.tz), ...(due ? { due } : {}), priority: t.priority ?? 'normal' });
+    const made = todo(src, 'todo', hit.chat.chatKey, { title, notes: todoNotes(hit, t.notes, d.tz), ...(due ? { due } : {}), priority: t.priority ?? 'normal' });
     if (!made) {
       drop('todo', t.ref, refused ?? 'limit');
       continue;
@@ -238,6 +258,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     todos += 1;
     out.todos.push({ ...made, title, src: hit.m.msgKey });
     if (lostTime) drop('todo', t.ref, 'time_not_stated');
+    if (late) drop('todo', t.ref, 'time_passed');
   }
 
   for (const c of answer.callbacks) {
@@ -256,17 +277,22 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     // A call states no time or day; a line only what it says.
     const stated = hit !== null && statesTime(hit.m);
     const lostTime = c.time_stated !== undefined && !stated;
-    const time = stated && c.time_stated ? c.time_stated : (d.prefs.callbackAt ?? undefined);
-    const day = hit && c.day_stated && c.day_stated >= today ? c.day_stated : today;
+    let time = stated && c.time_stated ? c.time_stated : (d.prefs.callbackAt ?? undefined);
+    let day = hit && c.day_stated && c.day_stated >= today ? c.day_stated : today;
+    // Still owed once its time is gone (a late run, a morning time after the call-back time): it rings soon.
+    const late = time !== undefined && passed(day, time);
+    if (late) ({ day, time } = nextQuarter(d.now, d.tz));
     const who = whoOf(call, hit, c.who);
     const why = multiLine(c.why, NOTES_MAX);
-    const made = todo(src, 'callback', { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
+    const chatKey = call ? call.chatKey : hit!.chat.chatKey;
+    const made = todo(src, 'callback', chatKey, { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
     if (!made) {
       drop('callback', c.ref, refused ?? 'limit');
       continue;
     }
     out.callbacks.push({ ...made, who, ...(time ? { at: instantAt(day, time, d.tz).toISOString() } : {}) });
     if (lostTime) drop('callback', c.ref, 'time_not_stated');
+    if (late) drop('callback', c.ref, 'time_passed');
   }
 
   for (const r of answer.replies) {
@@ -304,7 +330,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       d.db
         .prepare('INSERT INTO drafts (id, run_id, chat_key, chat_name, phone, they_asked, draft, at, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(id, d.runId, chatKey, draft.chatName, draft.phone ?? null, draft.theyAsked, draft.draft, draft.at, draft.state);
-      record(src, 'reply', id);
+      record(src, 'reply', id, chatKey);
     });
     out.replies.push({ id, ...draft });
   }
@@ -327,18 +353,35 @@ export function undoMorning(d: Pick<ApplyDeps, 'life' | 'db'>, runId: string, ac
     db.prepare('SELECT 1 FROM made WHERE run_id = ?').get(runId) !== undefined ||
     db.prepare('SELECT 1 FROM drafts WHERE run_id = ?').get(runId) !== undefined;
   if (!known) return { ok: false, code: 'not_found', reason: MESSAGES_SAYS.noRun };
-  let removed = 0;
-  if (targets.length > 0) {
-    const open = d.life.todos.listTodos({ done: false });
-    if (!open.ok) return open;
-    const still = new Set(open.value.todos.map((t) => t.id));
-    for (const id of targets) {
-      if (!still.has(id)) continue;
-      const r = d.life.todos.removeTodo(id, actor);
-      if (r.ok) removed += 1;
-      else if (r.code !== 'not_found') return r;
-    }
-  }
+  const removed = removeOpen(d.life, targets, actor);
+  if (!removed.ok) return removed;
   const dismissed = Number(db.prepare("UPDATE drafts SET state = 'dismissed' WHERE run_id = ? AND state = 'open'").run(runId).changes);
-  return { ok: true, value: { removed, dismissed } };
+  return { ok: true, value: { removed: removed.value, dismissed } };
+}
+
+/**
+ * A chat just skipped (after db.ts forgetChat, in the skip's transaction):
+ * each todo and call-back the morning made from it that is still open goes,
+ * as Undo removes them; a done one stays the owner's. `made` keeps their
+ * sources. How many went.
+ */
+export function removeChatTodos(d: Pick<ApplyDeps, 'life' | 'db'>, chatKey: string, actor: Actor): LifeResult<number> {
+  const targets = (d.db.prepare("SELECT target_id FROM made WHERE chat_key = ? AND kind IN ('todo', 'callback') AND target_id IS NOT NULL").all(chatKey) as { target_id: string }[]).map((r) => r.target_id);
+  return removeOpen(d.life, targets, actor);
+}
+
+/** Each of `targets` still open in Life goes (removeTodo as `actor`); how many went. */
+function removeOpen(life: ApplyDeps['life'], targets: readonly string[], actor: Actor): LifeResult<number> {
+  if (targets.length === 0) return { ok: true, value: 0 };
+  const open = life.todos.listTodos({ done: false });
+  if (!open.ok) return open;
+  const still = new Set(open.value.todos.map((t) => t.id));
+  let removed = 0;
+  for (const id of targets) {
+    if (!still.has(id)) continue;
+    const r = life.todos.removeTodo(id, actor);
+    if (r.ok) removed += 1;
+    else if (r.code !== 'not_found') return r;
+  }
+  return { ok: true, value: removed };
 }

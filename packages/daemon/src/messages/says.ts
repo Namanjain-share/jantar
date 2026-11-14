@@ -69,6 +69,7 @@ export const MESSAGES_SAYS = {
   morningTooLong: 'Claude took too long to answer. Try again.',
   morningRestarted: 'The morning run stopped before it finished: Jantar restarted, or Messages was turned off.',
   morningFailed: "The morning run didn't work. Try again.",
+  morningSkipped: 'A chat was skipped while the morning run was going, so it stopped and made nothing. Run it again.',
 } as const;
 
 /**
