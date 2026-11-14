@@ -33,6 +33,7 @@ export const MESSAGES_SAYS = {
   closed: 'WhatsApp is closed: open it on the Mac so Messages can read the newest messages.',
   skipBroken: "The skip list file won't read, so Messages reads nothing until it is written again (turn Messages off and on at the Mac).",
   skipLocked: "The skip list file (skip.json, in ~/.jantar/messages) won't open, so Messages reads nothing and won't write over it: make it readable again at the Mac.",
+  skipUnsaved: "Messages couldn't save the skip list file's chats in messages.db (is the Mac's disk full?), so it reads nothing until it can. It tries again on each read.",
   // Answers.
   busy: cantRead('WhatsApp is busy or closed'),
   timeout: cantRead('WhatsApp took too long to answer'),

@@ -108,6 +108,27 @@ describe('morningInput', () => {
     expect(text).toContain('<call id="k1" at="Fri 15:30" who="Ravi Test" via="whatsapp" missed="yes"/>');
   });
 
+  it('a waiting 1:1 with nothing new: the lines it waits on carry ids, the rest none', () => {
+    const asha = chat(1, 'Asha Test');
+    const before = line(asha, '2026-11-11T09:00:00.000Z', { text: 'older context' });
+    const mine = line(asha, '2026-11-11T09:30:00.000Z', { fromMe: true, text: 'Will check' });
+    const ask = line(asha, '2026-11-12T09:00:00.000Z', { text: FIXTURE_TEXT.deck });
+    const again = line(asha, '2026-11-12T09:05:00.000Z', { text: 'Any news?' });
+    const ravi = chat(2, 'Ravi Test');
+    const r1 = line(ravi, '2026-11-13T18:00:00.000Z');
+    const r0 = line(ravi, '2026-11-12T18:00:00.000Z', { text: 'earlier ask' });
+    const { text, refs } = morningInput(batchOf([bc(ravi, [r1], { earlier: [r0], waiting: true }), bc(asha, [], { earlier: [before, mine, ask, again], waiting: true })]), OPTS);
+
+    expect([...refs.m]).toEqual([['m1', r1.msgKey], ['m2', ask.msgKey], ['m3', again.msgKey]]);
+    expect(text).toContain('<chat id="c2" name="Asha Test" kind="dm" waiting="yes">');
+    expect(text).toContain('<m at="Wed 14:30" from="Asha Test" earlier="yes">older context</m>');
+    expect(text).toContain('<m at="Wed 15:00" from="me" by_user="yes" earlier="yes">Will check</m>');
+    expect(text).toContain('<m id="m2" at="Thu 14:30" from="Asha Test" earlier="yes">Can you send the deck by Friday 5pm?</m>');
+    expect(text).toContain('<m id="m3" at="Thu 14:35" from="Asha Test" earlier="yes">Any news?</m>');
+    // A chat with a new line is answered from its new lines: its earlier ones stay context.
+    expect(text).toContain('<m at="Thu 23:30" from="Ravi Test" earlier="yes">earlier ask</m>');
+  });
+
   it('input shows the day, times in the zone, the owner as me, and chat facts', () => {
     const asha = chat(1, 'Asha Test');
     const group = chat(2, 'Group One', { kind: 'group', members: 140, archived: true });
@@ -178,6 +199,9 @@ describe('morningInput', () => {
     }
     // Relative days go from the message's own day.
     expect(prompt).toMatch(/"tomorrow"[^\n]*`at`/);
+    // Pictures are labelled by ids only; an earlier line with an id is for a reply only.
+    expect(prompt).toContain('"Image, message m17 (chat c3)"');
+    expect(prompt).toMatch(/earlier="yes"[^\n]*an id[^\n]*reply/);
   });
 
   it('an empty batch says so', () => {

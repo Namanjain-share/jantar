@@ -31,7 +31,8 @@
  *   (counts, the chats left out for size); a dry run also prints what it
  *   would make as a table (todo titles, who to call back and when, each
  *   draft's first 60 characters, what it would leave out) and writes
- *   nothing. Other people's words: the data note first.
+ *   nothing. Other people's words: the data note first. A run that failed
+ *   exits 1 after its report.
  *
  * Everything goes over ctl.sock, where a 1:1's number is never sent; the
  * daemon logs each read as the CLI's.
@@ -629,6 +630,7 @@ const LEFT_OUT: Record<MorningPreview['dropped'][number]['why'], string> = {
   unknown_ref: "it cites a message the run didn't have",
   duplicate: 'an earlier run made it',
   limit: "Life's open-todo limit",
+  life_refused: "Life wouldn't take it (is Life on?)",
   time_not_stated: 'its message states no time',
 };
 /** The table's widest kind ("call-back"). */
@@ -669,10 +671,13 @@ async function morning(ctx: CliContext, flags: Flags): Promise<number> {
       ` (read ${plural(c.chats, 'chat')}, ${plural(c.messages, 'message')}, ${plural(c.calls, 'call')}).\n`,
   );
   if (run.stale) ctx.io.out(`WhatsApp's data was not fresh: its newest message is from ${run.newestAt ? ago(run.newestAt, now) : 'unknown'}.\n`);
+  if (run.waCalls === false) ctx.io.out("WhatsApp's calls weren't read, so missed WhatsApp calls aren't in this run.\n");
+  if (run.phoneCalls === false) ctx.io.out("The iPhone call log wasn't read, so missed phone calls aren't in this run.\n");
   for (const d of run.dropped) ctx.io.out(`Left out for size: ${clip(d.chatName, 60)}, ${d.left} of ${d.kept + d.left} messages.\n`);
   if (run.preview) ctx.io.out(previewTable(run.preview, zoneOf(ctx)));
   if (dry) ctx.io.out('Dry run: nothing was written.\n');
-  return EXIT.ok;
+  // A script (or setup) tells a failed run by the exit code.
+  return run.state === 'failed' ? EXIT.failed : EXIT.ok;
 }
 
 export default defineCommand(

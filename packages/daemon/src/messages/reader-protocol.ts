@@ -35,7 +35,7 @@ export const READER_VERSION = 1;
 /** The reader's source, under the daemon's assets dir. */
 export const READER_SOURCE = 'messages/jantar-messages-reader.swift';
 /** The most chats in one `chats` answer (GET /v1/messages/chats's limit). */
-const READER_CHATS_MAX = 200;
+export const READER_CHATS_MAX = 200;
 const NAME_MAX = 100;
 /** A search's longest text (GET /v1/messages/search's `q`). */
 const QUERY_MAX = 200;
@@ -45,8 +45,8 @@ export const READER_EARLIER_MAX = 10;
 export const READER_NEW_ROWS_MAX = 20_000;
 /** newSince: the longest window, in hours (guardHours, firstRunHours). */
 const READER_HOURS_MAX = 720;
-/** lastFromMe: the most chat keys in one request. */
-const READER_KEYS_MAX = 500;
+/** lastFromMe: the most chat keys in one request (the morning run and callsToReturn ask in chunks of it). */
+export const READER_KEYS_MAX = 500;
 
 const count = z.number().int().nonnegative();
 const replyId = z.number().int().nonnegative();

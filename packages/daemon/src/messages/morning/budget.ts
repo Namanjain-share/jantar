@@ -13,9 +13,12 @@
  *   doesn't fit; nothing after it goes in, so a lower tier never takes the
  *   place of a higher one:
  *   0. the missed calls not returned (a line each);
- *   1. the waiting 1:1s (their last dmContext lines, earlier ones counted),
- *      then in every group the windows of mentionWindow lines each side of
- *      a new line that mentions or answers the owner (busy groups too);
+ *   1. the waiting 1:1s: first each one's lines since the owner's last
+ *      (WAITING_FIRST at most), so a heavy morning drops context, not
+ *      people; then each one's last dmContext lines (earlier ones counted;
+ *      a 1:1 still waiting with nothing new has only those); then in every
+ *      group the windows of mentionWindow lines each side of a new line
+ *      that mentions or answers the owner (busy groups too);
  *   2. the other 1:1s (their last dmContext lines);
  *   3. the other groups (their last smallGroupContext lines), those of at
  *      most smallGroupMembers first;
@@ -31,13 +34,15 @@
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { ChatOwner, Message } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
-import { aboutMe, isContent, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { aboutMe, isContent, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 import { dataName, dataText, fromOf, lineBody } from './input.js';
 
 /** The estimate's rate: a token per this many UTF-8 bytes. */
 export const BYTES_PER_TOKEN = 3;
 /** input.ts's lines before the first chat (the day, the time and zone, the days around), at most. */
 export const HEADER_TOKENS = 150;
+/** A waiting 1:1's newest lines since the owner's last, at most, kept for each one before any gets more. */
+export const WAITING_FIRST = 5;
 
 /** About how many tokens `s` costs: its UTF-8 bytes / BYTES_PER_TOKEN, rounded up. */
 export function estimateTokens(s: string): number {
@@ -52,7 +57,7 @@ export interface Dropped {
 }
 
 // input.ts's markup at its longest, for the estimate.
-const LINE_FRAME = '<m id="m00000" at="Wed 2026-11-11 00:00" from="" by_user="yes" to_me="yes" reply="m00000"></m>\n';
+const LINE_FRAME = '<m id="m00000" at="Wed 2026-11-11 00:00" from="" by_user="yes" earlier="yes" to_me="yes" reply="m00000"></m>\n';
 const CHAT_FRAME = '<chat id="c0000" name="" kind="community" waiting="yes" members="00000" archived="yes" left="000000">\n</chat>\n';
 const CALL_FRAME = '<call id="k00000" at="Wed 2026-11-11 00:00" who="" via="whatsapp" missed="yes" video="yes" chat="c0000"/>\n';
 /** A line as kept: its text and caption cut at perMessageChars. */
@@ -100,7 +105,7 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
   const plans: Plan[] = batch.chats.flatMap((bc, order) => {
     const earlier = bc.earlier.filter(isContent).map(trimmed);
     const fresh = bc.messages.filter(isContent).map(trimmed);
-    if (fresh.length === 0) return [];
+    if (fresh.length === 0 && !(stillWaiting(bc) && earlier.length > 0)) return [];
     const rank = bc.tier === 1 ? (isDm(bc.chat) ? 0 : 1) : bc.tier;
     return [{ bc, rank, order, pool: [...earlier, ...fresh], firstNew: earlier.length, taken: new Set<number>(), shown: false }];
   });
@@ -135,7 +140,12 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
   }
   const dms = plans.filter((p) => isDm(p.bc.chat));
   const groups = plans.filter((p) => !isDm(p.bc.chat));
-  for (const p of dms) if (p.bc.tier === 1) newest(p, L.dmContext);
+  const waiting = dms.filter((p) => p.bc.tier === 1);
+  for (const p of waiting) {
+    const from = Math.max(openFrom(p.pool), p.pool.length - WAITING_FIRST);
+    for (let i = p.pool.length - 1; i >= from; i--) if (!take(p, i)) break;
+  }
+  for (const p of waiting) newest(p, L.dmContext);
   for (const p of groups) for (const i of windows(p)) if (!take(p, i)) break;
   for (const p of dms) if (p.bc.tier !== 1) newest(p, L.dmContext);
   const others = groups.filter((p) => p.bc.tier !== 4);

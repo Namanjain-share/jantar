@@ -3,14 +3,17 @@
  * call-backs and reply drafts into Life and messages.db. Nothing is sent.
  *
  * - Every item cites the input's ids (input.ts RefMap): a todo a new line
- *   (`m`), a call-back a missed call (`k`) or a line, a reply its chat (`c`)
- *   and a line of that chat. Anything else is dropped `unknown_ref`. That,
- *   and a run with no tools, is the daemon's whole guard against a chat's
- *   injected instruction: an item citing a real line is made as the model
- *   wrote it, marked as WhatsApp's words, and Chat frames it as data.
+ *   (`m`), a call-back a missed call (`k`) or a new line, a reply its chat
+ *   (`c`) and a new line of that chat (or, in a 1:1 still waiting with
+ *   nothing new, a line it waits on). Anything else is dropped
+ *   `unknown_ref`. That, and a run with no tools, is the daemon's whole
+ *   guard against a chat's injected instruction: an item citing a real line
+ *   is made as the model wrote it, marked as WhatsApp's words, and Chat
+ *   frames it as data.
  * - `made` (messages.db) holds kind + ':' + the line's or call's key for
  *   each item made, so no run (after a re-link, a retry, an undo) makes the
- *   same one twice: `duplicate`.
+ *   same one twice: `duplicate`. A 1:1 still waiting with nothing new gets
+ *   no second draft: any line it waits on drafted before is a duplicate.
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
@@ -20,8 +23,9 @@
  *   sender, never the model's words but for the owner's own line in a
  *   group), due today or the day the line states, at the time it states,
  *   else at the call-back time (none: a day only).
- * - Life's first refusal (its open-todo limit, or Life closed) stops every
- *   todo and call-back after it: `limit`. Drafts aren't Life's: they go on.
+ * - Life's first refusal stops every todo and call-back after it: `limit`
+ *   for its open-todo limit, `life_refused` for any other (Life closed, the
+ *   project gone). Drafts aren't Life's: they go on.
  * - Replies are drafts (state open; a 1:1's number for Open in WhatsApp, a
  *   group none; `at`: when the cited line was written).
  * - A dry run writes nothing (no project, todo, draft or `made` row) and
@@ -41,7 +45,7 @@ import { newId } from '../../core/ids.js';
 import { CONTROL, LINE_END } from '../../rewrite/guards.js';
 import type { MessagesDb } from '../db.js';
 import { MESSAGES_SAYS } from '../says.js';
-import type { Batch, BatchCall } from './collect.js';
+import { openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 import { lineBody, type RefMap } from './input.js';
 
 /** The Life project the morning's todos go to. */
@@ -67,7 +71,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 export type MadeKind = 'todo' | 'reply' | 'callback';
-export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'time_not_stated';
+export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | 'time_not_stated';
 
 export interface ApplyDeps {
   life: Pick<LifeService, 'todos'>;
@@ -156,12 +160,20 @@ function ensureProject(d: ApplyDeps): string | undefined {
 export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, d: ApplyDeps): ApplyResult {
   const out: ApplyResult = { todos: [], replies: [], callbacks: [], dropped: [] };
   const drop = (kind: MadeKind, ref: string, why: DropWhy) => out.dropped.push({ kind, ref, why });
+  // New lines, for any item; a still-waiting 1:1's lines it waits on, for a reply only.
   const byKey = new Map<string, Line>();
-  for (const bc of batch.chats) for (const m of bc.messages) byKey.set(m.msgKey, { m, chat: bc.chat });
+  const waitedOn = new Map<string, Line>();
+  const chatOf = new Map<string, BatchChat>();
+  for (const bc of batch.chats) {
+    chatOf.set(bc.chat.chatKey, bc);
+    for (const m of bc.messages) byKey.set(m.msgKey, { m, chat: bc.chat });
+    if (stillWaiting(bc)) for (const m of bc.earlier.slice(openFrom(bc.earlier))) waitedOn.set(m.msgKey, { m, chat: bc.chat });
+  }
   const calls = new Map(batch.calls.map((c) => [c.callKey, c]));
-  const lineOf = (ref: string): Line | null => {
+  const lineOf = (ref: string, forReply = false): Line | null => {
     const key = refs.m.get(ref);
-    return key === undefined ? null : (byKey.get(key) ?? null);
+    if (key === undefined) return null;
+    return byKey.get(key) ?? (forReply ? (waitedOn.get(key) ?? null) : null);
   };
   const today = dayKeyOf(d.now, d.tz);
 
@@ -172,11 +184,12 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
   const record = (src: string, kind: MadeKind, target: string) =>
     d.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id) VALUES (?, ?, ?, ?)').run(src, d.runId, kind, target);
 
-  let full = false;
+  /** Why Life stopped taking todos (its first refusal), or null while it takes them. */
+  let refused: 'limit' | 'life_refused' | null = null;
   let project: string | undefined | null = null;
-  /** A Life todo for `src`: its id (none in a dry run), or null once Life refused. */
+  /** A Life todo for `src`: its id (none in a dry run), or null once Life refused (`refused` says why). */
   const todo = (src: string, kind: MadeKind, body: { title: string; notes?: string; due?: Due; priority: TodoPriority }): { id?: string } | null => {
-    if (full) return null;
+    if (refused) return null;
     if (d.dryRun) {
       taken.add(src);
       return {};
@@ -184,7 +197,8 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     if (project === null) project = ensureProject(d);
     const r = d.life.todos.createTodo({ ...body, ...(project ? { projectId: project } : {}) }, SYSTEM_ACTOR, { from: 'messages' });
     if (!r.ok) {
-      full = true;
+      // Life's open-todo limit is its one conflict on a new todo.
+      refused = r.code === 'conflict' ? 'limit' : 'life_refused';
       return null;
     }
     record(src, kind, r.value.id);
@@ -214,7 +228,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const title = oneLine(t.title, TITLE_MAX) || NO_TITLE;
     const made = todo(src, 'todo', { title, notes: todoNotes(hit, t.notes, d.tz), ...(due ? { due } : {}), priority: t.priority ?? 'normal' });
     if (!made) {
-      drop('todo', t.ref, 'limit');
+      drop('todo', t.ref, refused ?? 'limit');
       continue;
     }
     todos += 1;
@@ -244,7 +258,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const why = multiLine(c.why, NOTES_MAX);
     const made = todo(src, 'callback', { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
     if (!made) {
-      drop('callback', c.ref, 'limit');
+      drop('callback', c.ref, refused ?? 'limit');
       continue;
     }
     out.callbacks.push({ ...made, who, ...(time ? { at: instantAt(day, time, d.tz).toISOString() } : {}) });
@@ -253,13 +267,16 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
 
   for (const r of answer.replies) {
     const chatKey = refs.c.get(r.chat);
-    const hit = lineOf(r.ref);
+    const hit = lineOf(r.ref, true);
     if (chatKey === undefined || !hit || hit.chat.chatKey !== chatKey) {
       drop('reply', r.ref, 'unknown_ref');
       continue;
     }
     const src = `reply:${hit.m.msgKey}`;
-    if (isMade(src)) {
+    // Still waiting with nothing new: a draft for any line it waits on is this one.
+    const bc = chatOf.get(chatKey);
+    const asked = bc && stillWaiting(bc) ? bc.earlier.slice(openFrom(bc.earlier)).map((m) => `reply:${m.msgKey}`) : [src];
+    if (asked.some(isMade)) {
       drop('reply', r.ref, 'duplicate');
       continue;
     }

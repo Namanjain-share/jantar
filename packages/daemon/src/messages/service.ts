@@ -11,8 +11,9 @@
  *   open the keys skip.json lists that the table hasn't (a new or reset
  *   messages.db) are kept, then the mirror is written, before any read;
  *   until it has been, reads are refused (to the reader no skip.json is an
- *   empty list). A skip.json that won't open is never written over (it may
- *   be the only list): reads and skip changes are refused until it opens.
+ *   empty list). A skip.json that won't open, or whose keys messages.db
+ *   won't take, is never written over (it may be the only list): reads and
+ *   skip changes are refused until its keys are in.
  *   One deleted or changed by anyone else is written again before the next
  *   read and by status(); a change that fails rewrites it from the table it
  *   rolled back to.
@@ -113,9 +114,9 @@ import { OWNER_NAME, morningInput } from './morning/input.js';
 import { morningImages, pickImages, runMorning } from './morning/run.js';
 import { MorningTimer, type WhatsAppReady } from './morning/timer.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from './reader-client.js';
-import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
+import { READER_KEYS_MAX, READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from './reader-protocol.js';
 import { MESSAGES_SAYS, readerSays } from './says.js';
-import { createSkipStore, type SkipStore } from './skip.js';
+import { SkipFileUnreadable, createSkipStore, type SkipStore } from './skip.js';
 
 export interface MessagesDeps {
   /** The morning run's todos. */
@@ -141,8 +142,6 @@ export interface MessagesOptions {
 }
 
 const DAY_MS = 86_400_000;
-/** lastFromMe takes this many chat keys at once (reader-protocol.ts). */
-const KEYS_PER_ASK = 500;
 const OK: LifeResult = { ok: true, value: true };
 
 type ReaderLine = MessagesStatus['reader'];
@@ -211,8 +210,12 @@ class MessagesShell implements MessagesService {
   private mirrored = false;
   /** skip.json's stamp when it was last written (SkipStore.stamp). */
   private mirrorStamp: string | null = null;
-  /** skip.json's keys are in the table since open ('failed': it wouldn't open, so nothing writes over it). */
-  private skipFile: 'unread' | 'failed' | 'read' = 'unread';
+  /**
+   * skip.json's keys are in the table since open. Until then nothing writes
+   * over it: 'locked', it wouldn't open; 'unsaved', messages.db wouldn't
+   * take its keys (a full disk, a busy database).
+   */
+  private skipFile: 'unread' | 'locked' | 'unsaved' | 'read' = 'unread';
   private brokenReason: string | null = null;
   private unsub: Unsubscribe | null = null;
   private sourceKeyRead: Promise<string | null> | null = null;
@@ -324,10 +327,11 @@ class MessagesShell implements MessagesService {
     if (!st.whatsapp.found) return { state: 'ok', detail: MESSAGES_SAYS.noWhatsApp };
     if (!st.whatsapp.schemaOk) return { state: 'unsupported', detail: MESSAGES_SAYS.unsupported };
     if (!st.whatsapp.contactsOk) return { state: 'no_access', detail: MESSAGES_SAYS.contacts };
-    if (!st.skipOk || this.skipFile === 'failed') {
+    if (!st.skipOk || this.skipFile === 'locked' || this.skipFile === 'unsaved') {
       // Ours to write again (the reader reads nothing meanwhile), once its own keys are in the table.
       this.mirror();
-      if (this.skipFile === 'failed') return { state: 'ok', detail: MESSAGES_SAYS.skipLocked };
+      if (this.skipFile === 'locked') return { state: 'ok', detail: MESSAGES_SAYS.skipLocked };
+      if (this.skipFile === 'unsaved') return { state: 'ok', detail: MESSAGES_SAYS.skipUnsaved };
       if (!st.skipOk) return { state: 'ok', detail: MESSAGES_SAYS.skipBroken };
     }
     if (st.whatsapp.walMtime === null) return { state: 'ok', detail: MESSAGES_SAYS.closed };
@@ -415,7 +419,7 @@ class MessagesShell implements MessagesService {
     const calls = [...wa.calls, ...phone.calls].filter((c) => Date.parse(c.at) >= sinceMs);
     const keys = [...new Set(calls.flatMap((c) => (c.incoming && c.missed && c.chatKey ? [c.chatKey] : [])))];
     const wrote: Record<string, string | null> = {};
-    for (let i = 0; i < keys.length; i += KEYS_PER_ASK) Object.assign(wrote, await this.reader.call('lastFromMe', { chatKeys: keys.slice(i, i + KEYS_PER_ASK) }));
+    for (let i = 0; i < keys.length; i += READER_KEYS_MAX) Object.assign(wrote, await this.reader.call('lastFromMe', { chatKeys: keys.slice(i, i + READER_KEYS_MAX) }));
     // Returned (the morning run's rule too): a later message from the owner, a later call the owner made, or a later call that connected.
     const open = missedCalls(calls, wrote).filter((c) => !c.returned);
     open.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
@@ -442,6 +446,8 @@ class MessagesShell implements MessagesService {
       throw e;
     }
     const { db, skip } = this.need();
+    // Messages may have gone off and on during the read: a skip.json the new open couldn't keep is never written over.
+    if (!this.keepSkipFile()) return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     try {
       db.tx(() => {
         skip.add({ chatKey, name: chat.name, kind: chat.kind, addedAt: this.ctx.clock.iso() });
@@ -573,6 +579,9 @@ class MessagesShell implements MessagesService {
         dropped: dropped.reduce((n, d) => n + d.left, 0),
       },
       dropped: dropped.slice(0, REPORT_DROPPED_MAX),
+      // A calls store the run couldn't read: its missed calls aren't in it.
+      ...(batch.waCalls ? {} : { waCalls: false as const }),
+      ...(batch.phone ? {} : { phoneCalls: false as const }),
     };
     // Nothing new: no Claude run.
     if (kept.chats.length === 0 && kept.calls.length === 0) return this.ranWell(db, batch, { ...head, state: 'ok', ...(dry ? { preview: NO_PREVIEW } : {}) });
@@ -692,7 +701,7 @@ class MessagesShell implements MessagesService {
   private needReads(): void {
     this.need();
     if ((!this.mirrored || this.mirrorMoved()) && !this.mirror()) {
-      throw new ApiError('messages_unavailable', this.skipFile === 'failed' ? MESSAGES_SAYS.skipUnreadable : MESSAGES_SAYS.noMirror);
+      throw new ApiError('messages_unavailable', this.skipFile === 'locked' ? MESSAGES_SAYS.skipUnreadable : MESSAGES_SAYS.noMirror);
     }
   }
 
@@ -767,9 +776,10 @@ class MessagesShell implements MessagesService {
 
   /**
    * The keys skip.json lists, in the table (once per open). A new or reset
-   * messages.db keeps what it still lists (it never empties by itself); one
-   * that won't open (permissions, a disk error) is tried again before every
-   * write of it, which waits until it does.
+   * messages.db keeps what it still lists (it never empties by itself); a
+   * file that won't open (permissions, a disk error), or keys messages.db
+   * won't take, are tried again before every write of it, which waits until
+   * they go in.
    */
   private keepSkipFile(): boolean {
     if (this.skipFile === 'read') return true;
@@ -780,8 +790,8 @@ class MessagesShell implements MessagesService {
       this.skipFile = 'read';
       return true;
     } catch (e) {
-      if (this.skipFile === 'unread') this.log.error("messages: the skip list file's keys were not read", { error: errorKind(e) });
-      this.skipFile = 'failed';
+      if (this.skipFile === 'unread') this.log.error("messages: the skip list file's keys were not kept", { error: errorKind(e) });
+      this.skipFile = e instanceof SkipFileUnreadable ? 'locked' : 'unsaved';
       return false;
     }
   }

@@ -40,12 +40,24 @@ export interface SkipStore {
   remove(chatKey: string): boolean;
   /** skip.json from the table (0600, temp file and rename); throws when it can't be written. */
   writeMirror(): void;
-  /** Keys skip.json lists that the table hasn't, added under SKIP_KEPT_NAME at `addedAt` (how many); throws when it won't read. */
+  /**
+   * Keys skip.json lists that the table hasn't, added under SKIP_KEPT_NAME at
+   * `addedAt` (how many). Throws SkipFileUnreadable when the file won't
+   * read, and messages.db's own error when the table won't take them.
+   */
   keep(addedAt: string): number;
   /** Rows in the table (the keys the mirror lists). */
   count(): number;
   /** skip.json's inode, size and mtime, or null when there is none: another one than written means someone else changed it. */
   stamp(): string | null;
+}
+
+/** skip.json is there but won't read (permissions, a disk error); `code`: the error's, for the log. */
+export class SkipFileUnreadable extends Error {
+  constructor(readonly code: string) {
+    super("skip.json won't read");
+    this.name = 'SkipFileUnreadable';
+  }
 }
 
 interface SkipRow {
@@ -105,11 +117,18 @@ export function createSkipStore(db: MessagesDb, dir: string): SkipStore {
       return Number(db.prepare('DELETE FROM skip WHERE chat_key = ?').run(chatKey).changes) > 0;
     },
     keep(addedAt) {
+      let keys: string[];
+      try {
+        keys = mirroredKeys(file);
+      } catch (e) {
+        const code = (e as NodeJS.ErrnoException).code;
+        throw new SkipFileUnreadable(typeof code === 'string' ? code : 'unknown');
+      }
       const insert = db.prepare('INSERT OR IGNORE INTO skip (chat_key, name, kind, added_at) VALUES (?, ?, ?, ?)');
       let kept = 0;
       db.tx(() => {
         // A 1:1 or a group, unknown: 'dm' is only what the list shows.
-        for (const k of mirroredKeys(file)) kept += Number(insert.run(k, SKIP_KEPT_NAME, 'dm', addedAt).changes);
+        for (const k of keys) kept += Number(insert.run(k, SKIP_KEPT_NAME, 'dm', addedAt).changes);
       });
       return kept;
     },

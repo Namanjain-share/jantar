@@ -23,6 +23,7 @@ import {
   MessagesPrefsPatchSchema,
   MessagesPrefsSchema,
   MorningAnswerSchema,
+  MorningRunSchema,
   MsgKeySchema,
 } from '../src/messages.js';
 
@@ -30,6 +31,22 @@ test('MorningAnswerSchema refuses extra keys and bad refs', () => {
   expect(MorningAnswerSchema.safeParse({ summary: 'x', todos: [{ title: 't', ref: 'x9' }], replies: [], callbacks: [] }).success).toBe(false);
   expect(MorningAnswerSchema.safeParse({ summary: 'x', todos: [], replies: [], callbacks: [], extra: 1 }).success).toBe(false);
   expect(MorningAnswerSchema.safeParse({ summary: 'ok', todos: [{ title: 'Send deck', ref: 'm17', due_day: '2026-11-15' }], replies: [], callbacks: [{ ref: 'k2', who: 'Asha Test', why: 'missed' }] }).success).toBe(true);
+});
+test('a run report keeps which calls it could not read, and a Life refusal apart from its limit', () => {
+  const run = {
+    id: '01JMRNNGRN0000000000000001',
+    at: '2026-11-14T03:00:00.000Z',
+    trigger: 'dry',
+    state: 'ok',
+    stale: false,
+    newestAt: null,
+    counts: { chats: 0, messages: 0, calls: 0, todos: 0, replies: 0, callbacks: 0, dropped: 0 },
+    dropped: [],
+    todoIds: [],
+    preview: { todos: [], callbacks: [], replies: [], dropped: [{ kind: 'todo', ref: 'm1', why: 'life_refused' }] },
+  };
+  expect(MorningRunSchema.parse({ ...run, waCalls: false, phoneCalls: false })).toMatchObject({ waCalls: false, phoneCalls: false });
+  expect(MorningRunSchema.parse(run)).not.toHaveProperty('waCalls');
 });
 test('messages is a Mac-only group and a feature', () => {
   expect(MAC_ONLY_SETTING_GROUPS).toContain('messages');

@@ -9,7 +9,7 @@
  * Nothing here is logged or emitted.
  */
 import { shiftDay, weekdayOf } from '@jantar/life-core';
-import { DEFAULT_CATEGORIES, PLACE_TAGS, PLACE_TAG_LABELS, type ChatCard, type ChatChange } from '@jantar/protocol';
+import { DEFAULT_CATEGORIES, PLACE_TAGS, PLACE_TAG_LABELS, type ChatCard, type ChatChange, type TodoFrom } from '@jantar/protocol';
 import { clean, cut } from './text.js';
 
 /** The run's stdin at most (photos are dropped from the end to fit). */
@@ -60,14 +60,24 @@ export interface ChatInput {
 const UNTRUSTED_NAME = new Set(['intel', 'meeting', 'session']);
 const KIND_WORD: Record<string, string> = { intel: 'an Intel item', meeting: 'a meeting', session: 'a Claude session' };
 
+/** 0.15: a todo whose title is a meeting's or WhatsApp's words is labelled by where it came from (chat/service.ts lookingAt), never its title. */
+export const TODO_FROM_LABEL: Record<TodoFrom, string> = { meeting: 'Todo from a meeting', messages: 'Todo from WhatsApp' };
+const TODO_FROM_WORDS = new Map<string, string>([
+  [TODO_FROM_LABEL.meeting, 'a todo from a meeting'],
+  [TODO_FROM_LABEL.messages, 'a todo from WhatsApp'],
+]);
+
 /**
  * The daemon's line for the "Looking at" chip (0.12): the item's own label for
- * the user's Life items; for Intel, a meeting or a session, the kind and id
- * alone, so no outside text reaches the run without the tools' framing (and
- * reading it taints the turn exactly as in 0.10).
+ * the user's Life items; for Intel, a meeting, a session or (0.15) a todo from
+ * a meeting or WhatsApp, the kind and id alone, so no outside text reaches the
+ * run without the tools' framing (and reading it taints the turn exactly as in
+ * 0.10).
  */
 export function lookingLine(c: { kind: string; id: string; label: string }): string {
   const id = c.id.replace(/[^A-Za-z0-9_-]/g, '');
+  const from = c.kind === 'todo' ? TODO_FROM_WORDS.get(c.label) : undefined;
+  if (from) return `The user is looking at ${from} (todo id ${id}). Read it with the tools if the message needs it.`;
   if (UNTRUSTED_NAME.has(c.kind)) return `The user is looking at ${KIND_WORD[c.kind]} (${c.kind} id ${id}). Read it with the tools if the message needs it.`;
   return `The user is looking at ${clean(c.label).replace(/\s+/g, ' ').trim()} (${c.kind} id ${id}).`;
 }

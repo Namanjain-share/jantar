@@ -2,14 +2,16 @@
  * The morning run's timer and its part of the service (0.15 Messages):
  * - MorningTimer (morning/timer.ts) on a FakeClock: once a day at the
  *   morning time in the Life zone, by the wall clock (a time the Mac slept
- *   through runs once on wake, within waitForWhatsAppMs of it); it waits for
+ *   through runs once on wake, within waitForWhatsAppMs of it, and a wait
+ *   slept past the next morning runs that one only); it waits for
  *   WhatsApp to be running and quiet, and after waitForWhatsAppMs runs
  *   anyway, stale; no time set is idle; a new time or zone rearms it;
  * - the service's MorningApi (messages/service.ts) against a fake reader and
  *   a fake claude: a timer run's report says stale when WhatsApp never got
  *   ready; the cursor moves only after a run that went well (never a failed
  *   or dry one); the push says counts only; one run at a time, none under
- *   --read-only; Today, drafts, Undo and the times.
+ *   --read-only; a 1:1 still waiting is read again but never drafted twice;
+ *   Today, drafts, Undo and the times.
  * Synthetic chat keys, fake numbers and invented names only.
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
@@ -22,11 +24,11 @@ import { ApiError } from '../../src/api/errors.js';
 import { resolvePaths } from '../../src/config.js';
 import type { Actor, Clock, LifeService, MessagesService, Paths } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
-import { createFakeExec, createPushSpy, createTestContext, createTestLifeCore, type ExecCall, type ExecHandler, type PushSpy } from '../../src/core/testing.js';
+import { createFakeExec, createPushSpy, createTestContext, createTestLifeCore, type ExecCall, type ExecHandler, type PushSpy, type TestContext } from '../../src/core/testing.js';
 import { BACKUP_CHECK_MS } from '../../src/life/backup.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
 import { buildMessagesService } from '../../src/messages/index.js';
-import { MorningTimer, type WhatsAppReady } from '../../src/messages/morning/timer.js';
+import { MorningTimer, READY_POLL_MS, type WhatsAppReady } from '../../src/messages/morning/timer.js';
 import { READER_VERSION, type ReaderStatus } from '../../src/messages/reader-protocol.js';
 import { MESSAGES_SAYS } from '../../src/messages/says.js';
 import { FakeCcwLegacy, FakeUsage, makeFakes } from '../api/fakes.js';
@@ -51,6 +53,22 @@ async function setTo(clock: FakeClock, iso: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------- the timer
+
+/** A Mac that sleeps: Node's timers run on `awake` and stop while asleep, while now() also counts the time asleep. */
+function sleepyClock(start: string): { awake: FakeClock; clock: Clock; sleep: (ms: number) => void } {
+  const awake = new FakeClock(start);
+  let slept = 0;
+  const clock: Clock = {
+    now: () => awake.now() + slept,
+    iso: (ms) => new Date(ms ?? awake.now() + slept).toISOString(),
+    setTimeout: (fn, ms) => awake.setTimeout(fn, ms),
+    clearTimeout: (id) => awake.clearTimeout(id),
+    setInterval: (fn, ms) => awake.setInterval(fn, ms),
+    clearInterval: (id) => awake.clearInterval(id),
+    sleep: (ms, signal) => awake.sleep(ms, signal),
+  };
+  return { awake, clock, sleep: (ms) => (slept += ms) };
+}
 
 interface Fired {
   at: string;
@@ -115,35 +133,50 @@ describe('MorningTimer', () => {
   });
 
   it('after sleep runs once on wake within 6h', async () => {
-    // Node's timers stop while the Mac sleeps: they run on `awake`, while now() also counts the time asleep.
-    const awake = new FakeClock('2026-11-13T20:00:00.000Z');
-    let slept = 0;
-    const clock: Clock = {
-      now: () => awake.now() + slept,
-      iso: (ms) => new Date(ms ?? awake.now() + slept).toISOString(),
-      setTimeout: (fn, ms) => awake.setTimeout(fn, ms),
-      clearTimeout: (id) => awake.clearTimeout(id),
-      setInterval: (fn, ms) => awake.setInterval(fn, ms),
-      clearInterval: (id) => awake.clearInterval(id),
-      sleep: (ms, signal) => awake.sleep(ms, signal),
-    };
+    const { awake, clock, sleep } = sleepyClock('2026-11-13T20:00:00.000Z');
     const { timer, fired } = timerOn(clock, { at: '08:00', tz: 'UTC', lastDay: null, ready: () => READY });
     timer.start();
     await flush();
     try {
-      slept += 13 * HOUR; // the lid closes at 20:00 and opens at 09:00, an hour after the morning time
+      sleep(13 * HOUR); // the lid closes at 20:00 and opens at 09:00, an hour after the morning time
       await step(awake, BACKUP_CHECK_MS);
       expect(fired).toEqual([{ at: '2026-11-14T09:01:00.000Z', stale: false, day: '2026-11-14' }]);
       await step(awake, 4 * HOUR);
       expect(fired).toHaveLength(1);
       // Asleep from 13:01 to 15:01 the next day: past that morning's six hours, so that day is left.
-      slept += 26 * HOUR;
+      sleep(26 * HOUR);
       await step(awake, BACKUP_CHECK_MS);
       await step(awake, HOUR);
       expect(fired).toHaveLength(1);
       // The morning after runs.
       await step(awake, 16 * HOUR);
       expect(fired.map((f) => f.day)).toEqual(['2026-11-14', '2026-11-16']);
+    } finally {
+      timer.stop();
+    }
+    expect(awake.pending()).toBe(0);
+  });
+
+  it('asleep while it waits, past the next morning: that morning runs, once', async () => {
+    const { awake, clock, sleep } = sleepyClock('2026-11-14T07:59:00.000Z');
+    let ready: WhatsAppReady = { running: false, walQuietMs: 0 };
+    const { timer, fired } = timerOn(clock, { at: '08:00', tz: 'UTC', lastDay: null, ready: () => ready });
+    timer.start();
+    await flush();
+    try {
+      // 08:00: WhatsApp isn't up, so it waits.
+      await step(awake, MIN);
+      expect(fired).toEqual([]);
+      // The lid closes and opens two days later at 10:00, WhatsApp syncing: Saturday's wait is over, Monday's morning is due.
+      sleep(2 * 24 * HOUR + 2 * HOUR);
+      ready = { running: true, walQuietMs: 0 };
+      await step(awake, READY_POLL_MS);
+      expect(fired).toEqual([]);
+      ready = READY;
+      await step(awake, READY_POLL_MS);
+      expect(fired).toEqual([{ at: '2026-11-16T10:02:00.000Z', stale: false, day: '2026-11-16' }]);
+      await step(awake, 8 * HOUR);
+      expect(fired).toHaveLength(1);
     } finally {
       timer.stop();
     }
@@ -321,6 +354,8 @@ function readerOf(o: { pk: () => number; running?: () => boolean }): FakeHandler
       throw readerError('no_access', "the iPhone call log isn't on this Mac");
     },
     lastFromMe: (args) => Object.fromEntries((args.chatKeys as string[]).map((k) => [k, null])),
+    // Both wrote last, and both have new lines: nothing more to read.
+    chats: () => ({ chats: [ravi, asha], total: 2 }),
   };
 }
 
@@ -368,6 +403,7 @@ afterEach(async () => {
 });
 
 interface Morning {
+  ctx: TestContext;
   svc: MessagesService;
   clock: FakeClock;
   reader: FakeReader;
@@ -388,7 +424,8 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   const core = createTestLifeCore({ clock, tz: TZ, settings: { todos: true } });
   const f = makeFakes(ctx);
   const todos = buildTodosModule(core, { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy });
-  const life = { todos, status: () => ({ timezone: TZ }) } as unknown as LifeService;
+  // Life's zone: its setting once set (as Life takes it), else TZ.
+  const life = { todos, status: () => ({ timezone: ctx.settings.get().life.timezone || TZ }) } as unknown as LifeService;
   const reader = await startFakeReader(paths.messagesReaderSock, o.handlers);
   const push = createPushSpy();
   const svc = buildMessagesService(ctx, { life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile: ':memory:', send: push.send, readOnly: o.readOnly === true });
@@ -396,7 +433,7 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   cleanups.push(() => reader.close());
   cleanups.push(() => svc.stop());
   cleanups.push(() => core.close());
-  return { svc, clock, reader, push, life, exec, paths };
+  return { ctx, svc, clock, reader, push, life, exec, paths };
 }
 
 const claudeSays = (answer: (input: string) => MorningAnswer | string): ExecHandler => (c) => {
@@ -473,6 +510,10 @@ describe('the morning run', () => {
       counts: { chats: 2, messages: 2, calls: 1, todos: 2, replies: 1, callbacks: 1, dropped: 0 },
       dropped: [],
     });
+    // The iPhone call log wasn't read (no Full Disk Access): the report says so, and keeps it.
+    expect(run.phoneCalls).toBe(false);
+    expect(run).not.toHaveProperty('waCalls');
+    expect(t.svc.morning.today().run).toMatchObject({ id: run.id, phoneCalls: false });
     expect(run.todoIds).toHaveLength(2);
     expect(run.preview).toBeUndefined();
     await eventually(() => t.push.pushes.length > 0);
@@ -482,6 +523,71 @@ describe('the morning run', () => {
     expect((await t.svc.morning.run({ trigger: 'dry' })).trigger).toBe('dry');
     await new Promise((r) => setTimeout(r, 20));
     expect(t.push.pushes).toHaveLength(1);
+  });
+
+  it('a push the mute holds is not tried again; the report keeps the counts', async () => {
+    const t = await morningSetup({ handlers: readerOf({ pk: () => 42 }), claude: claudeSays(fullAnswer) });
+    // The owner's mute: nothing goes out (life/push.ts holds a life push), and the morning never sends it again.
+    t.push.result = { delivered: 0, failed: 0 };
+    const run = await t.svc.morning.run({ trigger: 'now' });
+    await eventually(() => t.push.pushes.length > 0);
+    t.clock.advance(24 * HOUR);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.push.pushes).toHaveLength(1);
+    expect(t.svc.morning.today().run).toMatchObject({ id: run.id, state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+  });
+
+  it("a waiting 1:1 with no new lines is still waiting, and isn't drafted twice", async () => {
+    let night = 1;
+    const handlers: FakeHandlers = {
+      ...readerOf({ pk: () => 41 }),
+      // The second night nothing new came: Asha is still on the reader's waiting list.
+      newSince: () => ({ chats: night === 1 ? [{ chat: asha, messages: [deck], earlier: [] }] : [], nextCursor: { pk: 41, at: deck.at }, truncated: false, reset: false }),
+      waCalls: () => ({ calls: [] }),
+      chats: () => ({ chats: [asha], total: 1 }),
+      read: () => ({ chat: asha, messages: [deck], more: false }),
+    };
+    const inputs: string[] = [];
+    const answer = (text: string): MorningAnswer => {
+      inputs.push(text);
+      const m = idIn(text, /<m id="(m\d+)"[^>]*>Can you send the deck/);
+      return { ...EMPTY, todos: [{ title: 'Send Asha the deck', ref: m }], replies: [{ chat: idIn(text, /<chat id="(c\d+)" name="Asha Test"/), ref: m, they_asked: 'The deck by Friday 5pm', draft: 'Sending it tonight.' }] };
+    };
+    const t = await morningSetup({ handlers, claude: claudeSays(answer) });
+    const first = await t.svc.morning.run({ trigger: 'now' });
+    expect(first.counts).toMatchObject({ chats: 1, messages: 1, todos: 1, replies: 1 });
+
+    night = 2;
+    t.clock.advance(24 * HOUR);
+    const second = await t.svc.morning.run({ trigger: 'now' });
+    // Claude reads her again, still waiting: her ask, from before this run, with an id to answer.
+    expect(inputs[1]).toContain('<chat id="c1" name="Asha Test" kind="dm" waiting="yes">');
+    expect(inputs[1]).toMatch(/<m id="m1" at="[^"]+" from="Asha Test" earlier="yes">Can you send the deck/);
+    expect(t.reader.calls.filter((c) => c.op === 'read').map((c) => c.args)).toEqual([{ chatKey: ASHA, limit: MESSAGES_LIMITS.dmContext }]);
+    // Nothing new, nothing made twice: the first night's draft is the one Today shows.
+    expect(second).toMatchObject({ state: 'ok', counts: { chats: 1, messages: 0, todos: 0, replies: 0 } });
+    expect(t.svc.morning.today().drafts).toEqual([expect.objectContaining({ runId: first.id, chatKey: ASHA, draft: 'Sending it tonight.' })]);
+    const open = t.life.todos.listTodos({ done: false });
+    expect(open.ok && open.value.todos.map((x) => x.title)).toEqual(['Send Asha the deck']);
+  });
+
+  it('a change of the Life zone moves the morning time', async () => {
+    // 06:30 in India (01:00 UTC); the morning time 08:00 is 02:30 UTC there.
+    const t = await morningSetup({ handlers: readerOf({ pk: () => 42 }), claude: claudeSays(() => EMPTY), now: '2026-11-14T01:00:00.000Z' });
+    expect(t.svc.morning.setPrefs({ morningAt: '08:00' }, CLI).ok).toBe(true);
+    // The zone moves to UTC: 08:00 is now 08:00 UTC.
+    await t.ctx.settings.patch({ life: { timezone: 'UTC' } });
+    await flush();
+    t.clock.advance(HOUR + 31 * MIN);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.reader.calls.filter((c) => c.op === 'status')).toEqual([]);
+    expect(t.svc.morning.last()).toBeNull();
+    t.clock.advance(5 * HOUR + 29 * MIN);
+    const run = await eventually(() => {
+      const r = t.svc.morning.last();
+      return r && r.state !== 'running' ? r : null;
+    });
+    expect(run).toMatchObject({ trigger: 'timer', state: 'ok', at: '2026-11-14T08:00:00.000Z' });
   });
 
   it('a dry run writes nothing and answers what it would make', async () => {
@@ -533,6 +639,8 @@ describe('the morning run', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(ro.exec.calls).toEqual([]);
     expect(ro.reader.calls.filter((c) => c.op === 'newSince')).toEqual([]);
+    // Not even whether WhatsApp is ready: the timer never started.
+    expect(ro.reader.calls.filter((c) => c.op === 'status')).toEqual([]);
 
     await t.svc.stop();
     const off = await t.svc.morning.run({ trigger: 'now' }).catch((e: unknown) => e);

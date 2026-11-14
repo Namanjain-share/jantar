@@ -75,8 +75,8 @@ import { applyWrite, undoJournal, type Journal } from './actions.js';
 import { CHAT_BROKEN_REASON, chatPreUpgradeName, openChatDb } from './db.js';
 import { Dispatcher } from './dispatcher.js';
 import { saveFastPath } from './fast.js';
-import { chatStdin, CHAT_HISTORY_TURNS, lookingLine, type HistoryTurn } from './input.js';
-import { findMeeting, labelOf } from './items.js';
+import { chatStdin, CHAT_HISTORY_TURNS, lookingLine, TODO_FROM_LABEL, type HistoryTurn } from './input.js';
+import { findMeeting, findTodo, fromSource, labelOf } from './items.js';
 import { ChatPhotos } from './photos.js';
 import { personChatDeps, personOfThread, threadOf } from './person-deps.js';
 import { personFoodOn, personOnParts } from './person-tools.js';
@@ -617,6 +617,18 @@ export class ChatServiceImpl implements ChatService {
         case 'intel': {
           const i = this.deps.intel.get(c.id);
           return i ? `Intel · ${cut(line(i.title), 120)}` : '';
+        }
+        case 'todo': {
+          // 0.15: a meeting's or WhatsApp's todo by where it came from; its title is their words (lookingLine).
+          let t;
+          try {
+            t = findTodo(this.deps, c.id);
+          } catch {
+            return '';
+          }
+          if (!t) return '';
+          const from = fromSource(t);
+          return from ? TODO_FROM_LABEL[from] : labelOf(this.deps, { kind: 'todo', id: c.id });
         }
         default:
           try {

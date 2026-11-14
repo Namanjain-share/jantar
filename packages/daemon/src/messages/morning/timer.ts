@@ -13,7 +13,8 @@
  * - A morning time the Mac slept through, or the daemon was down for, runs
  *   once on wake while within waitForWhatsAppMs of it; a wake later than
  *   that leaves the day (the next run reads from where the last good one
- *   stopped).
+ *   stopped). So does a sleep in the middle of a wait that wakes past a
+ *   later morning's time: that morning is the one run, not two at once.
  * - Once a day: a day `lastDay()` names (messages.db's mark of a timer run
  *   that went well) or this timer already started a run for is never run
  *   again.
@@ -145,8 +146,19 @@ export class MorningTimer {
     const ready = r !== null && r.running && r.walQuietMs >= MESSAGES_LIMITS.quietMs;
     const until = next.dueAt + MESSAGES_LIMITS.waitForWhatsAppMs;
     const now = this.clock.now();
+    // Asleep through the rest of this wait and past a later morning's time: that day is left for the later one.
+    if (now >= until && this.laterDue(next, now)) return this.arm();
     if (ready || now >= until) return this.go(next.day, !ready);
     this.timer = this.clock.setTimeout(() => void this.poll(next, epoch), Math.min(READY_POLL_MS, until - now));
+  }
+
+  /** A morning after `next` whose time has come by `now`. */
+  private laterDue(next: NextMorning, now: number): boolean {
+    const at = this.opts.at();
+    if (at === null) return false;
+    const last = this.opts.lastDay();
+    const later = nextMorning(now, at, this.opts.tz(), (day) => day === last || day === this.fired);
+    return later.day > next.day && later.dueAt <= now;
   }
 
   private go(day: string, stale: boolean): void {

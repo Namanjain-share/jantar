@@ -4,12 +4,14 @@
  *   long one, a first or reset run keeping its firstRunHours window), the
  *   missed WhatsApp and iPhone calls since then (a calls store it may not
  *   or can no longer read is left out quietly) and when the owner last
- *   wrote, and marks the 1:1s waiting on him, each chat's tier and the
- *   calls he returned;
+ *   wrote, and marks the 1:1s waiting on him (those with nothing new too,
+ *   from the reader's waiting list), each chat's tier and the calls he
+ *   returned;
  * - budget() keeps what fits the token estimate (UTF-8 bytes / 3, of the
- *   lines as input.ts escapes them), filled in tier order: waiting 1:1s and
- *   the windows around lines that mention or answer the owner (wherever his
- *   line is), other 1:1s, then groups, then busy groups' counts; system,
+ *   lines as input.ts escapes them), filled in tier order: waiting 1:1s
+ *   (each one's unanswered lines before any one's context) and the windows
+ *   around lines that mention or answer the owner (wherever his line is),
+ *   other 1:1s, then groups, then busy groups' counts; system,
  *   reaction, deleted and skipped lines go; each line is cut at
  *   perMessageChars, never inside a surrogate pair.
  * The fixture's 5,000-line group runs on the real reader (skipped where
@@ -26,6 +28,7 @@ import { budget, estimateTokens } from '../../src/messages/morning/budget.js';
 import { collect, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
 import { lineBody, morningInput } from '../../src/messages/morning/input.js';
 import { createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
+import { READER_KEYS_MAX } from '../../src/messages/reader-protocol.js';
 import { readerError, startFakeReader, type FakeHandlers } from './fake-reader.js';
 import { FIXTURE_NOW, makeWhatsAppFixture, type FixturePaths } from './fixture.js';
 import { buildReader, whatsAppRunning } from './reader-build.js';
@@ -216,6 +219,37 @@ describe('budget', () => {
     expect(smallKept.size).toBe(38);
   });
 
+  it('every waiting 1:1 keeps the lines it waits on before any gets more context', () => {
+    // Five people waiting: each a long talk, then the owner's line, then three asks.
+    const people = Array.from({ length: 5 }, (_, i) => chat(i + 1, `Person ${i + 1}`));
+    const chats = people.map((p, i) => {
+      const talk = lines(p, 30, { text: 'x'.repeat(300) }, 10 + i);
+      const mine = line(p, { fromMe: true, at: ago(5 + i * 0.1) });
+      return batchChat(p, [...talk, mine, ...lines(p, 3, {}, 1 + i * 0.1)], { waiting: true });
+    });
+    const { kept, dropped } = budget(batchOf(chats), 4_000);
+    // A heavy morning drops context, not people: each one is in, with all three asks.
+    expect(kept.chats.map((c) => c.chat.name)).toEqual(people.map((p) => p.name));
+    for (const [i, c] of kept.chats.entries()) expect(c.messages.slice(-3)).toEqual(chats[i]!.messages.slice(-3));
+    // The first gets more context with the room left; the rest keep their asks only.
+    expect(kept.chats[0]!.messages.length).toBeGreaterThan(4);
+    expect(kept.chats.slice(1).map((c) => c.messages.length)).toEqual([3, 3, 3, 3]);
+    expect(dropped.map((d) => [d.chatName, d.kept]).sort()).toEqual(kept.chats.map((c) => [c.chat.name, c.messages.length]).sort());
+  });
+
+  it('a waiting 1:1 with no new lines goes in with its last dmContext lines', () => {
+    const p = chat(1, 'Asha Test');
+    const old = lines(p, 50, {}, 30);
+    const other = chat(2, 'Ravi Test');
+    const chats = [batchChat(other, lines(other, 2)), batchChat(p, [], { earlier: old, waiting: true })];
+    expect(chats.map((c) => c.tier)).toEqual([2, 1]);
+    const { kept, dropped } = budget(batchOf(chats));
+    expect(kept.chats.map((c) => c.chat.name)).toEqual(['Asha Test', 'Ravi Test']);
+    expect(kept.chats[0]).toMatchObject({ messages: [], earlier: old.slice(-L.dmContext), left: 0 });
+    // Nothing new was left out of it.
+    expect(dropped).toEqual([]);
+  });
+
   it('stops at the first line that does not fit, never letting a lower tier in', () => {
     const waitingDm = chat(1, 'Asha Test');
     const otherDm = chat(2, 'Ravi Test');
@@ -366,9 +400,10 @@ describe('collect', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  /** A fake reader answering `handlers` (and, unless they say otherwise, no 1:1 waiting). */
   async function readerWith(handlers: FakeHandlers) {
     const sock = join(dir, 'r.sock');
-    const fake = await startFakeReader(sock, handlers);
+    const fake = await startFakeReader(sock, { chats: () => ({ chats: [], total: 0 }), ...handlers });
     closers.push(() => fake.close());
     client = createReaderClient(sock);
     return { fake, client };
@@ -522,5 +557,56 @@ describe('collect', () => {
       lastFromMe: () => ({}),
     });
     expect(await collect(client, { pk: 3, at: ago(30) }, NOW)).toEqual({ chats: [], calls: [], cursor: { pk: 3, at: ago(30) }, reset: false, newestAt: null, waCalls: true, phone: true });
+  });
+
+  it('collect takes the waiting 1:1s with no new lines from the reader, each with its last dmContext lines', async () => {
+    const mom = chat(4, 'Mom');
+    const gone = chat(5, 'Gone Test');
+    const a1 = line(a, { at: ago(2) });
+    // Ravi wrote twice after the owner's last line, two days back, and nothing since.
+    const [b0, b1, b2] = [line(b, { at: ago(50), fromMe: true }), line(b, { at: ago(40) }), line(b, { at: ago(30) })];
+    // Mom's last line here is hers, but the owner wrote to her since (her other chat: lastFromMe counts both ids).
+    const m1 = line(mom, { at: ago(20) });
+    const { fake, client } = await readerWith({
+      newSince: () => ({ chats: [{ chat: a, messages: [a1], earlier: [] }], nextCursor: { pk: 5, at: a1.at }, truncated: false, reset: false }),
+      waCalls: () => ({ calls: [] }),
+      phoneCalls: () => ({ calls: [] }),
+      // Asha is waiting too, with a new line: read already. Gone was skipped since.
+      chats: () => ({ chats: [a, b, mom, gone], total: 4 }),
+      read: (args) => {
+        if (args.chatKey === b.chatKey) return { chat: b, messages: [b0, b1, b2], more: true };
+        if (args.chatKey === mom.chatKey) return { chat: mom, messages: [m1], more: false };
+        throw readerError('not_found', 'no such chat');
+      },
+      lastFromMe: (args) => Object.fromEntries((args.chatKeys as string[]).map((k) => [k, k === mom.chatKey ? ago(10) : k === b.chatKey ? b0.at : null])),
+    });
+
+    const batch = await collect(client, { pk: 1, at: ago(5) }, NOW);
+    expect(fake.calls.find((c) => c.op === 'chats')!.args).toEqual({ waiting: true, limit: expect.any(Number) });
+    expect(fake.calls.filter((c) => c.op === 'read').map((c) => c.args)).toEqual([b, mom, gone].map((c) => ({ chatKey: c.chatKey, limit: L.dmContext })));
+    expect((fake.calls.find((c) => c.op === 'lastFromMe')!.args.chatKeys as string[]).sort()).toEqual([a.chatKey, b.chatKey, mom.chatKey].sort());
+    // Ravi is still waiting: no new line, his last ones as earlier context, tier 1. Mom isn't.
+    expect(batch.chats.map((c) => [c.chat.name, c.messages, c.earlier, c.waiting, c.tier])).toEqual([
+      ['Asha Test', [a1], [], true, 1],
+      ['Ravi Test', [], [b0, b1, b2], true, 1],
+    ]);
+    // The newest line is the newest new one.
+    expect(batch.newestAt).toBe(a1.at);
+  });
+
+  it('collect asks when the owner last wrote READER_KEYS_MAX chats at a time', async () => {
+    const many = Array.from({ length: READER_KEYS_MAX + 1 }, (_, i) => {
+      const c = { ...chat(1, `Person ${i}`), chatKey: `c${'ab'.repeat(6)}${i.toString(16).padStart(4, '0')}` };
+      return { chat: c, messages: [line(c, { at: ago(2) })], earlier: [] };
+    });
+    const { fake, client } = await readerWith({
+      newSince: () => ({ chats: many, nextCursor: { pk: 9, at: ago(2) }, truncated: false, reset: false }),
+      waCalls: () => ({ calls: [] }),
+      phoneCalls: () => ({ calls: [] }),
+      lastFromMe: (args) => Object.fromEntries((args.chatKeys as string[]).map((k) => [k, null])),
+    });
+    const batch = await collect(client, null, NOW);
+    expect(fake.calls.filter((c) => c.op === 'lastFromMe').map((c) => (c.args.chatKeys as string[]).length)).toEqual([READER_KEYS_MAX, 1]);
+    expect(batch.chats.filter((c) => c.waiting)).toHaveLength(READER_KEYS_MAX + 1);
   });
 });

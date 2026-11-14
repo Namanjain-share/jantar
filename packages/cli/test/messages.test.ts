@@ -434,6 +434,7 @@ describe('jantar messages', () => {
         dropped: [
           { kind: 'todo', ref: 'm999', why: 'unknown_ref' },
           { kind: 'todo', ref: 'm3', why: 'time_not_stated' },
+          { kind: 'callback', ref: 'k1', why: 'life_refused' },
         ],
       },
     };
@@ -456,6 +457,7 @@ describe('jantar messages', () => {
       expect(draft).toBe(`  reply      Asha Test: ${RUN.preview!.replies[0]!.draft.slice(0, 59)}…`);
       expect(lines).toContain("  left out   todo m999: it cites a message the run didn't have");
       expect(lines).toContain('  no time    todo m3: its message states no time');
+      expect(lines).toContain("  left out   callback k1: Life wouldn't take it (is Life on?)");
       expect(io.stdout).toContain('Dry run: nothing was written.');
     });
 
@@ -467,6 +469,29 @@ describe('jantar messages', () => {
       expect(io.stdout).toContain('Morning run ok. 2 todos, 1 replies waiting, 1 call-back');
       expect(io.stdout).not.toContain('todo       ');
       expect(io.stdout).not.toContain('Dry run');
+    });
+
+    it('morning --now and --dry-run exit failed when the run failed, after its report', async () => {
+      const failed: MorningRun = { ...RUN, trigger: 'now', state: 'failed', why: "Claude's answer couldn't be used, so nothing was made. Try again.", preview: undefined, counts: { ...RUN.counts, todos: 0, replies: 0, callbacks: 0 } };
+      for (const [flag, run] of [['--now', failed], ['--dry-run', { ...failed, trigger: 'dry' }]] as const) {
+        const ctl = fakeCtl({ 'POST /v1/messages/morning/run': ok(run) });
+        const { ctx, io } = contextFor(home, { ctl, paths });
+        expect(await messages.run(['morning', flag], ctx), io.stderr).toBe(EXIT.failed);
+        expect(io.stdout).toContain("Morning run failed: Claude's answer couldn't be used, so nothing was made. Try again.");
+      }
+    });
+
+    it('morning says which calls it could not read', async () => {
+      const ctl = fakeCtl({ 'POST /v1/messages/morning/run': ok({ ...RUN, trigger: 'now', preview: undefined, waCalls: false, phoneCalls: false }) });
+      const { ctx, io } = contextFor(home, { ctl, paths });
+      expect(await messages.run(['morning', '--now'], ctx), io.stderr).toBe(EXIT.ok);
+      expect(io.stdout).toContain("WhatsApp's calls weren't read, so missed WhatsApp calls aren't in this run.");
+      expect(io.stdout).toContain("The iPhone call log wasn't read, so missed phone calls aren't in this run.");
+      const quiet = fakeCtl({ 'POST /v1/messages/morning/run': ok({ ...RUN, trigger: 'now', preview: undefined }) });
+      const again = contextFor(home, { ctl: quiet, paths });
+      await messages.run(['morning', '--now'], again.ctx);
+      expect(again.io.stdout).not.toContain("weren't read");
+      expect(again.io.stdout).not.toContain("wasn't read");
     });
   });
 

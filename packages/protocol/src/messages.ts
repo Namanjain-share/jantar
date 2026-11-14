@@ -283,7 +283,8 @@ export type MorningRunState = z.infer<typeof MorningRunStateSchema>;
  * What a dry run would have made (nothing was written): todo titles, who
  * each call-back is for and when it rings, the reply drafts (no number: the
  * CLI reads it over ctl.sock), and each item of the answer left out, by kind,
- * its ref and why.
+ * its ref and why (`limit`: Life's open-todo limit or todosPerRun;
+ * `life_refused`: Life refused it otherwise, closed or its project gone).
  */
 export const MorningPreviewSchema = z.object({
   todos: z.array(z.object({ title: z.string() })),
@@ -292,7 +293,7 @@ export const MorningPreviewSchema = z.object({
   dropped: z.array(z.object({
     kind: z.enum(['todo', 'reply', 'callback']),
     ref: z.string(),
-    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'time_not_stated']),
+    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'life_refused', 'time_not_stated']),
   })),
 });
 export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
@@ -306,7 +307,9 @@ export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
  * the messages kept and left out, most left out first. `summary`: the
  * model's (other people's words: the phone shows it, a push never does).
  * `todoIds`: the todos made (not the call-backs). `preview`: a dry run's
- * answer only, never stored.
+ * answer only, never stored. `waCalls`, `phoneCalls`: false when the run
+ * couldn't read WhatsApp's calls or the iPhone call log (refused, or changed
+ * by an update), so missed calls from there aren't in it; absent otherwise.
  */
 export const MorningRunSchema = z.object({
   id: LifeIdSchema,
@@ -321,6 +324,8 @@ export const MorningRunSchema = z.object({
   todoIds: z.array(LifeIdSchema),
   summary: z.string().max(600).optional(),
   preview: MorningPreviewSchema.optional(),
+  waCalls: z.literal(false).optional(),
+  phoneCalls: z.literal(false).optional(),
 });
 export type MorningRun = z.infer<typeof MorningRunSchema>;
 /** POST /v1/messages/morning/run. `dryRun`: show what it would make, write nothing, keep the cursor. */

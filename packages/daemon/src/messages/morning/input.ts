@@ -20,7 +20,9 @@
  * - Ids: `c` a chat, `m` a new line, `k` a call not returned, numbered in
  *   order; RefMap maps each back to the reader's key, and an answer citing
  *   any other is dropped (apply). Lines from before this run
- *   (`earlier="yes"`) have no id: context only.
+ *   (`earlier="yes"`) have no id: context only. But a 1:1 still waiting
+ *   with nothing new (collect.ts stillWaiting): the lines it waits on, since
+ *   the owner's last, carry one too, for a reply only (apply.ts).
  * - Times in the Life zone: a weekday and HH:MM within the last six days,
  *   with the date when older.
  * - The owner's own lines carry `by_user="yes"` (and `from="me"`): an
@@ -42,7 +44,7 @@ import type { Message } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
 import { tagEscaper } from '../../rewrite/context.js';
 import { CONTROL, LINE_END } from '../../rewrite/guards.js';
-import { aboutMe, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { aboutMe, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 
 /** Every tag of the input and the answer: escaped inside any data. */
 export const MORNING_TAGS = ['chat', 'm', 'call', 'summary', 'data'] as const;
@@ -172,16 +174,23 @@ export function morningInput(batch: Batch, opts: MorningInputOptions): { text: s
   const ids = new Map<string, string>();
   const chatIds = new Map<string, string>();
 
-  const line = (m: Message, id: string | null) => {
+  const line = (m: Message, id: string | null, earlier: boolean) => {
     const a = [...(id ? [`id="${id}"`] : []), `at="${when(m.at)}"`, `from="${m.fromMe ? opts.ownerName : dataName(m.sender)}"`];
     if (m.fromMe) a.push('by_user="yes"');
-    if (!id) a.push('earlier="yes"');
-    else {
+    if (earlier) a.push('earlier="yes"');
+    if (id) {
       if (aboutMe(m)) a.push('to_me="yes"');
       const parent = m.replyTo ? ids.get(m.replyTo) : undefined;
       if (parent) a.push(`reply="${parent}"`);
     }
     return `<m ${a.join(' ')}>${dataText(lineBody(m))}</m>`;
+  };
+  /** The line with a new id, kept in refs. */
+  const cited = (m: Message, earlier: boolean) => {
+    const mid = `m${refs.m.size + 1}`;
+    refs.m.set(mid, m.msgKey);
+    ids.set(m.msgKey, mid);
+    return line(m, mid, earlier);
   };
 
   const chat = (bc: BatchChat, id: string): string[] => {
@@ -191,13 +200,9 @@ export function morningInput(batch: Batch, opts: MorningInputOptions): { text: s
     if (c.kind !== 'dm' && c.members !== undefined) a.push(`members="${c.members}"`);
     if (c.archived) a.push('archived="yes"');
     if (bc.left) a.push(`left="${bc.left}"`);
-    const out = [`<chat ${a.join(' ')}>`, ...bc.earlier.map((m) => line(m, null))];
-    for (const m of bc.messages) {
-      const mid = `m${refs.m.size + 1}`;
-      refs.m.set(mid, m.msgKey);
-      ids.set(m.msgKey, mid);
-      out.push(line(m, mid));
-    }
+    const open = stillWaiting(bc) ? openFrom(bc.earlier) : bc.earlier.length;
+    const out = [`<chat ${a.join(' ')}>`, ...bc.earlier.map((m, i) => (i >= open ? cited(m, true) : line(m, null, true)))];
+    for (const m of bc.messages) out.push(cited(m, false));
     out.push('</chat>');
     return out;
   };

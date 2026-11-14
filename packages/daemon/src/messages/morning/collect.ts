@@ -18,6 +18,9 @@
  * - `waiting`: a 1:1 whose last line in the batch is theirs, within
  *   waitingDays, with nothing from the owner to that person since (under
  *   either of their ids: the reader's lastFromMe).
+ * - A 1:1 still waiting with nothing new (the reader's waiting list, by the
+ *   same rule on its last dmContext lines) comes too: tier 1, no new line,
+ *   those lines as `earlier` (stillWaiting), so Today keeps them waiting.
  * - `tier` (budget.ts fills in its order): 1 a waiting 1:1, or a group with
  *   a new line that mentions or answers the owner (the reader's mentionsMe
  *   and replyToMe, wherever his line is); 2 any other 1:1; 3 any other
@@ -29,7 +32,7 @@
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
 import { ReaderFailure, type ReaderClient } from '../reader-client.js';
-import type { ReaderCursor, ReaderError, ReaderNewSince } from '../reader-protocol.js';
+import { READER_CHATS_MAX, READER_KEYS_MAX, type ReaderCursor, type ReaderError, type ReaderNewSince } from '../reader-protocol.js';
 
 /** Where the morning feed got to (stored after a run that went well). */
 export type Cursor = ReaderCursor;
@@ -37,7 +40,8 @@ export type Tier = 1 | 2 | 3 | 4;
 
 /**
  * One chat's new lines and up to READER_EARLIER_MAX before them, both
- * oldest first. `left`: new lines budget() left out (set on its `kept`).
+ * oldest first (a 1:1 still waiting: none new, its last dmContext lines
+ * earlier). `left`: new lines budget() left out (set on its `kept`).
  */
 export interface BatchChat {
   chat: ChatOwner;
@@ -72,8 +76,6 @@ export const NEW_ROWS_PER_PAGE = 5_000;
 export const NEW_PAGES_MAX = 20;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
-/** lastFromMe takes this many chat keys at once (reader-protocol.ts). */
-const KEYS_PER_ASK = 500;
 /** Kinds that carry nothing to read (the reader sends them without text). */
 const SILENT_KINDS: ReadonlySet<Message['kind']> = new Set(['system', 'reaction', 'deleted']);
 /** A calls store failing so is left out of the run; any other failure fails it. */
@@ -90,6 +92,17 @@ export function aboutMe(m: Message): boolean {
 }
 
 const isDm = (c: ChatOwner) => c.kind === 'dm';
+
+/** Where the lines a waiting 1:1 waits on start in `lines` (oldest first): just after the owner's last content line, else 0. */
+export function openFrom(lines: readonly Message[]): number {
+  for (let i = lines.length - 1; i >= 0; i--) if (lines[i]!.fromMe && isContent(lines[i]!)) return i + 1;
+  return 0;
+}
+
+/** A waiting 1:1 with no new line since the last run: what it waits on is in its earlier lines. */
+export function stillWaiting(bc: BatchChat): boolean {
+  return bc.waiting && bc.messages.length === 0;
+}
 
 /** A group (or community) with busyGroupMessages new lines, busyGroupMembers members, or archived. */
 export function isBusy(chat: ChatOwner, newLines: number): boolean {
@@ -148,11 +161,29 @@ async function callsFrom(reader: ReaderClient, op: 'waCalls' | 'phoneCalls', sin
   }
 }
 
-/** lastFromMe for `keys`, KEYS_PER_ASK at a time. */
+/** lastFromMe for `keys`, READER_KEYS_MAX at a time. */
 async function lastFromMe(reader: ReaderClient, keys: readonly string[]): Promise<Record<string, string | null>> {
   const wrote: Record<string, string | null> = {};
-  for (let i = 0; i < keys.length; i += KEYS_PER_ASK) Object.assign(wrote, await reader.call('lastFromMe', { chatKeys: keys.slice(i, i + KEYS_PER_ASK) }));
+  for (let i = 0; i < keys.length; i += READER_KEYS_MAX) Object.assign(wrote, await reader.call('lastFromMe', { chatKeys: keys.slice(i, i + READER_KEYS_MAX) }));
   return wrote;
+}
+
+/**
+ * The reader's waiting 1:1s but those in `skip` (already in the batch), each
+ * with its last dmContext lines; one skipped or gone since is left out.
+ */
+async function waitingList(reader: ReaderClient, skip: ReadonlySet<string>): Promise<{ chat: ChatOwner; lines: Message[] }[]> {
+  const out: { chat: ChatOwner; lines: Message[] }[] = [];
+  for (const chat of (await reader.call('chats', { waiting: true, limit: READER_CHATS_MAX })).chats) {
+    if (!isDm(chat) || skip.has(chat.chatKey)) continue;
+    try {
+      out.push({ chat, lines: (await reader.call('read', { chatKey: chat.chatKey, limit: MESSAGES_LIMITS.dmContext })).messages });
+    } catch (e) {
+      if (e instanceof ReaderFailure && e.code === 'not_found') continue;
+      throw e;
+    }
+  }
+  return out;
 }
 
 interface Gathered {
@@ -201,24 +232,34 @@ export async function collect(reader: ReaderClient, cursor: Cursor | null, now: 
   const iphone = await callsFrom(reader, 'phoneCalls', since);
   const calls = [...wa.calls, ...iphone.calls].filter((c) => Date.parse(c.at) >= fromMs).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
-  const gathered = [...chats.values()];
+  // A chat with nothing to read in its new lines (system lines only) may still be waiting: as one with none.
+  const said = new Set([...chats.values()].filter((g) => g.messages.some(isContent)).map((g) => g.chat.chatKey));
+  const quiet = await waitingList(reader, said);
+  const quietKeys = new Set(quiet.map((q) => q.chat.chatKey));
+  const gathered = [...chats.values()].filter((g) => g.messages.length > 0 && !quietKeys.has(g.chat.chatKey));
   const missedKeys = calls.flatMap((c) => (c.incoming && c.missed && c.chatKey ? [c.chatKey] : []));
-  const keys = [...new Set([...gathered.filter((g) => isDm(g.chat)).map((g) => g.chat.chatKey), ...missedKeys])];
+  const keys = [...new Set([...gathered.filter((g) => isDm(g.chat)).map((g) => g.chat.chatKey), ...quietKeys, ...missedKeys])];
   const wrote = keys.length ? await lastFromMe(reader, keys) : {};
 
-  const ranked = gathered.filter((g) => g.messages.length > 0).map((g) => ({ g, last: latest(g.messages) }));
-  ranked.sort((a, b) => b.last.ms - a.last.ms);
-  const out: BatchChat[] = ranked.map(({ g }) => {
+  const out: { bc: BatchChat; ms: number }[] = gathered.map((g) => {
     const waiting = isWaiting(g.chat, g.messages, wrote[g.chat.chatKey], nowMs);
-    return { chat: g.chat, messages: g.messages, earlier: g.earlier, waiting, tier: tierOf(g.chat, g.messages, waiting) };
+    return { bc: { chat: g.chat, messages: g.messages, earlier: g.earlier, waiting, tier: tierOf(g.chat, g.messages, waiting) }, ms: latest(g.messages).ms };
   });
+  for (const q of quiet) {
+    if (!isWaiting(q.chat, q.lines, wrote[q.chat.chatKey], nowMs)) continue;
+    out.push({ bc: { chat: q.chat, messages: [], earlier: q.lines, waiting: true, tier: 1 }, ms: latest(q.lines).ms });
+  }
+  out.sort((a, b) => b.ms - a.ms);
+  // The newest line is the newest new one.
+  const fresh = [...chats.values()].filter((g) => g.messages.length > 0).map((g) => latest(g.messages));
+  const newest = fresh.length ? fresh.reduce((a, b) => (b.ms > a.ms ? b : a)) : null;
 
   return {
-    chats: out,
+    chats: out.map((o) => o.bc),
     calls: missedCalls(calls, wrote),
     cursor: page.nextCursor,
     reset,
-    newestAt: ranked[0]?.last.at ?? null,
+    newestAt: newest?.at ?? null,
     waCalls: wa.read,
     phone: iphone.read,
   };

@@ -35,8 +35,8 @@ import { createTestContext } from '../../src/core/testing.js';
 import { resolvePaths } from '../../src/config.js';
 import { READS_KEEP, addRead, listReads, openMessagesDb } from '../../src/messages/db.js';
 import { buildMessagesService, type ImageShrinker } from '../../src/messages/index.js';
-import { ReaderFailure, createReaderClient } from '../../src/messages/reader-client.js';
-import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderStatus } from '../../src/messages/reader-protocol.js';
+import { ReaderFailure, createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
+import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderOp, type ReaderStatus } from '../../src/messages/reader-protocol.js';
 import { MESSAGES_SAYS } from '../../src/messages/says.js';
 import { SKIP_KEPT_NAME } from '../../src/messages/skip.js';
 import { readerError, startFakeReader, type FakeHandlers, type FakeReader } from './fake-reader.js';
@@ -420,6 +420,53 @@ describe('the skip list', () => {
     await expect(t.svc.chats({ limit: 30 }, { via: 'cli' })).rejects.toMatchObject(refused);
     expect(statSync(file).ino).toBe(again);
     expect(statSync(file).mode & 0o777).toBe(0);
+  });
+
+  it.skipIf(process.getuid?.() === 0)('a skip add that outlives a Messages off and on finds skip.json unreadable and writes nothing', async () => {
+    const t = await setup({ dbFile: join(dir, 'messages.db'), handlers: anyChat });
+    const file = join(t.paths.messagesDir, 'skip.json');
+    const shell = t.svc as unknown as { reader: ReaderClient };
+    const call = shell.reader.call.bind(shell.reader);
+    let ino = 0;
+    // While the add waits on the reader, Messages goes off and on, and the new open finds skip.json won't open.
+    shell.reader.call = (async (op: ReaderOp, args: never) => {
+      const got = await call(op, args);
+      if (op === 'read') {
+        await t.svc.stop();
+        chmodSync(file, 0o000);
+        ino = statSync(file).ino;
+        await t.svc.start();
+      }
+      return got;
+    }) as ReaderClient['call'];
+    expect(await t.svc.skip.add(RAVI, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    expect(statSync(file).ino).toBe(ino);
+    expect(statSync(file).mode & 0o777).toBe(0);
+    expect(t.svc.skip.list()).toEqual([]);
+  });
+
+  it("skip.json keys messages.db won't take: reads say the list couldn't be written, not that the file won't open", async () => {
+    const dbFile = join(dir, 'messages.db');
+    const t = await setup({ dbFile, handlers: { ...anyChat, chats: () => ({ chats: [], total: 0 }), status: () => READY } });
+    await t.svc.stop();
+    // skip.json lists a chat the table hasn't, and messages.db won't take it (as when the disk is full).
+    writeFileSync(join(t.paths.messagesDir, 'skip.json'), JSON.stringify({ version: 1, chatKeys: [ASHA] }), { mode: 0o600 });
+    const raw = new DatabaseSync(dbFile);
+    raw.exec("CREATE TRIGGER no_room BEFORE INSERT ON skip BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END");
+    raw.close();
+    await t.svc.start();
+    await expect(t.svc.chats({ limit: 30 }, { via: 'cli' })).rejects.toMatchObject({ code: 'messages_unavailable', message: MESSAGES_SAYS.noMirror });
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipUnsaved });
+    expect(await t.svc.skip.add(RAVI, CLI)).toEqual({ ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite });
+    // Nothing wrote over it.
+    expect(mirrorOf(t)).toEqual({ version: 1, chatKeys: [ASHA] });
+    // messages.db takes it again: kept, written, and reads go on.
+    const fix = new DatabaseSync(dbFile);
+    fix.exec('DROP TRIGGER no_room');
+    fix.close();
+    expect(await t.svc.chats({ limit: 30 }, { via: 'cli' })).toEqual({ chats: [], total: 0 });
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
+    expect((await t.svc.status()).reader).toEqual({ state: 'ok' });
   });
 });
 

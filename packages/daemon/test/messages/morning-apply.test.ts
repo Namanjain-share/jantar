@@ -334,6 +334,68 @@ describe('applyMorning', () => {
     expect(r.rows('made').map((m) => m.src_key)).toEqual([`todo:${s.l.deck.msgKey}`, `reply:${s.l.deck.msgKey}`]);
   });
 
+  it('any other Life refusal stops the rest, not called the limit', () => {
+    const r = build();
+    const s = sample();
+    const { kept, refs } = prepared(s.batch);
+    // Life closed under the run: its todos module answers unavailable.
+    const closed = {
+      listProjects: () => r.todos.listProjects(),
+      createProject: (b: Parameters<TodosModule['createProject']>[0], a: Actor) => r.todos.createProject(b, a),
+      createTodo: () => ({ ok: false as const, code: 'unavailable' as const, reason: 'Life is closed.' }),
+    } as unknown as TodosModule;
+    const deck = idFor(refs, s.l.deck.msgKey);
+    const call = idFor(refs, s.calls.raviWa.callKey);
+    const answer: MorningAnswer = {
+      ...EMPTY,
+      todos: [{ title: 'Send Asha the deck', ref: deck }],
+      replies: [{ chat: idFor(refs, s.asha.chatKey), ref: deck, they_asked: 'The deck', draft: 'On it.' }],
+      callbacks: [{ ref: call, who: 'Ravi Test', why: 'Missed call' }],
+    };
+    const out = applyMorning(answer, refs, kept, r.deps({ life: { todos: closed } }));
+    expect(out.todos).toEqual([]);
+    expect(out.dropped).toEqual([
+      { kind: 'todo', ref: deck, why: 'life_refused' },
+      { kind: 'callback', ref: call, why: 'life_refused' },
+    ]);
+    expect(out.replies).toHaveLength(1);
+  });
+
+  it('a waiting 1:1 with nothing new: a reply may cite the lines it waits on, once; a todo may not', () => {
+    const r = build();
+    const asha = chat(1, 'Asha Test', { phone: '919990000001' });
+    const mine = line(asha, '2026-11-11T09:30:00.000Z', { fromMe: true, text: 'Will check' });
+    const ask = line(asha, '2026-11-12T09:00:00.000Z', { text: FIXTURE_TEXT.deck });
+    const again = line(asha, '2026-11-12T09:05:00.000Z', { text: 'Any news? Call me at 6pm' });
+    const { kept, refs } = prepared(batchOf([bc(asha, [], { earlier: [mine, ask, again], waiting: true })]));
+    const c = idFor(refs, asha.chatKey);
+    const [i1, i2] = [idFor(refs, ask.msgKey), idFor(refs, again.msgKey)];
+    const out = applyMorning(
+      {
+        ...EMPTY,
+        todos: [{ title: 'Send Asha the deck', ref: i1 }],
+        callbacks: [{ ref: i2, who: 'Asha Test', why: 'She asked for a call' }],
+        replies: [{ chat: c, ref: i2, they_asked: 'The deck', draft: 'Sending it tonight.' }],
+      },
+      refs,
+      kept,
+      r.deps(),
+    );
+    // Its lines came before this run: context for todos and call-backs, which come from new lines only.
+    expect(out.todos).toEqual([]);
+    expect(out.callbacks).toEqual([]);
+    expect(out.dropped).toEqual([
+      { kind: 'todo', ref: i1, why: 'unknown_ref' },
+      { kind: 'callback', ref: i2, why: 'unknown_ref' },
+    ]);
+    expect(out.replies).toEqual([expect.objectContaining({ chatKey: asha.chatKey, phone: '919990000001', theyAsked: 'The deck', at: again.at, state: 'open' })]);
+    // The next morning she is still waiting: a reply to any line she waits on is the draft she has.
+    const next = applyMorning({ ...EMPTY, replies: [{ chat: c, ref: i1, they_asked: 'The deck', draft: 'Sending it.' }] }, refs, kept, r.deps({ runId: RUN_B }));
+    expect(next.replies).toEqual([]);
+    expect(next.dropped).toEqual([{ kind: 'reply', ref: i1, why: 'duplicate' }]);
+    expect(r.rows('drafts')).toHaveLength(1);
+  });
+
   it('dry run writes nothing', () => {
     const r = build();
     const s = sample();

@@ -6,9 +6,10 @@
  * the refused-option loop, one turn, no tools and no MCP servers.
  *
  * - Stream-json, so stdin carries one user message: input.ts's text, then
- *   each picture after its Jantar-written label ("Image from Group One,
- *   message m4"). A claude that refuses --input-format gets one text-only
- *   retry without the pictures.
+ *   each picture after its Jantar-written label, by ids only ("Image,
+ *   message m4 (chat c2)": a group's name is anyone's to set, so it stays
+ *   inside its <chat>). A claude that refuses --input-format gets one
+ *   text-only retry without the pictures.
  * - The run counts only when its `system`/`init` line shows no tools and no
  *   MCP servers; the answer only as one JSON object MorningAnswerSchema
  *   accepts (one ```json fence tolerated). Anything else is a ClaudeFail.
@@ -33,7 +34,7 @@ import { DROPPABLE_OPTIONS, execRewrite, prepareRunDir, runDroppingRefused, type
 import { mediaAnswer, type ImageShrinker } from '../media.js';
 import { ReaderFailure, type ReaderClient } from '../reader-client.js';
 import type { Batch } from './collect.js';
-import { dataName, type RefMap } from './input.js';
+import type { RefMap } from './input.js';
 
 export const MORNING_MODEL: RewriteModel = 'sonnet';
 export const MORNING_FALLBACK_MODEL: RewriteModel = 'haiku';
@@ -160,17 +161,19 @@ export interface ImagePick {
 /**
  * The pictures for the run: the images (on this Mac) among the tier-1
  * chats' new lines in `kept`, newest first, at most `max`, each labelled
- * with its chat's name (as input.ts writes names) and its id in the input.
+ * with its message's and its chat's ids in the input, never a name.
  */
 export function pickImages(kept: Batch, refs: RefMap, max: number = MESSAGES_LIMITS.morningImages): ImagePick[] {
   const idOf = new Map([...refs.m].map(([id, key]) => [key, id]));
+  const chatIdOf = new Map([...refs.c].map(([id, key]) => [key, id]));
   const found: { at: number; pick: ImagePick }[] = [];
   for (const bc of kept.chats) {
-    if (bc.tier !== 1) continue;
+    const chatId = chatIdOf.get(bc.chat.chatKey);
+    if (bc.tier !== 1 || !chatId) continue;
     for (const m of bc.messages) {
       const id = idOf.get(m.msgKey);
       if (m.kind !== 'image' || m.media?.local === false || !id) continue;
-      found.push({ at: Date.parse(m.at), pick: { msgKey: m.msgKey, label: `Image from ${dataName(bc.chat.name)}, message ${id}` } });
+      found.push({ at: Date.parse(m.at), pick: { msgKey: m.msgKey, label: `Image, message ${id} (chat ${chatId})` } });
     }
   }
   found.sort((a, b) => b.at - a.at);
