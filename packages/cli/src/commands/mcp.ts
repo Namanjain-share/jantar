@@ -31,18 +31,29 @@
  * Claude Code instead. `jantar mcp install` adds it once to ~/.claude.json
  * (`claude mcp add --scope user`, the one time Jantar runs `claude`), and
  * cswap copies that entry into each account when the account starts.
+ *
+ * 0.15: install registers the slim entry (bin/jantar-mcp.mjs, mcp-main.ts),
+ * which serves through serveMcp() without loading the other commands, and
+ * turns on the ask rules for the WhatsApp tools in ~/.claude/settings.json
+ * (daemon hooks/ask-rules.ts). `jantar mcp status` reads ~/.claude.json and
+ * each cswap account's copy; `jantar mcp ask on|off` switches the rules.
+ * This file stays light: every session's server loads it.
  */
-import { isAbsolute } from 'node:path';
+import { readFile, readdir } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { cut, data, dataNote, line } from '@jantar/daemon/chat/text';
-import { stateDirFromEnv } from '@jantar/daemon/config';
+import { loadSettings, resolveBins, stateDirFromEnv } from '@jantar/daemon/config';
+import { planAskRules, readAskRules, setAskRules, type AskRulesState } from '@jantar/daemon/hooks/ask-rules';
+import type { HooksFailure } from '@jantar/daemon/hooks/installer';
 import { MCP_LINE_MAX, MCP_VERSIONS, createRpcServer, isRpcObject, rpcError, rpcResult, type RpcId } from '@jantar/daemon/mcp/rpc';
 import {
   CLI_NAME,
   DayKeySchema,
   FolderPathSchema,
+  HOME_ENV,
   HhMmSchema,
   IntelCaptureBodySchema,
   IntelIdSchema,
@@ -83,6 +94,8 @@ import { CLI_VERSION } from '../version.js';
 export { MCP_LINE_MAX, MCP_VERSIONS };
 /** Each tool's text stays at most this long (Claude Code saves a result over 50,000 characters to a file). */
 export const MCP_RESULT_MAX = 40_000;
+/** The server's name in Claude Code: its tools are `mcp__jantar__<tool>` (hooks/ask-rules.ts names five). */
+export const MCP_SERVER_NAME = 'jantar';
 const SEARCH_DEFAULT = 10;
 const SEARCH_MAX = 20;
 
@@ -130,6 +143,8 @@ const UNSAFE_IN_COMMAND = /["$`\\\n\r]/;
 
 /** packages/cli/bin/jantar.mjs, from src/commands or dist/commands alike. */
 const JANTAR_BIN = fileURLToPath(new URL('../../bin/jantar.mjs', import.meta.url));
+/** 0.15: packages/cli/bin/jantar-mcp.mjs, the slim entry `jantar mcp install` registers. */
+const JANTAR_MCP_BIN = fileURLToPath(new URL('../../bin/jantar-mcp.mjs', import.meta.url));
 
 // ------------------------------------------------------------------ the folder
 
@@ -743,11 +758,39 @@ export function createMcpServer(opts: McpServerOptions): McpServer {
   }
 
   return createRpcServer({
-    serverInfo: { name: 'jantar', title: 'Jantar', version: CLI_VERSION },
+    serverInfo: { name: MCP_SERVER_NAME, title: 'Jantar', version: CLI_VERSION },
     instructions: MCP_INSTRUCTIONS,
     tools: () => TOOLS.map(listed),
     call,
   });
+}
+
+/** Where serveMcp reads requests and writes answers (stdin and stdout, or a test's). */
+export interface McpStdio {
+  lines: AsyncIterable<string>;
+  out(text: string): void;
+  err(text: string): void;
+}
+
+/**
+ * The server on `lines` until they end and every call has answered (`jantar
+ * mcp`, and the slim entry): requests run side by side, each answer one
+ * write of one line.
+ */
+export async function serveMcp(opts: McpServerOptions & McpStdio): Promise<void> {
+  const server = createMcpServer(opts);
+  const running = new Set<Promise<void>>();
+  for await (const line of opts.lines) {
+    const p: Promise<void> = server.onLine(line).then(
+      (out) => {
+        for (const o of out) opts.out(`${o}\n`);
+      },
+      (e: unknown) => opts.err(`${CLI_NAME} mcp: ${e instanceof Error ? e.message : String(e)}\n`),
+    );
+    running.add(p);
+    void p.then(() => running.delete(p));
+  }
+  await Promise.all(running);
 }
 
 // ------------------------------------------------------------------ the command
@@ -784,7 +827,10 @@ export function setupText(node: string, bin: string, stateDir?: string): string 
     'Leave the WhatsApp tools (messages_*, calls_to_return) off that list: they should ask.\n\n' +
     'Every session can read the whole Intel shelf. Todos are only those of the Life\n' +
     "project linked to the session's folder, and client_here names only that folder's client.\n" +
-    `With Messages on (${CLI_NAME} messages on), every session can read your WhatsApp, skipped chats excepted.\n`
+    `With Messages on (${CLI_NAME} messages on), every session can read your WhatsApp, skipped chats excepted.\n\n` +
+    `Or in one step: ${CLI_NAME} mcp install adds a lighter entry (jantar-mcp.mjs) to ~/.claude.json and\n` +
+    `has Claude Code ask before each WhatsApp tool runs. ${CLI_NAME} mcp status shows every account;\n` +
+    `${CLI_NAME} mcp ask on|off switches the asking.\n`
   );
 }
 
@@ -809,36 +855,254 @@ function printSetup(ctx: CliContext, bin: string): number {
   return EXIT.ok;
 }
 
+// ------------------------------------------------------------------ 0.15 install, status, ask
+
+/**
+ * What points claude at one account's folder (cswap sets them in each of its
+ * sessions): left out, so `claude mcp add` writes ~/.claude.json, the file
+ * cswap copies into every account.
+ */
+export const CLAUDE_ACCOUNT_ENV = ['CLAUDE_CONFIG_DIR', 'CLAUDE_SECURESTORAGE_CONFIG_DIR'] as const;
+/** Claude Code's file of user-scope servers, in the home (and in each account's folder). */
+const CLAUDE_JSON = '.claude.json';
+/** `claude mcp get` starts the server to check it: longer than ctl's 10 s. */
+const CLAUDE_MS = 60_000;
+/** The most of claude's own words a failure repeats. */
+const CLAUDE_SAID_MAX = 300;
+
+/** The server entry install adds: this node, the slim entry and, when JANTAR_HOME names the state dir, that dir. */
+export interface McpEntry {
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+function wantedEntry(ctx: CliContext, mcpBin: string): McpEntry {
+  const home = stateDirFromEnv(ctx.io.env) ? ctx.paths.home : undefined;
+  return { command: ctx.deps.nodePath, args: [mcpBin], env: home ? { [HOME_ENV]: home } : {} };
+}
+
+/** The environment claude runs in: this one without CLAUDE_ACCOUNT_ENV. */
+export function claudeEnv(env: Readonly<Record<string, string | undefined>>): Record<string, string | undefined> {
+  const out = { ...env };
+  for (const k of CLAUDE_ACCOUNT_ENV) delete out[k];
+  return out;
+}
+
+export type EntryState = 'present' | 'missing' | 'different' | 'unreadable';
+
+/** `mcpServers.jantar` in a .claude.json's text (null: no such file) against what install adds. */
+export function entryState(text: string | null, want: McpEntry): EntryState {
+  if (text === null) return 'missing';
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return 'unreadable';
+  }
+  if (!isRpcObject(json) || (json.mcpServers !== undefined && !isRpcObject(json.mcpServers))) return 'unreadable';
+  const s = isRpcObject(json.mcpServers) ? json.mcpServers[MCP_SERVER_NAME] : undefined;
+  if (s === undefined) return 'missing';
+  if (!isRpcObject(s)) return 'different';
+  const env = isRpcObject(s.env) ? s.env : {};
+  const same =
+    (s.type === undefined || s.type === 'stdio') &&
+    s.command === want.command &&
+    JSON.stringify(s.args ?? []) === JSON.stringify(want.args) &&
+    env[HOME_ENV] === want.env[HOME_ENV];
+  return same ? 'present' : 'different';
+}
+
+/** `claude mcp get`'s answer names the same command line (its Command and Args lines) and JANTAR_HOME. */
+function sameCommandLine(said: string, want: McpEntry): boolean {
+  const field = (name: string) => new RegExp(`^\\s*${name}:[ \\t]*(.*)$`, 'm').exec(said)?.[1]?.trim();
+  const home = new RegExp(`^\\s*${HOME_ENV}=(.*)$`, 'm').exec(said)?.[1]?.trim();
+  return field('Command') === want.command && field('Args') === want.args.join(' ') && home === want.env[HOME_ENV];
+}
+
+/** A file's text, or null when there is none. */
+async function readText(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, 'utf8');
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
+const ASK_SAID: Record<'on' | 'off', { done: string; already: string }> = {
+  on: {
+    done: `Claude Code now asks before each WhatsApp tool runs, in auto and bypass modes too. To stop that: ${CLI_NAME} mcp ask off\n`,
+    already: 'The ask rules are already on; the settings file needs no change.\n',
+  },
+  off: {
+    done: `The WhatsApp tools now follow your other permission rules (permissions.allow lets them run without asking). Back on: ${CLI_NAME} mcp ask on\n`,
+    already: 'The ask rules are already off; the settings file needs no change.\n',
+  },
+};
+
+/** The ask rules on or off in ~/.claude/settings.json (every cswap account links to it): the diff, then the write. */
+async function askStep(ctx: CliContext, on: boolean, dryRun: boolean, label: string): Promise<number> {
+  const settingsPath = ctx.paths.claudeSettings;
+  const said = ASK_SAID[on ? 'on' : 'off'];
+  const plan = await planAskRules({ settingsPath, on });
+  if (!plan.ok) {
+    ctx.io.err(`${CLI_NAME} mcp ${label}: ${plan.message}\n`);
+    return EXIT.failed;
+  }
+  ctx.io.out(`Settings file: ${plan.realPath}${plan.isSymlink ? ` (linked from ${plan.settingsPath})` : ''}\n`);
+  if (!plan.changed) {
+    ctx.io.out(said.already);
+    return EXIT.ok;
+  }
+  ctx.io.out(`\n${plan.diff}\n`);
+  if (dryRun) return EXIT.ok;
+  const res = await setAskRules({ settingsPath, on, expectedBefore: plan.before, now: () => new Date(ctx.deps.now()) });
+  if (!res.ok) {
+    ctx.io.err(`${CLI_NAME} mcp ${label}: ${res.message}\n`);
+    return EXIT.failed;
+  }
+  if (res.backupPath) ctx.io.out(`Backed up the previous file to ${res.backupPath}\n`);
+  ctx.io.out(said.done);
+  return EXIT.ok;
+}
+
+/** How a claude run ended, for a sentence. */
+const ended = (r: { code: number | null; timedOut: boolean; spawnError?: string }) =>
+  r.timedOut ? 'timed out' : r.spawnError ? clip(r.spawnError, CLAUDE_SAID_MAX) : `exit ${r.code}`;
+
+/**
+ * `jantar mcp install`: the slim entry into ~/.claude.json through Claude
+ * Code's own `claude mcp add` (an argument array, never a shell), unless the
+ * same server is there; checked in the file; then the ask rules.
+ */
+async function install(ctx: CliContext, mcpBin: string, dryRun: boolean): Promise<number> {
+  const fail = (why: string) => {
+    ctx.io.err(`${CLI_NAME} mcp install: ${why}\n`);
+    return EXIT.failed;
+  };
+  const want = wantedEntry(ctx, mcpBin);
+  if (!isAbsolute(want.command)) return fail(`the node path is not absolute (${clip(want.command, 200)}).`);
+  const { settings } = await loadSettings(ctx.paths);
+  const { claude } = await resolveBins({ settings, env: ctx.io.env, userHome: ctx.paths.userHome, usePath: true, platform: ctx.deps.platform });
+  if (!claude) return fail(`Claude Code's claude command was not found: install Claude Code, or set bins.claude in ${ctx.paths.configFile}.`);
+  const opts = { env: claudeEnv(ctx.io.env), cwd: ctx.paths.userHome, timeoutMs: CLAUDE_MS };
+  const run = (args: readonly string[]) => ctx.deps.exec(claude, args, opts);
+  const claudeJson = join(ctx.paths.userHome, CLAUDE_JSON);
+  // --env takes several values: an option must follow it, so the name isn't read as one.
+  const add = ['mcp', 'add', ...Object.entries(want.env).flatMap(([k, v]) => ['--env', `${k}=${v}`]), '--scope', 'user', MCP_SERVER_NAME, '--', want.command, ...want.args];
+  const remove = ['mcp', 'remove', '--scope', 'user', MCP_SERVER_NAME];
+
+  const got = await run(['mcp', 'get', MCP_SERVER_NAME]);
+  const there = got.code === 0;
+  // The same command line, and in the user scope (a project's own jantar would answer the get too).
+  const same = there && sameCommandLine(got.stdout, want) && entryState(await readText(claudeJson), want) === 'present';
+  if (dryRun) {
+    if (same) ctx.io.out('Already in ~/.claude.json: nothing to add.\n');
+    else for (const args of there ? [remove, add] : [add]) ctx.io.out(`Would run: ${claude} ${args.join(' ')}\n`);
+    const code = await askStep(ctx, true, true, 'install');
+    ctx.io.out('Dry run: nothing was written.\n');
+    return code;
+  }
+  if (!same) {
+    // Another jantar in the user scope goes first (add refuses a name it has); if there is none there, the add says why.
+    if (there) await run(remove);
+    const added = await run(add);
+    if (added.code !== 0) return fail(`claude mcp add failed (${ended(added)}): ${clip(added.stderr || added.stdout, CLAUDE_SAID_MAX)}`);
+  }
+  const state = entryState(await readText(claudeJson), want);
+  if (state !== 'present') {
+    return fail(`claude mcp add ran, but ~/.claude.json has no jantar server running ${want.command} ${want.args.join(' ')} (${state}). Check: claude mcp get jantar`);
+  }
+  const asked = await askStep(ctx, true, false, 'install');
+  if (asked !== EXIT.ok) {
+    ctx.io.err(`The server is in ~/.claude.json; the ask rules are not. Once the settings file is fixed: ${CLI_NAME} mcp ask on\n`);
+    return asked;
+  }
+  ctx.io.out(
+    `${same ? 'Already in' : 'Added to'} ~/.claude.json. cswap copies it into each account the next time that account starts (ccw moves count). Check: ${CLI_NAME} mcp status\n`,
+  );
+  return EXIT.ok;
+}
+
+const ASK_TEXT: Record<AskRulesState, string> = { on: 'on', off: 'off', partial: 'some' };
+const askText = (r: AskRulesState | HooksFailure) => (typeof r === 'string' ? ASK_TEXT[r] : 'unreadable');
+
+/** The cswap accounts' folders, in slot order. */
+async function profileNames(dir: string): Promise<string[]> {
+  try {
+    return (await readdir(dir, { withFileTypes: true }))
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  } catch {
+    return [];
+  }
+}
+
+/** `jantar mcp status`: the jantar server and the ask rules in ~/.claude.json and each cswap account. Only reads. */
+async function status(ctx: CliContext, mcpBin: string): Promise<number> {
+  const want = wantedEntry(ctx, mcpBin);
+  const entry = async (dir: string) => entryState(await readText(join(dir, CLAUDE_JSON)), want);
+  const rows: { name: string; jantar: EntryState; ask: string }[] = [
+    { name: `~/${CLAUDE_JSON}`, jantar: await entry(ctx.paths.userHome), ask: askText(await readAskRules(ctx.paths.claudeSettings)) },
+  ];
+  for (const name of await profileNames(ctx.paths.cswapProfiles)) {
+    const dir = join(ctx.paths.cswapProfiles, name);
+    rows.push({ name, jantar: await entry(dir), ask: askText(await readAskRules(join(dir, 'settings.json'))) });
+  }
+  const width = Math.max(...rows.map((r) => r.name.length));
+  const stateWidth = Math.max(...rows.map((r) => r.jantar.length));
+  ctx.io.out(`jantar in Claude Code (${[want.command, ...want.args].join(' ')}):\n`);
+  for (const r of rows) ctx.io.out(`  ${r.name.padEnd(width)}  jantar: ${r.jantar.padEnd(stateWidth)}  ask rules: ${r.ask}\n`);
+  ctx.io.out("cswap copies ~/.claude.json's servers into each account the next time that account starts (ccw moves count).\n");
+  if (rows[0]?.jantar !== 'present') ctx.io.out(`Add it: ${CLI_NAME} mcp install\n`);
+  if (rows.some((r) => r.ask !== 'on')) ctx.io.out(`Ask rules: ${CLI_NAME} mcp ask on (an account with a settings file of its own needs them there).\n`);
+  return EXIT.ok;
+}
+
+export const MCP_USAGE = `${CLI_NAME} mcp [install [--dry-run] | status | ask on|off]`;
+
+/** The subcommand to run, or why the arguments are not one. */
+function subcommand(args: readonly string[]): { run: 'install'; dryRun: boolean } | { run: 'status' } | { run: 'ask'; on: boolean } | { usage: string } {
+  const [sub, ...rest] = args;
+  if (sub === 'install') {
+    if (rest.length === 0 || (rest.length === 1 && rest[0] === '--dry-run')) return { run: 'install', dryRun: rest.length === 1 };
+    return { usage: `install takes only --dry-run ("${clip(rest.join(' '), 40)}")` };
+  }
+  if (sub === 'status') return rest.length === 0 ? { run: 'status' } : { usage: 'status takes no argument' };
+  if (sub === 'ask') return rest.length === 1 && (rest[0] === 'on' || rest[0] === 'off') ? { run: 'ask', on: rest[0] === 'on' } : { usage: 'ask takes on or off' };
+  return { usage: `"${clip(sub ?? '', 40)}" is not install, status or ask` };
+}
+
 export function mcpCommand(opts: { host?: () => McpHost; bin?: string } = {}): Command {
   const host = opts.host ?? processHost;
   const bin = opts.bin ?? JANTAR_BIN;
   return {
     name: 'mcp',
-    summary: "Run Jantar's MCP server for Claude Code (the Intel shelf, this folder's todos and, with Messages on, WhatsApp).",
-    usage: 'jantar mcp',
+    summary: "Run Jantar's MCP server for Claude Code (the Intel shelf, this folder's todos and, with Messages on, WhatsApp), or add it to Claude Code.",
+    usage: MCP_USAGE,
     owner: 'WP-MCP',
     async run(args, ctx) {
       const h = host();
-      if (h.stdinIsTTY || args.includes('--help') || args.includes('-h')) return printSetup(ctx, bin);
-      if (args.length) {
-        ctx.io.err(`${CLI_NAME} mcp: it takes no argument ("${clip(args[0] ?? '', 40)}"). See: ${CLI_NAME} mcp --help\n`);
+      if (args.includes('--help') || args.includes('-h') || (args.length === 0 && h.stdinIsTTY)) return printSetup(ctx, bin);
+      if (args.length === 0) {
+        await serveMcp({ ctl: ctx.ctl, folder: mcpFolder(ctx.io.env, h.cwd), randomId: ctx.deps.randomId, lines: h.lines(), out: (t) => ctx.io.out(t), err: (t) => ctx.io.err(t) });
+        return EXIT.ok;
+      }
+      const sub = subcommand(args);
+      if ('usage' in sub) {
+        ctx.io.err(`${CLI_NAME} mcp: ${sub.usage}. Usage: ${MCP_USAGE}\n`);
         return EXIT.usage;
       }
-      const server = createMcpServer({ ctl: ctx.ctl, folder: mcpFolder(ctx.io.env, h.cwd), randomId: ctx.deps.randomId });
-      // Requests run side by side; each answer is one write of one line.
-      const running = new Set<Promise<void>>();
-      for await (const line of h.lines()) {
-        const p: Promise<void> = server.onLine(line).then(
-          (out) => {
-            for (const o of out) ctx.io.out(`${o}\n`);
-          },
-          (e: unknown) => ctx.io.err(`${CLI_NAME} mcp: ${e instanceof Error ? e.message : String(e)}\n`),
-        );
-        running.add(p);
-        void p.then(() => running.delete(p));
+      try {
+        if (sub.run === 'install') return await install(ctx, JANTAR_MCP_BIN, sub.dryRun);
+        if (sub.run === 'status') return await status(ctx, JANTAR_MCP_BIN);
+        return await askStep(ctx, sub.on, false, `ask ${sub.on ? 'on' : 'off'}`);
+      } catch (e) {
+        ctx.io.err(`${CLI_NAME} mcp ${sub.run}: ${e instanceof Error ? e.message : String(e)}\n`);
+        return EXIT.failed;
       }
-      await Promise.all(running);
-      return EXIT.ok;
     },
   };
 }

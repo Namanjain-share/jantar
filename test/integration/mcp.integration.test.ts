@@ -18,6 +18,8 @@
  *    off by default, included).
  * 4. S10: every line on stdout is one JSON-RPC message; the server exits 0
  *    when stdin ends.
+ * 5. 0.15: the slim entry `jantar mcp install` registers
+ *    (bin/jantar-mcp.mjs) serves the same tools from the same daemon.
  *
  * Needs `pnpm -r build` first (CI builds before testing); skipped otherwise.
  * Nothing runs `claude`.
@@ -34,7 +36,9 @@ import { bootDaemon, type Daemon } from './harness.js';
 import { cookieFrom, eventually, http, rememberSecret } from './http.js';
 
 const CLI_BIN = fileURLToPath(new URL('../../packages/cli/bin/jantar.mjs', import.meta.url));
+const SLIM_BIN = fileURLToPath(new URL('../../packages/cli/bin/jantar-mcp.mjs', import.meta.url));
 const DIST_MCP = fileURLToPath(new URL('../../packages/cli/dist/commands/mcp.js', import.meta.url));
+const DIST_SLIM = fileURLToPath(new URL('../../packages/cli/dist/mcp-main.js', import.meta.url));
 const built = existsSync(DIST_MCP) && readFileSync(DIST_MCP, 'utf8').includes('createMcpServer');
 if (!built) console.warn('[integration] jantar mcp tests skipped: run `pnpm -r build` first');
 
@@ -254,4 +258,21 @@ describe.skipIf(!built)('jantar mcp: the real executable against jantard', () =>
     }
     expect(mcp.stderr).not.toMatch(/error|exception/i);
   }, perfBudgetMs(30_000));
+
+  it.skipIf(!existsSync(DIST_SLIM))('5. the slim entry (bin/jantar-mcp.mjs) serves the same tools from the same daemon', async () => {
+    const slim = new McpChild(spawn(process.execPath, [SLIM_BIN], { cwd: d.home.root, env: { ...d.home.env, CLAUDE_PROJECT_DIR: folder }, stdio: ['pipe', 'pipe', 'pipe'] }));
+    try {
+      const init = await slim.request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'example-client', version: '1.0.0' } });
+      expect(init.result).toMatchObject({ protocolVersion: '2025-11-25', serverInfo: { name: 'jantar' } });
+      expect(((await slim.request('tools/list')).result?.tools as unknown[]).length).toBe(11);
+      expect(JSON.parse((await slim.tool('intel_search', { query: 'zephyr' })).text)).toMatchObject({ total: 1 });
+      expect(JSON.parse((await slim.tool('todos_here')).text)).toMatchObject({ project: { name: 'Example app' } });
+      slim.child.stdin?.end();
+      expect(await slim.exit()).toBe(0);
+      expect(slim.rest).toBe('');
+      expect(slim.stderr).toBe('');
+    } finally {
+      if (slim.child.exitCode === null && slim.child.signalCode === null) slim.child.kill('SIGKILL');
+    }
+  }, perfBudgetMs(60_000));
 });

@@ -623,7 +623,7 @@ describe('jantar mcp on a terminal: the setup', () => {
     expect(mcp.stub).toBeUndefined();
     const help = memoryIo();
     expect(await main(['help', 'mcp'], { io: help })).toBe(EXIT.ok);
-    expect(help.stdout).toContain('usage: jantar mcp\n');
+    expect(help.stdout).toContain('usage: jantar mcp [install [--dry-run] | status | ask on|off]\n');
   });
 });
 
@@ -670,10 +670,10 @@ describe('jantar mcp as a server', () => {
     expect(ctl.calls[0]?.path).toBe(`${ROUTES.folderTodos.path}?folder=${encodeURIComponent('/synthetic/home/started-here')}`);
   });
 
-  it('refuses an argument it does not know', async () => {
+  it('refuses an argument it does not know (0.15: install, status and ask are its subcommands)', async () => {
     const r = await runMcp(['serve']);
     expect(r.code).toBe(EXIT.usage);
     expect(r.out).toBe('');
-    expect(r.err).toContain('jantar mcp: it takes no argument ("serve")');
+    expect(r.err).toBe('jantar mcp: "serve" is not install, status or ask. Usage: jantar mcp [install [--dry-run] | status | ask on|off]\n');
   });
 });

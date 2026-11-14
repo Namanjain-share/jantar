@@ -83,7 +83,10 @@ prompt was not sent or not proven), `2` usage error, `3` daemon not running.
 | `intel add` | one line in `~/.jantar/intel/captures.jsonl`, through the daemon | nothing |
 | `notify urgent` / `done` | settings (`notify.urgent`, `notify.kinds`), through the daemon (or `config.json` while it is down) | nothing |
 | `notify test` | nothing itself; the daemon sends one test push to your paired devices | nothing |
-| `mcp` | through the daemon only: `intel_add` appends one line to `~/.jantar/intel/captures.jsonl`, `todo_add` adds a todo to the Life project linked to the session's folder (at most 20 an hour) | nothing; on a terminal it prints the `claude mcp add` line for you to paste, and never runs `claude` |
+| `mcp` | through the daemon only: `intel_add` appends one line to `~/.jantar/intel/captures.jsonl`, `todo_add` adds a todo to the Life project linked to the session's folder (at most 20 an hour) | nothing; on a terminal it prints the `claude mcp add` line for you to paste |
+| `mcp install [--dry-run]` (0.15) | `~/.claude.json` through Claude Code's own `claude mcp add` (the server `jantar`: this node and `bin/jantar-mcp.mjs`); the ask rules for the WhatsApp tools in `~/.claude/settings.json`'s `permissions.ask`, with a backup. `--dry-run`: nothing | `claude mcp get jantar`, then `claude mcp remove --scope user jantar` (another `jantar` there) and `claude mcp add --scope user …`, without `CLAUDE_CONFIG_DIR` |
+| `mcp status` (0.15) | nothing (reads `~/.claude.json`, each cswap account's copy and their settings) | nothing |
+| `mcp ask on` / `off` (0.15) | the five WhatsApp tools' rules in `~/.claude/settings.json`'s `permissions.ask` (nothing else), with a backup | nothing |
 | `devices grant` / `revoke-scope` / `revoke` | the device's scopes, through the daemon | nothing |
 | `new` | nothing itself; the daemon opens one Terminal window | nothing |
 | `import-ccw-v2 [--from DIR] [--dry-run]` | an empty `~/.jantar` (built beside it, then renamed into place); never anything in the old dir, which it only reads; refuses while ccw-v2's daemon or LaunchAgent is still there | nothing |

@@ -20,6 +20,9 @@
  *   arguments as JSON, no shell, `onFailure: "continue"`), which needs
  *   Claude Code 2.1.310 or later there; macOS and Linux keep the shell form
  *   byte for byte. Either form is recognised as ours on every platform.
+ * - 0.15: the reading, the plan and the guarded write (loadSettingsFile,
+ *   withKey, makePlan, applyPlan with its expectedBefore check) are shared
+ *   with ask-rules.ts, which edits `permissions.ask` the same way.
  */
 import { realpathSync } from 'node:fs';
 import { constants as fsConstants } from 'node:fs';
@@ -218,7 +221,7 @@ export interface HooksFailure {
   settingsPath: string;
 }
 
-interface LoadedSettings {
+export interface LoadedSettings {
   settingsPath: string;
   realPath: string;
   isSymlink: boolean;
@@ -232,7 +235,8 @@ function failure(settingsPath: string, code: HooksErrorCode, message: string): H
   return { ok: false, code, message, settingsPath };
 }
 
-async function loadSettingsFile(settingsPathIn: string): Promise<LoadedSettings | HooksFailure> {
+/** The settings file at `settingsPathIn` (a symlink followed), or why it can't be edited. A missing file is an empty one. */
+export async function loadSettingsFile(settingsPathIn: string): Promise<LoadedSettings | HooksFailure> {
   const settingsPath = resolve(settingsPathIn);
   let isSymlink = false;
   let realPath = settingsPath;
@@ -293,14 +297,15 @@ function serialize(data: unknown, fmt: Format): string {
 }
 
 /** Copy of an object with `key` replaced (or appended), keeping key order. */
-function withKey(obj: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
+export function withKey(obj: Record<string, unknown>, key: string, value: unknown): Record<string, unknown> {
   if (Object.prototype.hasOwnProperty.call(obj, key)) {
     return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, k === key ? value : v]));
   }
   return Object.fromEntries([...Object.entries(obj), [key, value]]);
 }
 
-function withoutKey(obj: Record<string, unknown>, key: string): Record<string, unknown> {
+/** Copy of an object without `key`, keeping the order of the rest. */
+export function withoutKey(obj: Record<string, unknown>, key: string): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
 }
 
@@ -333,7 +338,8 @@ function countOurs(groups: unknown[]): number {
 
 const OUR_EVENTS: ReadonlySet<string> = new Set<string>(HOOK_EVENT_NAMES);
 
-type EditResult = { ok: true; data: Record<string, unknown>; events: string[] } | { ok: false; message: string };
+/** A computed edit: the whole new settings and what changed (none: the file is left byte for byte), or why not. */
+export type EditResult = { ok: true; data: Record<string, unknown>; events: string[] } | { ok: false; message: string };
 
 function computeInstall(data: Record<string, unknown>, spec: HookCommandSpec): EditResult {
   const hooks = isPlainObject(data.hooks) ? data.hooks : undefined;
@@ -418,9 +424,12 @@ export interface HooksInstallOptions extends HooksTarget, HookCommandSpec {
 
 export type HooksUninstallOptions = Omit<HooksInstallOptions, 'node' | 'hookBin'>;
 
+/** What a plan does; 0.15 adds ask-rules.ts's two. */
+export type PlanAction = 'install' | 'uninstall' | 'ask on' | 'ask off';
+
 export interface HooksPlan {
   ok: true;
-  action: 'install' | 'uninstall';
+  action: PlanAction;
   settingsPath: string;
   /** The file actually written (the symlink target when settingsPath is a link). */
   realPath: string;
@@ -432,7 +441,7 @@ export interface HooksPlan {
   after: string;
   /** Unified diff of before -> after ('' when unchanged). */
   diff: string;
-  /** Events whose entries change. */
+  /** Events whose entries change (ask rules: the rules added or removed). */
   events: string[];
 }
 
@@ -441,7 +450,8 @@ export interface HooksWritten extends HooksPlan {
   backupPath?: string;
 }
 
-function makePlan(action: 'install' | 'uninstall', loaded: LoadedSettings, edit: EditResult): HooksPlan | HooksFailure {
+/** The plan for `edit` of `loaded`: its text after, in the file's own indentation, and the diff. Only reads. */
+export function makePlan(action: PlanAction, loaded: LoadedSettings, edit: EditResult): HooksPlan | HooksFailure {
   if (!edit.ok) return failure(loaded.settingsPath, 'invalid_shape', edit.message);
   const fmt = detectFormat(loaded.raw);
   const after = edit.events.length ? serialize(edit.data, fmt) : loaded.raw;
@@ -533,7 +543,10 @@ async function makeBackup(realPath: string, now: Date): Promise<string> {
   throw new Error('could not choose a backup file name');
 }
 
-async function writePlan(plan: HooksPlan, opts: HooksUninstallOptions): Promise<HooksWritten | HooksFailure> {
+/** How a plan is written: dry run, backup, the text the diff was shown from, the backup's clock. */
+export type PlanWriteOptions = Pick<HooksInstallOptions, 'dryRun' | 'backup' | 'expectedBefore' | 'now'>;
+
+async function writePlan(plan: HooksPlan, opts: PlanWriteOptions): Promise<HooksWritten | HooksFailure> {
   try {
     guardRealFilesForTests(plan.realPath, 'Claude settings');
   } catch (e) {
@@ -563,7 +576,12 @@ async function writePlan(plan: HooksPlan, opts: HooksUninstallOptions): Promise<
   return { ...plan, written: true, ...(backupPath ? { backupPath } : {}) };
 }
 
-async function applyPlan(plan: HooksPlan | HooksFailure, opts: HooksUninstallOptions): Promise<HooksWritten | HooksFailure> {
+/**
+ * Write a plan, when it changes something and is no dry run: refused unless
+ * the file still holds `expectedBefore` (when given) and what the plan read;
+ * a backup first, then an atomic write onto the real file.
+ */
+export async function applyPlan(plan: HooksPlan | HooksFailure, opts: PlanWriteOptions): Promise<HooksWritten | HooksFailure> {
   if (!plan.ok) return plan;
   if (opts.expectedBefore !== undefined && opts.expectedBefore !== plan.before) {
     return failure(plan.settingsPath, 'changed', `${plan.realPath} changed since the diff was shown; nothing was written`);
