@@ -633,6 +633,11 @@ const LEFT_OUT: Record<MorningPreview['dropped'][number]['why'], string> = {
   life_refused: "Life wouldn't take it (is Life on?)",
   time_not_stated: 'its message states no time',
 };
+/** Why Life took no more of a run's todos. */
+const LIFE_REFUSED: Record<NonNullable<MorningRun['lifeRefused']>, string> = {
+  limit: "Life's open-todo limit was reached",
+  life_refused: "Life wouldn't take the todos (is Life on?)",
+};
 /** The table's widest kind ("call-back"). */
 const KIND_WIDTH = 9;
 const TITLE_MAX = 100;
@@ -673,6 +678,7 @@ async function morning(ctx: CliContext, flags: Flags): Promise<number> {
   if (run.stale) ctx.io.out(`WhatsApp's data was not fresh: its newest message is from ${run.newestAt ? ago(run.newestAt, now) : 'unknown'}.\n`);
   if (run.waCalls === false) ctx.io.out("WhatsApp's calls weren't read, so missed WhatsApp calls aren't in this run.\n");
   if (run.phoneCalls === false) ctx.io.out("The iPhone call log wasn't read, so missed phone calls aren't in this run.\n");
+  if (run.lifeRefused) ctx.io.out(`${LIFE_REFUSED[run.lifeRefused]}, so some todos and call-backs weren't made.\n`);
   for (const d of run.dropped) ctx.io.out(`Left out for size: ${clip(d.chatName, 60)}, ${d.left} of ${d.kept + d.left} messages.\n`);
   if (run.preview) ctx.io.out(previewTable(run.preview, zoneOf(ctx)));
   if (dry) ctx.io.out('Dry run: nothing was written.\n');

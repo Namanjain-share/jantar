@@ -41,7 +41,9 @@ export type Tier = 1 | 2 | 3 | 4;
 /**
  * One chat's new lines and up to READER_EARLIER_MAX before them, both
  * oldest first (a 1:1 still waiting: none new, its last dmContext lines
- * earlier). `left`: new lines budget() left out (set on its `kept`).
+ * earlier). Set on budget()'s `kept`: `left`, the new lines it left out;
+ * `waitsOn`, a 1:1 still waiting's keys of every line it waits on, kept or
+ * not (apply's duplicate check).
  */
 export interface BatchChat {
   chat: ChatOwner;
@@ -50,6 +52,7 @@ export interface BatchChat {
   waiting: boolean;
   tier: Tier;
   left?: number;
+  waitsOn?: string[];
 }
 
 /** A missed incoming call; `returned`: the owner wrote or called that person since, or a call with them connected. */

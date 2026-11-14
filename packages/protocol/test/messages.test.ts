@@ -47,6 +47,11 @@ test('a run report keeps which calls it could not read, and a Life refusal apart
   };
   expect(MorningRunSchema.parse({ ...run, waCalls: false, phoneCalls: false })).toMatchObject({ waCalls: false, phoneCalls: false });
   expect(MorningRunSchema.parse(run)).not.toHaveProperty('waCalls');
+  // A real run Life stopped taking todos from: its limit, or another refusal.
+  expect(MorningRunSchema.parse({ ...run, trigger: 'now', lifeRefused: 'limit' }).lifeRefused).toBe('limit');
+  expect(MorningRunSchema.parse({ ...run, trigger: 'now', lifeRefused: 'life_refused' }).lifeRefused).toBe('life_refused');
+  expect(MorningRunSchema.safeParse({ ...run, lifeRefused: 'duplicate' }).success).toBe(false);
+  expect(MorningRunSchema.parse(run)).not.toHaveProperty('lifeRefused');
 });
 test('messages is a Mac-only group and a feature', () => {
   expect(MAC_ONLY_SETTING_GROUPS).toContain('messages');

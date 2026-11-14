@@ -8,8 +8,10 @@
  *   time it states, else at the call-back time;
  * - replies are drafts (a 1:1's number, none for a group);
  * - every ref must be the batch's, `made` keeps a re-run from making
- *   anything twice, Life's open-todo limit stops the rest cleanly, a dry
- *   run writes nothing, Undo removes only that run's open todos;
+ *   anything twice (a person still waiting gets one draft, however little
+ *   of them a heavy morning keeps), Life's open-todo limit stops the rest
+ *   cleanly and the result says why, a dry run writes nothing, Undo
+ *   removes only that run's open todos;
  * - the morning push says counts only;
  * - Chat frames a `from: 'messages'` todo as WhatsApp's words and taints
  *   its turn, so a write then waits for a tap.
@@ -17,7 +19,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { instantAt } from '@jantar/life-core';
 import { LIFE_LIMITS, type Todo } from '@jantar/protocol';
-import type { MorningAnswer } from '@jantar/protocol/messages';
+import type { Message, MorningAnswer } from '@jantar/protocol/messages';
 import { TOOL_SENTENCES } from '../../src/chat/tools.js';
 import type { Actor, TodosModule } from '../../src/contracts.js';
 import { createTestContext, createTestLifeCore, type TestLifeCore } from '../../src/core/testing.js';
@@ -25,6 +27,8 @@ import { MORNING_PUSH_TAG, morningPush } from '../../src/life/push.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
 import { openMessagesDb, type MessagesDb } from '../../src/messages/db.js';
 import { WHATSAPP_PROJECT, applyMorning, undoMorning, type ApplyDeps } from '../../src/messages/morning/apply.js';
+import { WAITING_FIRST, budget } from '../../src/messages/morning/budget.js';
+import { morningInput, type RefMap } from '../../src/messages/morning/input.js';
 import { makeFakes } from '../api/fakes.js';
 import { chatRig, type ChatRig } from '../chat/helpers.js';
 import { FIXTURE_TEXT } from './fixture.js';
@@ -332,6 +336,8 @@ describe('applyMorning', () => {
     expect(out.replies).toHaveLength(1);
     // What wasn't made isn't marked made: a later run with room makes it.
     expect(r.rows('made').map((m) => m.src_key)).toEqual([`todo:${s.l.deck.msgKey}`, `reply:${s.l.deck.msgKey}`]);
+    // The run's report can say why.
+    expect(out.lifeRefused).toBe('limit');
   });
 
   it('any other Life refusal stops the rest, not called the limit', () => {
@@ -359,6 +365,7 @@ describe('applyMorning', () => {
       { kind: 'callback', ref: call, why: 'life_refused' },
     ]);
     expect(out.replies).toHaveLength(1);
+    expect(out.lifeRefused).toBe('life_refused');
   });
 
   it('a waiting 1:1 with nothing new: a reply may cite the lines it waits on, once; a todo may not', () => {
@@ -393,6 +400,26 @@ describe('applyMorning', () => {
     const next = applyMorning({ ...EMPTY, replies: [{ chat: c, ref: i1, they_asked: 'The deck', draft: 'Sending it.' }] }, refs, kept, r.deps({ runId: RUN_B }));
     expect(next.replies).toEqual([]);
     expect(next.dropped).toEqual([{ kind: 'reply', ref: i1, why: 'duplicate' }]);
+    expect(r.rows('drafts')).toHaveLength(1);
+  });
+
+  it('a person still waiting on more lines than a heavy morning keeps: a draft for an older one is still the one they have', () => {
+    const r = build();
+    const asha = chat(1, 'Asha Test', { phone: '919990000001' });
+    const mine = line(asha, '2026-11-11T09:00:00.000Z', { fromMe: true, text: 'Will check' });
+    const asks = Array.from({ length: WAITING_FIRST + 3 }, (_, i) => line(asha, `2026-11-12T09:0${i}:00.000Z`, { text: `Ask ${i + 1} ${'x'.repeat(300)}` }));
+    const batch = batchOf([bc(asha, [], { earlier: [mine, ...asks], waiting: true })]);
+    // A light morning: a draft for her second ask.
+    const light = prepared(batch);
+    const reply = (refs: RefMap, m: Message) => ({ ...EMPTY, replies: [{ chat: idFor(refs, asha.chatKey), ref: idFor(refs, m.msgKey), they_asked: 'The deck', draft: 'Sending it.' }] });
+    expect(applyMorning(reply(light.refs, asks[1]!), light.refs, light.kept, r.deps()).replies).toHaveLength(1);
+    // A heavy morning keeps only her newest lines; a reply to the newest is the draft she already has.
+    const { kept } = budget(batch, 1_000);
+    expect(kept.chats[0]!.earlier).toEqual(asks.slice(-WAITING_FIRST));
+    const { refs } = morningInput(kept, { now: NOW, tz: TZ, ownerName: 'me' });
+    const next = applyMorning(reply(refs, asks.at(-1)!), refs, kept, r.deps({ runId: RUN_B }));
+    expect(next.replies).toEqual([]);
+    expect(next.dropped).toEqual([{ kind: 'reply', ref: idFor(refs, asks.at(-1)!.msgKey), why: 'duplicate' }]);
     expect(r.rows('drafts')).toHaveLength(1);
   });
 

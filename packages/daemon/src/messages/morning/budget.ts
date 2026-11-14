@@ -15,16 +15,20 @@
  *   0. the missed calls not returned (a line each);
  *   1. the waiting 1:1s: first each one's lines since the owner's last
  *      (WAITING_FIRST at most), so a heavy morning drops context, not
- *      people; then each one's last dmContext lines (earlier ones counted;
- *      a 1:1 still waiting with nothing new has only those); then in every
- *      group the windows of mentionWindow lines each side of a new line
- *      that mentions or answers the owner (busy groups too);
+ *      people; then each one with new lines gets its last dmContext lines
+ *      (earlier ones counted); then in every group the windows of
+ *      mentionWindow lines each side of a new line that mentions or
+ *      answers the owner (busy groups too);
  *   2. the other 1:1s (their last dmContext lines);
  *   3. the other groups (their last smallGroupContext lines), those of at
  *      most smallGroupMembers first;
- *   4. the busy groups: a count of their new lines only (the chat's `left`).
+ *   4. the busy groups: a count of their new lines only (the chat's `left`);
+ *   5. a 1:1 still waiting with nothing new: the rest of its last dmContext
+ *      lines. The owner saw them on an earlier morning, so they never take
+ *      the place of a new line.
  * - `kept` holds the chats in that order, each line oldest first with the
- *   chat's `left`; `dropped` every chat with new lines left out, most first.
+ *   chat's `left` (a 1:1 still waiting also with `waitsOn`, from all of its
+ *   lines); `dropped` every chat with new lines left out, most first.
  *
  * The estimate counts each line in input.ts's markup at its longest (ids,
  * times, attributes), its name and text escaped as input.ts writes them (a
@@ -145,7 +149,8 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
     const from = Math.max(openFrom(p.pool), p.pool.length - WAITING_FIRST);
     for (let i = p.pool.length - 1; i >= from; i--) if (!take(p, i)) break;
   }
-  for (const p of waiting) newest(p, L.dmContext);
+  const quiet = (p: Plan) => stillWaiting(p.bc);
+  for (const p of waiting) if (!quiet(p)) newest(p, L.dmContext);
   for (const p of groups) for (const i of windows(p)) if (!take(p, i)) break;
   for (const p of dms) if (p.bc.tier !== 1) newest(p, L.dmContext);
   const others = groups.filter((p) => p.bc.tier !== 4);
@@ -156,6 +161,8 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
     if (!fits(chatTokens(p.bc.chat))) break;
     p.shown = true;
   }
+  // Lines the owner saw on an earlier morning: only in the room left.
+  for (const p of waiting) if (quiet(p)) newest(p, L.dmContext);
 
   const chats: BatchChat[] = [];
   const dropped: Dropped[] = [];
@@ -164,7 +171,8 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
     const earlier = at.filter((i) => i < p.firstNew).map((i) => p.pool[i]!);
     const messages = at.filter((i) => i >= p.firstNew).map((i) => p.pool[i]!);
     const left = p.pool.length - p.firstNew - messages.length;
-    if (p.shown) chats.push({ ...p.bc, messages, earlier, left });
+    const waitsOn = quiet(p) ? { waitsOn: p.pool.slice(openFrom(p.pool)).map((m) => m.msgKey) } : {};
+    if (p.shown) chats.push({ ...p.bc, messages, earlier, left, ...waitsOn });
     if (left > 0) dropped.push({ chatName: p.bc.chat.name, kept: messages.length, left });
   }
   dropped.sort((a, b) => b.left - a.left);

@@ -3,7 +3,7 @@
  * - MorningTimer (morning/timer.ts) on a FakeClock: once a day at the
  *   morning time in the Life zone, by the wall clock (a time the Mac slept
  *   through runs once on wake, within waitForWhatsAppMs of it, and a wait
- *   slept past the next morning runs that one only); it waits for
+ *   slept through to its end is left, the next morning the one run); it waits for
  *   WhatsApp to be running and quiet, and after waitForWhatsAppMs runs
  *   anyway, stale; no time set is idle; a new time or zone rearms it;
  * - the service's MorningApi (messages/service.ts) against a fake reader and
@@ -11,13 +11,13 @@
  *   ready; the cursor moves only after a run that went well (never a failed
  *   or dry one); the push says counts only; one run at a time, none under
  *   --read-only; a 1:1 still waiting is read again but never drafted twice;
- *   Today, drafts, Undo and the times.
+ *   Life refusing the todos is in the report; Today, drafts, Undo and the times.
  * Synthetic chat keys, fake numbers and invented names only.
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MESSAGES_LIMITS, SettingsSchema } from '@jantar/protocol';
 import type { Call, ChatOwner, Message, MorningAnswer } from '@jantar/protocol/messages';
 import { ApiError } from '../../src/api/errors.js';
@@ -177,6 +177,56 @@ describe('MorningTimer', () => {
       expect(fired).toEqual([{ at: '2026-11-16T10:02:00.000Z', stale: false, day: '2026-11-16' }]);
       await step(awake, 8 * HOUR);
       expect(fired).toHaveLength(1);
+    } finally {
+      timer.stop();
+    }
+    expect(awake.pending()).toBe(0);
+  });
+
+  it('asleep through the end of its wait, awake before the next morning: that day is left, the next runs once at its time', async () => {
+    const { awake, clock, sleep } = sleepyClock('2026-11-14T07:59:00.000Z');
+    let ready: WhatsAppReady = { running: false, walQuietMs: 0 };
+    const { timer, fired } = timerOn(clock, { at: '08:00', tz: 'UTC', lastDay: null, ready: () => ready });
+    timer.start();
+    await flush();
+    try {
+      await step(awake, MIN);
+      expect(fired).toEqual([]);
+      // The lid closes after Saturday's 08:00 ask and opens Sunday 07:00, WhatsApp ready: Saturday's wait ended at 14:00.
+      sleep(23 * HOUR - MIN);
+      ready = READY;
+      await step(awake, READY_POLL_MS);
+      expect(fired).toEqual([]);
+      await step(awake, 59 * MIN);
+      expect(fired).toEqual([]);
+      // Sunday's morning is the one run.
+      await step(awake, MIN);
+      expect(fired).toEqual([{ at: '2026-11-15T08:00:00.000Z', stale: false, day: '2026-11-15' }]);
+      await step(awake, 8 * HOUR);
+      expect(fired).toHaveLength(1);
+    } finally {
+      timer.stop();
+    }
+    expect(awake.pending()).toBe(0);
+  });
+
+  it("asleep through the end of its wait and the next morning's whole wait: neither day runs", async () => {
+    const { awake, clock, sleep } = sleepyClock('2026-11-14T07:59:00.000Z');
+    let ready: WhatsAppReady = { running: false, walQuietMs: 0 };
+    const { timer, fired } = timerOn(clock, { at: '08:00', tz: 'UTC', lastDay: null, ready: () => ready });
+    timer.start();
+    await flush();
+    try {
+      await step(awake, MIN);
+      // The lid opens Monday 15:00: Saturday's wait and Monday's are both over.
+      sleep(2 * 24 * HOUR + 7 * HOUR - MIN);
+      ready = READY;
+      await step(awake, READY_POLL_MS);
+      await step(awake, 16 * HOUR);
+      expect(fired).toEqual([]);
+      // Tuesday's morning runs.
+      await step(awake, HOUR);
+      expect(fired).toEqual([{ at: '2026-11-17T08:00:00.000Z', stale: false, day: '2026-11-17' }]);
     } finally {
       timer.stop();
     }
@@ -513,6 +563,7 @@ describe('the morning run', () => {
     // The iPhone call log wasn't read (no Full Disk Access): the report says so, and keeps it.
     expect(run.phoneCalls).toBe(false);
     expect(run).not.toHaveProperty('waCalls');
+    expect(run).not.toHaveProperty('lifeRefused');
     expect(t.svc.morning.today().run).toMatchObject({ id: run.id, phoneCalls: false });
     expect(run.todoIds).toHaveLength(2);
     expect(run.preview).toBeUndefined();
@@ -523,6 +574,15 @@ describe('the morning run', () => {
     expect((await t.svc.morning.run({ trigger: 'dry' })).trigger).toBe('dry');
     await new Promise((r) => setTimeout(r, 20));
     expect(t.push.pushes).toHaveLength(1);
+  });
+
+  it("Life refusing the run's todos: the report says so, and Today keeps it", async () => {
+    const t = await morningSetup({ handlers: readerOf({ pk: () => 42 }), claude: claudeSays(fullAnswer) });
+    // Life closed under the run: it takes no todo.
+    vi.spyOn(t.life.todos, 'createTodo').mockReturnValue({ ok: false, code: 'unavailable', reason: 'Life is closed.' });
+    const run = await t.svc.morning.run({ trigger: 'now' });
+    expect(run).toMatchObject({ state: 'ok', lifeRefused: 'life_refused', counts: { todos: 0, callbacks: 0, replies: 1 } });
+    expect(t.svc.morning.today().run).toMatchObject({ id: run.id, lifeRefused: 'life_refused' });
   });
 
   it('a push the mute holds is not tried again; the report keeps the counts', async () => {

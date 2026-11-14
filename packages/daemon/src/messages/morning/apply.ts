@@ -13,7 +13,8 @@
  * - `made` (messages.db) holds kind + ':' + the line's or call's key for
  *   each item made, so no run (after a re-link, a retry, an undo) makes the
  *   same one twice: `duplicate`. A 1:1 still waiting with nothing new gets
- *   no second draft: any line it waits on drafted before is a duplicate.
+ *   no second draft: any line it waits on drafted before is a duplicate,
+ *   even one budget() left out this time (its `waitsOn`).
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
@@ -25,7 +26,8 @@
  *   else at the call-back time (none: a day only).
  * - Life's first refusal stops every todo and call-back after it: `limit`
  *   for its open-todo limit, `life_refused` for any other (Life closed, the
- *   project gone). Drafts aren't Life's: they go on.
+ *   project gone), also the result's `lifeRefused` for the run's report.
+ *   Drafts aren't Life's: they go on.
  * - Replies are drafts (state open; a 1:1's number for Open in WhatsApp, a
  *   group none; `at`: when the cited line was written).
  * - A dry run writes nothing (no project, todo, draft or `made` row) and
@@ -95,6 +97,8 @@ export interface ApplyResult {
   /** `at`: when it rings. */
   callbacks: { id?: string; who: string; at?: string }[];
   dropped: { kind: MadeKind; ref: string; why: DropWhy }[];
+  /** Why Life stopped taking todos and call-backs (its first refusal); absent while it took them all. */
+  lifeRefused?: 'limit' | 'life_refused';
 }
 
 /** One line: line ends and runs of space as one space, no control or bidi character, cut to `max`. */
@@ -273,10 +277,10 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       continue;
     }
     const src = `reply:${hit.m.msgKey}`;
-    // Still waiting with nothing new: a draft for any line it waits on is this one.
+    // Still waiting with nothing new: a draft for any line it waits on (budget's waitsOn: all of them, kept or not) is this one.
     const bc = chatOf.get(chatKey);
-    const asked = bc && stillWaiting(bc) ? bc.earlier.slice(openFrom(bc.earlier)).map((m) => `reply:${m.msgKey}`) : [src];
-    if (asked.some(isMade)) {
+    const waits = bc && stillWaiting(bc) ? (bc.waitsOn ?? bc.earlier.slice(openFrom(bc.earlier)).map((m) => m.msgKey)) : [];
+    if ([src, ...waits.map((k) => `reply:${k}`)].some(isMade)) {
       drop('reply', r.ref, 'duplicate');
       continue;
     }
@@ -304,6 +308,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     });
     out.replies.push({ id, ...draft });
   }
+  if (refused) out.lifeRefused = refused;
   return out;
 }
 

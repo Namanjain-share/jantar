@@ -11,7 +11,8 @@
  *   lines as input.ts escapes them), filled in tier order: waiting 1:1s
  *   (each one's unanswered lines before any one's context) and the windows
  *   around lines that mention or answer the owner (wherever his line is),
- *   other 1:1s, then groups, then busy groups' counts; system,
+ *   other 1:1s, then groups, then busy groups' counts, and last the older
+ *   lines of a 1:1 still waiting with nothing new; system,
  *   reaction, deleted and skipped lines go; each line is cut at
  *   perMessageChars, never inside a surrogate pair.
  * The fixture's 5,000-line group runs on the real reader (skipped where
@@ -248,6 +249,46 @@ describe('budget', () => {
     expect(kept.chats[0]).toMatchObject({ messages: [], earlier: old.slice(-L.dmContext), left: 0 });
     // Nothing new was left out of it.
     expect(dropped).toEqual([]);
+  });
+
+  it('a heavy morning: 1:1s still waiting with nothing new get their older lines last, after every chat with new lines', () => {
+    const text = 'y'.repeat(60);
+    // Two people waiting with new lines, a group naming the owner, three other 1:1s, two small groups and a busy one.
+    const asking = [chat(1, 'Asking 1'), chat(2, 'Asking 2')];
+    const mentioned = chat(3, 'Mention Group', { kind: 'group', members: 6 });
+    const talkers = [chat(4, 'Talker 1'), chat(5, 'Talker 2'), chat(6, 'Talker 3')];
+    const smalls = [chat(7, 'Small 1', { kind: 'group', members: 5 }), chat(8, 'Small 2', { kind: 'group', members: 5 })];
+    const busy = chat(9, 'Busy Group', { kind: 'group', members: 150 });
+    const mentionLines = lines(mentioned, 20, { text });
+    mentionLines[10] = line(mentioned, { at: mentionLines[10]!.at, mentionsMe: true, text });
+    const fresh = [
+      ...asking.map((p) => batchChat(p, lines(p, 3, { text }), { earlier: lines(p, 10, { text }, 5), waiting: true })),
+      batchChat(mentioned, mentionLines),
+      ...talkers.map((p) => batchChat(p, lines(p, 5, { text }))),
+      ...smalls.map((p) => batchChat(p, lines(p, 10, { text }))),
+      batchChat(busy, lines(busy, 10, { text })),
+    ];
+    expect(fresh.map((c) => c.tier)).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 4]);
+    // Twenty people still waiting from earlier mornings: a long talk, the owner's line, then four asks each.
+    const quiet = Array.from({ length: 20 }, (_, i) => {
+      const p = chat(20 + i, `Quiet ${i + 1}`);
+      const asks = lines(p, 4, { text }, 29 + i);
+      const earlier = [...lines(p, 35, { text }, 30 + i), line(p, { fromMe: true, at: ago(29.5 + i), text }), ...asks];
+      return { p, asks, bc: batchChat(p, [], { earlier, waiting: true }) };
+    });
+    expect(quiet[0]!.bc.earlier).toHaveLength(L.dmContext);
+
+    const { kept, dropped } = budget(batchOf([...fresh, ...quiet.map((q) => q.bc)]));
+    const of = (c: ChatOwner) => kept.chats.find((k) => k.chat.chatKey === c.chatKey);
+    // Every chat with new lines keeps what a light morning would: the busy group its count.
+    expect(dropped).toEqual([{ chatName: 'Busy Group', kept: 0, left: 10 }]);
+    for (const c of fresh) expect(of(c.chat)?.messages, c.chat.name).toEqual(c.tier === 4 ? [] : c.messages);
+    expect(of(asking[0]!)!.earlier).toEqual(fresh[0]!.earlier);
+    // Each person still waiting is in with the lines they wait on; older lines only in the room left.
+    for (const q of quiet) expect(of(q.p)?.earlier.slice(-4), q.p.name).toEqual(q.asks);
+    expect(of(quiet[0]!.p)!.earlier).toEqual(quiet[0]!.bc.earlier);
+    expect(of(quiet.at(-1)!.p)!.earlier).toEqual(quiet.at(-1)!.asks);
+    expect(estimateTokens(morningInput(kept, { now: NOW, tz: 'Asia/Kolkata', ownerName: 'me' }).text)).toBeLessThanOrEqual(L.morningTokens);
   });
 
   it('stops at the first line that does not fit, never letting a lower tier in', () => {

@@ -310,6 +310,9 @@ export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
  * answer only, never stored. `waCalls`, `phoneCalls`: false when the run
  * couldn't read WhatsApp's calls or the iPhone call log (refused, or changed
  * by an update), so missed calls from there aren't in it; absent otherwise.
+ * `lifeRefused`: Life stopped taking the run's todos and call-backs, at its
+ * open-todo limit (`limit`) or for any other refusal (`life_refused`: Life
+ * off, the WhatsApp project gone), so the rest weren't made; absent otherwise.
  */
 export const MorningRunSchema = z.object({
   id: LifeIdSchema,
@@ -326,6 +329,7 @@ export const MorningRunSchema = z.object({
   preview: MorningPreviewSchema.optional(),
   waCalls: z.literal(false).optional(),
   phoneCalls: z.literal(false).optional(),
+  lifeRefused: z.enum(['limit', 'life_refused']).optional(),
 });
 export type MorningRun = z.infer<typeof MorningRunSchema>;
 /** POST /v1/messages/morning/run. `dryRun`: show what it would make, write nothing, keep the cursor. */

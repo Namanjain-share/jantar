@@ -493,6 +493,18 @@ describe('jantar messages', () => {
       expect(again.io.stdout).not.toContain("weren't read");
       expect(again.io.stdout).not.toContain("wasn't read");
     });
+
+    it('morning says why Life took no more todos', async () => {
+      const said = async (lifeRefused?: 'limit' | 'life_refused') => {
+        const ctl = fakeCtl({ 'POST /v1/messages/morning/run': ok({ ...RUN, trigger: 'now', preview: undefined, ...(lifeRefused ? { lifeRefused } : {}) }) });
+        const { ctx, io } = contextFor(home, { ctl, paths });
+        expect(await messages.run(['morning', '--now'], ctx), io.stderr).toBe(EXIT.ok);
+        return io.stdout;
+      };
+      expect(await said('limit')).toContain("Life's open-todo limit was reached, so some todos and call-backs weren't made.");
+      expect(await said('life_refused')).toContain("Life wouldn't take the todos (is Life on?), so some todos and call-backs weren't made.");
+      expect(await said()).not.toContain("weren't made");
+    });
   });
 
   it('doctor names the reader once Messages is on', async () => {

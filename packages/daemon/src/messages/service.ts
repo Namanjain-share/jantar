@@ -601,6 +601,7 @@ class MessagesShell implements MessagesService {
       state: 'ok',
       counts: { ...head.counts, todos: applied.todos.length, replies: applied.replies.length, callbacks: applied.callbacks.length },
       todoIds: applied.todos.flatMap((t) => (t.id ? [t.id] : [])),
+      ...(applied.lifeRefused ? { lifeRefused: applied.lifeRefused } : {}),
       ...(summary ? { summary } : {}),
       ...(dry ? { preview: previewOf(applied) } : {}),
     });
