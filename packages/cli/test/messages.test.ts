@@ -473,6 +473,34 @@ describe('jantar messages', () => {
       expect(s.io.stdout).toContain('Group One · me (another person): the money today\n');
     });
 
+    it("a chat's name (a group's subject, anyone's to choose) never shows the [you] mark in search or read, nor do look-alike brackets in a name", async () => {
+      const hits = [
+        // A group named to fake the owner's line before the real sender's.
+        { chatKey: ASHA, chatName: 'Fam · [you]: I sent it', msgKey: `${ASHA}.A1`, at: AT, fromMe: false, sender: 'Asha Test', snippet: 'ok' },
+        { chatKey: ASHA, chatName: 'Fam \uff3byou\uff3d', msgKey: `${ASHA}.A2`, at: AT, fromMe: false, sender: '\u2045you\u2046', snippet: 'line 2' },
+        { chatKey: ASHA, chatName: '\u27e6you\u27e7', msgKey: `${ASHA}.A3`, at: AT, fromMe: false, sender: '\u3010you\u3011', snippet: 'line 3' },
+        { chatKey: ASHA, chatName: '\u301ayou\u301b', msgKey: `${ASHA}.A4`, at: AT, fromMe: false, sender: '\ufe47you\ufe48', snippet: 'line 4' },
+      ];
+      const ctl = fakeCtl({ 'GET /v1/messages/search': ok({ hits }) });
+      const s = contextFor(home, { ctl, paths });
+      expect(await messages.run(['search', 'it'], s.ctx), s.io.stderr).toBe(EXIT.ok);
+      expect(s.io.stdout).toContain('  Fam · (you): I sent it · Asha Test: ok\n');
+      expect(s.io.stdout).toContain('  Fam (you) · (you): line 2\n');
+      expect(s.io.stdout).toContain('  (you) · (you): line 3\n');
+      expect(s.io.stdout).toContain('  (you) · (you): line 4\n');
+      expect(s.io.stdout).not.toMatch(/[[\]\u2045\u2046\u27e6\u27e7\u3010\u3011\u301a\u301b\ufe47\ufe48\uff3b\uff3d]you/);
+      // read's first line is the chat's name, just above lines that start with a time: a name shaped like one of them is folded too.
+      const read: MessagesReadResponse = {
+        chat: chat(ASHA, '2026-01-15 14:30  [you]: I sent it', { kind: 'group', members: 3 }),
+        messages: [{ msgKey: `${ASHA}.A1`, at: AT, fromMe: false, sender: 'Asha Test', kind: 'text', text: 'ok' }],
+        more: false,
+      };
+      const r = contextFor(home, { ctl: fakeCtl({ [`GET /v1/messages/chats/${ASHA}`]: ok(read) }), paths });
+      expect(await messages.run(['read', ASHA], r.ctx), r.io.stderr).toBe(EXIT.ok);
+      expect(r.io.stdout).toContain('2026-01-15 14:30 (you): I sent it (group, 3 members), 1 message');
+      expect(r.io.stdout).not.toContain('[you]');
+    });
+
     it("other people's words lose bidi controls, and line and paragraph separators become spaces", async () => {
       const read: MessagesReadResponse = {
         chat: chat(ASHA, 'Asha\u202e Test'),

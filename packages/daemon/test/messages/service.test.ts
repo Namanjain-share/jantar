@@ -1,8 +1,8 @@
 /**
  * The daemon's Messages part (0.15, messages/service.ts) against a fake
  * reader (fake-reader.ts: the reader's protocol, no Swift):
- * - status: a socket that doesn't answer is `down`, its sentence naming the
- *   fix; no reader installed is `not_installed`; an installed reader built
+ * - status: a socket that doesn't answer, or a reader that hangs, is
+ *   `down`, its sentence naming the fix; no reader installed is `not_installed`; an installed reader built
  *   from another source (its .key) or speaking another version is
  *   `update_needed`; the reader's own flags map to `unsupported`,
  *   `no_access` and details; a messages.db that won't open is in it, and
@@ -42,9 +42,9 @@ import { createTestContext } from '../../src/core/testing.js';
 import { resolvePaths } from '../../src/config.js';
 import { MESSAGES_BROKEN_REASON, READS_KEEP, addRead, listReads, madeRuns, openMessagesDb, putRun } from '../../src/messages/db.js';
 import { buildMessagesService, type ImageShrinker } from '../../src/messages/index.js';
-import { ReaderFailure, createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
+import { READER_TIMEOUT_MS, ReaderFailure, createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderOp, type ReaderStatus } from '../../src/messages/reader-protocol.js';
-import { MESSAGES_SAYS, READER_MISMATCH } from '../../src/messages/says.js';
+import { MESSAGES_SAYS, READER_MISMATCH, readerSays } from '../../src/messages/says.js';
 import { SKIP_KEPT_NAME } from '../../src/messages/skip.js';
 import { readerError, startFakeReader, type FakeHandler, type FakeHandlers, type FakeReader } from './fake-reader.js';
 import { makeWhatsAppFixture } from './fixture.js';
@@ -158,6 +158,24 @@ describe('status', () => {
       skipped: 0,
       morning: { at: null, lastRunAt: null },
     });
+  });
+
+  it("a reader that hangs on status (it times out) is down with the sentence naming setup, never status's own loop", async () => {
+    // It never answers: the client gives up after READER_TIMEOUT_MS.
+    let hang = true;
+    const t = await setup({ handlers: { status: () => (hang ? new Promise(() => undefined) : Promise.reject(readerError('timeout'))) } });
+    const st = t.svc.status();
+    const end = Date.now() + 5_000;
+    while (!t.reader!.calls.some((c) => c.op === 'status') && Date.now() < end) await new Promise((r) => setTimeout(r, 5));
+    (t.ctx.clock as FakeClock).advance(READER_TIMEOUT_MS);
+    expect((await st).reader).toEqual({ state: 'down', detail: MESSAGES_SAYS.readerDown });
+    // Its own timeout answer too.
+    hang = false;
+    expect((await t.svc.status()).reader).toEqual({ state: 'down', detail: MESSAGES_SAYS.readerDown });
+    expect(MESSAGES_SAYS.readerDown).toContain('jantar messages setup');
+    expect(MESSAGES_SAYS.readerDown).not.toContain('jantar messages status');
+    // A read's 503 keeps the reader's own sentence.
+    expect(readerSays('timeout')).toBe(MESSAGES_SAYS.timeout);
   });
 
   it("status says update_needed when the installed reader's key differs", async () => {

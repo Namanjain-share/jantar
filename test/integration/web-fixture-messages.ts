@@ -1,7 +1,8 @@
 /**
  * Synthetic 0.15 Messages for the 0.12 layout matrix
  * (web-v011-layout.integration.test.ts): Messages on, a morning run from an
- * hour ago with its summary, two replies waiting (a 1:1 with a number, so
+ * hour ago with its summary (the day's one run that made something, so
+ * Today shows its Undo), two replies waiting (a 1:1 with a number, so
  * Open in WhatsApp shows, and a group, Copy only), a call-back, the todos it
  * made (two of the Life fixture's own), a busy group left out for size, the
  * times, a skip list of one, and a read log of four. Enough for Today and its
@@ -56,6 +57,8 @@ export function messagesData(now: number) {
   });
   const today = MessagesTodayResponseSchema.parse({
     run,
+    // The day's runs that made something: this one went well and made todos (its own Undo on Today).
+    made: [run],
     drafts: [
       {
         id: '01JX0DRAFTAAAAAAAAAAAAAAA1',

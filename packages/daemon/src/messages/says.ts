@@ -15,6 +15,7 @@
  * (NOT_OWNER), wherever Messages shows a sender.
  */
 import { MESSAGES_LIMITS } from '@jantar/protocol';
+import { CONTROL, LINE_END } from '../rewrite/guards.js';
 import type { ReaderError } from './reader-protocol.js';
 
 const MB = 1024 * 1024;
@@ -140,7 +141,13 @@ export const NOT_OWNER = `${OWNER_NAME} (another person)`;
 /** Characters that show as nothing: a name with them still reads as what is left. */
 const UNSEEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 
-/** Whether someone else's name reads as OWNER_NAME: any case or width, hidden characters or spaces around it. */
+/**
+ * Whether someone else's name reads as OWNER_NAME: any case or width, hidden
+ * characters or spaces around it. Line ends and control characters go first,
+ * as every place that shows a name takes them out (chat/text.ts line(), the
+ * morning input's dataName, the CLI's cleanData): "M\u0001e" shows as "Me".
+ */
 export function readsAsOwner(name: string): boolean {
-  return name.normalize('NFKC').replace(UNSEEN, '').trim().toLowerCase() === OWNER_NAME;
+  const shown = name.replace(LINE_END, ' ').replace(CONTROL, '');
+  return shown.normalize('NFKC').replace(UNSEEN, '').trim().toLowerCase() === OWNER_NAME;
 }

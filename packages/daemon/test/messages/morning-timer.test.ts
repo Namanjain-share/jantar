@@ -22,7 +22,8 @@
  *   still leaves every call-back ringing; Todos off drafts replies only;
  *   Run now and a dry run log their reads under their caller; a timer run
  *   refused by a dry run runs after it; a time set after it passed waits
- *   for tomorrow; a draft the owner answered in WhatsApp leaves Today.
+ *   for tomorrow, across a daemon restart too (messages.db keeps the mark);
+ *   a draft the owner answered in WhatsApp leaves Today.
  * Synthetic chat keys, fake numbers and invented names only.
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
@@ -99,10 +100,13 @@ function timerOn(
   const fired: Fired[] = [];
   const tried: string[] = [];
   const asked: string[] = [];
+  /** The mornings a new time left as done (what the service saves in messages.db). */
+  const passed: string[] = [];
   const timer = new MorningTimer(clock, createTestContext().log, {
     tz: () => state.tz,
     at: () => state.at,
     lastAt: () => state.lastAt,
+    passed: (dueAt) => passed.push(new Date(dueAt).toISOString()),
     ready: async () => {
       asked.push(clock.iso());
       return state.ready();
@@ -114,7 +118,7 @@ function timerOn(
       return true;
     },
   });
-  return { timer, fired, asked, tried };
+  return { timer, fired, asked, tried, passed };
 }
 
 describe('MorningTimer', () => {
@@ -464,6 +468,34 @@ describe('MorningTimer', () => {
     }
   });
 
+  it("a morning a new time left as done is handed to passed(), and a new timer reading it back waits for tomorrow", async () => {
+    // 10:00, set to 08:00: today's morning is left, and saved as done.
+    const clock = new FakeClock('2026-11-14T10:00:00.000Z');
+    const state = { at: null as string | null, tz: 'UTC', lastAt: null as number | null, ready: () => READY };
+    const first = timerOn(clock, state);
+    first.timer.start();
+    await flush();
+    state.at = '08:00';
+    first.timer.retime();
+    first.timer.stop();
+    expect(first.passed).toEqual(['2026-11-14T08:00:00.000Z']);
+    // Restarted at 10:05, inside that morning's wait: lastAt is the saved mark.
+    await step(clock, 5 * MIN);
+    const again = timerOn(clock, { ...state, lastAt: Date.parse(first.passed[0]!) });
+    again.timer.start();
+    await flush();
+    try {
+      await step(clock, MIN);
+      expect(again.tried).toEqual([]);
+      await setTo(clock, '2026-11-15T08:00:00.000Z');
+      expect(again.fired.map((f) => f.at)).toEqual(['2026-11-15T08:00:00.000Z']);
+      // A time already due, or none passed: nothing is saved.
+      expect(again.passed).toEqual([]);
+    } finally {
+      again.timer.stop();
+    }
+  });
+
   it('after the Life zone moves west, the next morning there still runs', async () => {
     // The timer ran at 08:00 in India on the 15th (02:30 UTC); a minute later the zone is Los Angeles, where it is still the 14th.
     const clock = new FakeClock('2026-11-15T02:31:00.000Z');
@@ -490,6 +522,22 @@ describe('MorningTimer', () => {
       expect(e.fired.map((f) => f.at)).toEqual(['2026-11-16T02:30:00.000Z']);
     } finally {
       e.timer.stop();
+    }
+  });
+
+  it('after a big move east (Los Angeles to Tokyo), the first morning there is skipped: never two runs hours apart (docs/messages.md)', async () => {
+    // Los Angeles' 08:00 on the 15th ran (16:00 UTC), already the 16th in Tokyo; Tokyo's 08:00 on the 16th (23:00 UTC) is 7 hours on.
+    const clock = new FakeClock('2026-11-15T16:01:00.000Z');
+    const { timer, fired } = timerOn(clock, { at: '08:00', tz: 'Asia/Tokyo', lastAt: Date.parse('2026-11-15T16:00:00.000Z'), ready: () => READY });
+    timer.start();
+    await flush();
+    try {
+      await step(clock, 59 * MIN);
+      for (let i = 0; i < 56; i++) await step(clock, HOUR);
+      // Tokyo's 17th and 18th: the first run there is 31 hours after Los Angeles' last.
+      expect(fired.map((f) => f.at)).toEqual(['2026-11-16T23:00:00.000Z', '2026-11-17T23:00:00.000Z']);
+    } finally {
+      timer.stop();
     }
   });
 });
@@ -611,7 +659,7 @@ interface Morning {
 
 /** The part on Messages on, messages.db in memory, Life's todos in memory, a fake reader and a fake claude answering `claude`. */
 let setups = 0;
-async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; readOnly?: boolean; now?: string; life?: Partial<Settings['life']> }): Promise<Morning> {
+async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; readOnly?: boolean; now?: string; life?: Partial<Settings['life']>; dbFile?: string }): Promise<Morning> {
   setups += 1;
   const paths: Paths = { ...resolvePaths({ env: { HOME: dir }, userHome: dir, home: join(dir, `j${setups}`) }), messagesReaderSock: join(dir, `r${setups}.sock`) };
   const clock = new FakeClock(o.now ?? NOW);
@@ -625,7 +673,7 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   const life = { todos, status: () => ({ timezone: ctx.settings.get().life.timezone || TZ }) } as unknown as LifeService;
   const reader = await startFakeReader(paths.messagesReaderSock, o.handlers);
   const push = createPushSpy();
-  const svc = buildMessagesService(ctx, { life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile: ':memory:', send: push.send, readOnly: o.readOnly === true });
+  const svc = buildMessagesService(ctx, { life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile: o.dbFile ?? ':memory:', send: push.send, readOnly: o.readOnly === true });
   await svc.start();
   cleanups.push(() => reader.close());
   cleanups.push(() => svc.stop());
@@ -1249,6 +1297,31 @@ describe('the morning run', () => {
     t.clock.set('2026-11-15T02:30:00.000Z');
     const run = await eventually(() => {
       const r = t.svc.morning.last();
+      return r && r.state !== 'running' ? r : null;
+    });
+    expect(run).toMatchObject({ trigger: 'timer', state: 'ok', at: '2026-11-15T02:30:00.000Z' });
+  });
+
+  it('a morning time set after it has passed stays done for today after a daemon restart', async () => {
+    // 10:00 in the Life zone, messages.db on disk: set to 08:00, today's morning is left.
+    const dbFile = join(dir, 'restart.db');
+    const t = await morningSetup({ handlers: readerOf({ pk: () => 42 }), claude: claudeSays(() => EMPTY), now: '2026-11-14T04:30:00.000Z', dbFile });
+    expect(t.svc.morning.setPrefs({ morningAt: '08:00' }, CLI).ok).toBe(true);
+    t.clock.advance(5 * MIN);
+    await t.svc.stop();
+    // The daemon starts again at 10:05, inside that morning's 6-hour wait: a new part (and timer) on the same messages.db.
+    const again = buildMessagesService(t.ctx, { life: t.life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile, send: t.push.send });
+    await again.start();
+    cleanups.push(() => again.stop());
+    expect(again.morning.prefs().morningAt).toBe('08:00');
+    t.clock.advance(MIN);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.reader.calls.filter((c) => c.op === 'status')).toEqual([]);
+    expect(again.morning.last()).toBeNull();
+    // Tomorrow at 08:00 it runs.
+    t.clock.set('2026-11-15T02:30:00.000Z');
+    const run = await eventually(() => {
+      const r = again.morning.last();
       return r && r.state !== 'running' ? r : null;
     });
     expect(run).toMatchObject({ trigger: 'timer', state: 'ok', at: '2026-11-15T02:30:00.000Z' });

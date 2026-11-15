@@ -19,13 +19,16 @@
  *   end (more than READY_POLL_MS late): the next morning due is the one run,
  *   never two close together.
  * - Once a day: a morning is done when `lastAt()` (messages.db's mark of a
- *   timer run that went well) or a run this timer started was for a morning
- *   on that day. Both are instants, read as days in the Life zone as it is
- *   now, so a move west never takes the next morning there.
+ *   timer run that went well, or of a morning a new time left) or a run
+ *   this timer started was for a morning on that day. Both are instants, read as days in the Life zone as it is
+ *   now, so a move west never takes the next morning there; a big move east
+ *   (the US to Japan) skips the first one there, never two runs hours apart.
  * - No time set: idle, no timer at all. `rearm()` when the zone changes,
  *   `retime()` when the time does; while waiting for WhatsApp it starts
  *   over from the new time. A new time already past today counts as done
- *   for today (no run at once), unless that day's morning was already due.
+ *   for today (no run at once), unless that day's morning was already due;
+ *   `passed()` saves that mark (messages.db), so a restart inside that
+ *   morning's wait leaves it too (lastAt() reads it back).
  * - `run` is the service's (it keeps one run at a time); a throw from it is
  *   logged by name. Nothing here logs more.
  */
@@ -57,8 +60,10 @@ export interface MorningTimerOptions {
   tz: () => string;
   /** The morning time (HH:MM), or null: off. */
   at: () => HhMm | null;
-  /** When the morning the newest timer run that went well was for was due (epoch ms; messages.db meta), or null. */
+  /** When the newest morning marked done was due (epoch ms; messages.db meta: a timer run that went well, or passed()), or null. */
   lastAt: () => number | null;
+  /** A new time left the morning due at `dueAt` (epoch ms) as done: saved for lastAt() after a restart. Never throws. */
+  passed: (dueAt: number) => void;
   ready: () => Promise<WhatsAppReady>;
   /** The run for `morning`: true once it started (whatever its end), false when the service refused it. */
   run: (stale: boolean, morning: NextMorning) => Promise<boolean>;
@@ -140,9 +145,10 @@ export class MorningTimer {
     const done = (day: string) => ran(this.opts.lastAt(), day) || ran(this.fired, day);
     const now = this.clock.now();
     let next = nextMorning(now, at, tz, done);
-    // Set after it had passed: that morning counts as done.
+    // Set after it had passed: that morning counts as done, after a restart too.
     if (retimed && next.dueAt <= now && next.day !== retimed.keep) {
       this.fired = next.dueAt;
+      this.opts.passed(next.dueAt);
       next = nextMorning(now, at, tz, done);
     }
     this.next = next;

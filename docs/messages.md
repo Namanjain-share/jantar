@@ -235,8 +235,10 @@ Mac slept through the time, it runs once on waking, within those 6
 hours; a day it slept through entirely is skipped. The timer runs it
 once a day at most. A morning time you set after it has passed today
 starts tomorrow. If a Run now or a dry run is going at that time, it runs
-a minute after that one ends. After you change Life's time zone, the next
-morning in the new zone runs. **Run now** on the phone and `jantar
+a minute after that one ends. After you move Life's time zone west, the
+next morning there still runs; after a big move east (for example from
+the US to Japan), the first morning there can be skipped, so two runs
+never come a few hours apart. **Run now** on the phone and `jantar
 messages morning --now` run it any time, and `--dry-run` shows what it
 would make.
 

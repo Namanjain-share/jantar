@@ -113,6 +113,7 @@ import { createLifeSend, morningPush, pushNotice, type LifeSend } from '../life/
 import { CONTROL, LINE_END } from '../rewrite/guards.js';
 import {
   LAST_MORNING_KEY,
+  PASSED_MORNING_KEY,
   READS_KEEP,
   addRead,
   addRunChats,
@@ -310,10 +311,12 @@ class MessagesShell implements MessagesService {
     this.timer = new MorningTimer(ctx.clock, this.log, {
       tz: () => this.zone(),
       at: () => (this.db ? readPrefs(this.db).morningAt : null),
+      // The newer of a timer run's mark and a new time's (passed).
       lastAt: () => {
-        const ms = Date.parse(this.db?.meta(LAST_MORNING_KEY) ?? '');
-        return Number.isNaN(ms) ? null : ms;
+        const marks = [LAST_MORNING_KEY, PASSED_MORNING_KEY].map((k) => Date.parse(this.db?.meta(k) ?? '')).filter((ms) => !Number.isNaN(ms));
+        return marks.length > 0 ? Math.max(...marks) : null;
       },
+      passed: (dueAt) => this.morningPassed(dueAt),
       ready: () => this.whatsAppReady(),
       run: (stale, morning) => this.timerRun(stale, morning),
     });
@@ -410,7 +413,12 @@ class MessagesShell implements MessagesService {
     return { state: 'ok' };
   }
 
-  /** The reader didn't answer status. Its answer not checking is a reader of another build; down, its own sentence names the fix (the 503s keep MESSAGES_SAYS.down). */
+  /**
+   * The reader didn't answer status. Its answer not checking is a reader of
+   * another build; down, or hung (a timeout: setup restarts it), its own
+   * sentence names the fix, never status itself (the 503s keep
+   * MESSAGES_SAYS.down and MESSAGES_SAYS.timeout).
+   */
   private failedLine(e: unknown): ReaderLine {
     const code = e instanceof ReaderFailure ? e.code : 'down';
     switch (code) {
@@ -419,6 +427,7 @@ class MessagesShell implements MessagesService {
       case 'unsupported':
         return { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded };
       case 'down':
+      case 'timeout':
         return { state: 'down', detail: MESSAGES_SAYS.readerDown };
       default:
         return { state: 'down', detail: readerSays(code) ?? MESSAGES_SAYS.readerDown };
@@ -707,6 +716,16 @@ class MessagesShell implements MessagesService {
     }
     if (run.state === 'ok') this.db?.setMeta(LAST_MORNING_KEY, new Date(morning.dueAt).toISOString());
     return true;
+  }
+
+  /** A new morning time left the morning due at `dueAt` as done: saved, so a restart inside its wait leaves it too. */
+  private morningPassed(dueAt: number): void {
+    try {
+      this.db?.setMeta(PASSED_MORNING_KEY, new Date(dueAt).toISOString());
+    } catch (e) {
+      // Kept in the timer's memory still: only a restart today would run it.
+      this.log.warn("messages: today's passed morning wasn't saved as done", { event: 'messages.morning', error: errorKind(e) });
+    }
   }
 
   /** messages.db is still the one the run started with; else the run's answer is dropped. */

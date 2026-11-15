@@ -51,6 +51,8 @@ const PREFS_KEY = 'prefs';
 export const CURSOR_KEY = 'morning.cursor';
 /** meta: when the morning the timer's newest run that went well was for was due (ISO; read as a day in the Life zone as it is now). */
 export const LAST_MORNING_KEY = 'morning.last_at';
+/** meta: when the morning a new morning time left as done (set after it had passed) was due (ISO): the timer reads it with LAST_MORNING_KEY, so a restart honours it. */
+export const PASSED_MORNING_KEY = 'morning.passed_at';
 
 export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
   {

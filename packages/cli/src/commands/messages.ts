@@ -112,8 +112,13 @@ const NAME_MAX = 100;
 const WHATSAPP_NOTE = `${dataNote('WhatsApp')}\n`;
 /** The owner's own lines, where a sender's name would be: a name never shows a bracket (nameOf). */
 const OWNER_MARK = '[you]';
-/** Brackets, and what NFKC reads as one: in a name they print as parentheses, so "[you]" and "[skipped]" stay Jantar's. */
-const BRACKETS = /[[\]\uFE47\uFE48\uFF3B\uFF3D]/g;
+/**
+ * Brackets, what NFKC reads as one, and the common look-alikes it doesn't
+ * (⁅⁆ ⟦⟧ 【】 〚〛): in a name they print as parentheses, so "[you]" and
+ * "[skipped]" stay Jantar's.
+ */
+const BRACKETS = /[[\]\uFE47\uFE48\uFF3B\uFF3D\u2045\u2046\u27E6\u27E7\u3010\u3011\u301A\u301B]/g;
+const OPENING = /[[\uFE47\uFF3B\u2045\u27E6\u3010\u301A]/;
 /** The reader's states that waiting won't change: setup says them at once. */
 const SETTLED: ReadonlySet<MessagesStatus['reader']['state']> = new Set(['no_access', 'unsupported', 'update_needed', 'not_installed']);
 /** A date with no time, read as the Mac's midnight. */
@@ -203,10 +208,15 @@ function minutes(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** A name with each bracket (BRACKETS) as a parenthesis, cleaned and clipped to `max`. */
+function unbracketed(name: string, max: number): string {
+  return clip(name.replace(BRACKETS, (b) => (OPENING.test(b) ? '(' : ')')), max);
+}
+
 /** Someone else's name as a line shows it: cleaned, no bracket, and one that reads as "me" is another person. */
 function nameOf(name: string, max: number): string {
   if (readsAsOwner(clean(name))) return NOT_OWNER;
-  return clip(name.replace(BRACKETS, (b) => (b.normalize('NFKC') === '[' ? '(' : ')')), max);
+  return unbracketed(name, max);
 }
 
 /** One chat: its id first (what `read` and `skip` take), then when, what kind and its name. */
@@ -545,7 +555,8 @@ async function read(ctx: CliContext, arg: string | undefined, flags: Flags): Pro
   const zone = zoneOf(ctx);
   const c = r.chat;
   ctx.io.out(WHATSAPP_NOTE);
-  ctx.io.out(`${clip(c.name, 60)} (${c.kind}${c.members !== undefined ? `, ${plural(c.members, 'member')}` : ''}), ${plural(r.messages.length, 'message')}  ${c.chatKey}\n`);
+  // The chat's name (anyone's to choose) sits just above the lines: it never shows the owner's mark.
+  ctx.io.out(`${unbracketed(c.name, 60)} (${c.kind}${c.members !== undefined ? `, ${plural(c.members, 'member')}` : ''}), ${plural(r.messages.length, 'message')}  ${c.chatKey}\n`);
   for (const m of r.messages) ctx.io.out(messageLine(m, zone));
   const oldest = r.messages[0];
   if (r.more && oldest) ctx.io.out(`Older messages: jantar messages read ${c.chatKey} --before ${oldest.at}\n`);
@@ -564,7 +575,8 @@ async function search(ctx: CliContext, words: readonly string[], flags: Flags): 
   const zone = zoneOf(ctx);
   ctx.io.out(WHATSAPP_NOTE);
   for (const h of r.hits) {
-    ctx.io.out(`${h.chatKey}  ${when(h.at, zone)}  ${clip(h.chatName, 40)} · ${h.fromMe ? OWNER_MARK : nameOf(h.sender, 40)}: ${clean(h.snippet)}\n`);
+    // The chat's name is anyone's to choose (a group's subject): it never shows the owner's mark either.
+    ctx.io.out(`${h.chatKey}  ${when(h.at, zone)}  ${unbracketed(h.chatName, 40)} · ${h.fromMe ? OWNER_MARK : nameOf(h.sender, 40)}: ${clean(h.snippet)}\n`);
   }
   return EXIT.ok;
 }
