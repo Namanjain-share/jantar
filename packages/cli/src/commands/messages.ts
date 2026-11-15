@@ -19,22 +19,30 @@
  *   at Full Disk Access and prints the exact path to add. Never run by the
  *   daemon.
  * - `chats`, `read <name|chat id>`, `search <words>`, `calls`: the owner's
- *   own terminal, so text is printed, with escapes and control characters
- *   removed (other people's words); read and search start with the data
+ *   own terminal, so text is printed, with escapes, control and bidi
+ *   characters removed and line separators as spaces (other people's
+ *   words); every list of WhatsApp's names and words starts with the data
  *   note (a Claude session may run them through Bash, where no ask rule
- *   applies). A bare date in a time flag is local midnight.
+ *   applies). The owner's own lines show as [you], which no name can (a
+ *   name's brackets print as parentheses), and anyone else's name that
+ *   reads as "me" as "me (another person)". `calls` says which call list
+ *   wasn't read. A bare date in a time flag is local midnight.
  * - `skip list | add | remove <name|chat id>`: a name resolves through the
  *   chats (add) or the skip list (remove), exact names first; one that
  *   matches several chats, or more chats than one list holds, lists them
  *   and exits 2, never one picked. `skip reset [--forget]`: after the
  *   reader's salt was lost, the same chats skipped again by name; one not
- *   found keeps Messages from reading (exit 1) until `--forget`.
+ *   found keeps Messages from reading (exit 1) until `--forget`, which the
+ *   daemon takes only after a reset looked them up, and which names them.
+ * - `lockscreen names on|off`: what a WhatsApp todo's ring says on a locked
+ *   phone (messages.lockScreenNames; a Mac switch).
  * - `morning [--now | --dry-run]`: the morning pass now, and what it made
  *   (counts, the chats left out for size); a dry run also prints what it
  *   would make as a table (todo titles, who to call back and when, each
  *   draft's first 60 characters, what it would leave out) and writes
  *   nothing. Other people's words: the data note first. A run that failed
- *   exits 1 after its report.
+ *   exits 1 after its report. With messages.db closed (off, or broken) the
+ *   morning run is unknown, and status says why.
  *
  * Everything goes over ctl.sock, where a 1:1's number is never sent; the
  * daemon logs each read as the CLI's.
@@ -45,7 +53,7 @@ import { dirname, join } from 'node:path';
 import { ensureStateDirs, socketPathOk } from '@jantar/daemon';
 import { dataNote } from '@jantar/daemon/chat/text';
 import { READER_SOURCE, readerSourceKey } from '@jantar/daemon/messages/reader-protocol';
-import { MESSAGES_SAYS } from '@jantar/daemon/messages/says';
+import { MESSAGES_SAYS, NOT_OWNER, readsAsOwner } from '@jantar/daemon/messages/says';
 import { MESSAGES_LIMITS, buildPath } from '@jantar/protocol';
 import {
   ChatKeySchema,
@@ -70,7 +78,7 @@ import { guardRealPath } from '../lib/guard.js';
 import { LAUNCHCTL, READER_LABEL, bootoutAgent, bootstrapAgent, plistFor, plistPath, readPlist, readerLogPaths, writePlist } from '../lib/launchd.js';
 import { readSettingsFile } from '../lib/settings.js';
 import { changeSettings, onOff, parseOnOff } from '../lib/switches.js';
-import { ago, clean, clip, plural } from '../lib/text.js';
+import { ago, cleanData as clean, clipData as clip, plural } from '../lib/text.js';
 
 /** What `jantar messages on` says (the design's note: said where it matters). */
 export const MESSAGES_DATA_NOTE = "The morning run sends other people's messages to Claude under your account.\n";
@@ -102,6 +110,10 @@ const NAME_MATCHES_MAX = 200;
 const NAME_MAX = 100;
 /** Before other people's words (as `jantar mcp` frames them). */
 const WHATSAPP_NOTE = `${dataNote('WhatsApp')}\n`;
+/** The owner's own lines, where a sender's name would be: a name never shows a bracket (nameOf). */
+const OWNER_MARK = '[you]';
+/** Brackets, and what NFKC reads as one: in a name they print as parentheses, so "[you]" and "[skipped]" stay Jantar's. */
+const BRACKETS = /[[\]\uFE47\uFE48\uFF3B\uFF3D]/g;
 /** The reader's states that waiting won't change: setup says them at once. */
 const SETTLED: ReadonlySet<MessagesStatus['reader']['state']> = new Set(['no_access', 'unsupported', 'update_needed', 'not_installed']);
 /** A date with no time, read as the Mac's midnight. */
@@ -191,6 +203,12 @@ function minutes(seconds: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
+/** Someone else's name as a line shows it: cleaned, no bracket, and one that reads as "me" is another person. */
+function nameOf(name: string, max: number): string {
+  if (readsAsOwner(clean(name))) return NOT_OWNER;
+  return clip(name.replace(BRACKETS, (b) => (b.normalize('NFKC') === '[' ? '(' : ')')), max);
+}
+
 /** One chat: its id first (what `read` and `skip` take), then when, what kind and its name. */
 function chatLine(c: Chat, zone: string): string {
   const notes = [c.unread ? `${c.unread} unread` : '', c.archived ? 'archived' : '', c.members !== undefined ? plural(c.members, 'member') : ''].filter(Boolean);
@@ -209,7 +227,7 @@ function bodyOf(m: Message): string {
 
 function messageLine(m: Message, zone: string): string {
   if (m.skippedSender) return `${when(m.at, zone)}  [skipped]\n`;
-  const who = m.fromMe ? 'me' : clip(m.sender, 40);
+  const who = m.fromMe ? OWNER_MARK : nameOf(m.sender, 40);
   const marks = [m.replyTo ? '(reply)' : '', m.mentionsMe ? '(@me)' : ''].filter(Boolean).join(' ');
   return `${when(m.at, zone)}  ${who}: ${marks ? `${marks} ` : ''}${bodyOf(m)}\n`;
 }
@@ -218,6 +236,7 @@ function messageLine(m: Message, zone: string): string {
 function ambiguous(ctx: CliContext, name: string, list: readonly Chat[], total: number): number {
   ctx.io.err(`jantar messages: ${total} chats match "${clip(name, NAME_MAX)}". Say which one by its id (the first column):\n`);
   const zone = zoneOf(ctx);
+  ctx.io.out(WHATSAPP_NOTE);
   for (const c of list) ctx.io.out(chatLine(c, zone));
   if (total > list.length) ctx.io.out(`(the newest ${list.length} of ${total})\n`);
   return EXIT.usage;
@@ -255,6 +274,8 @@ function whatsappText(st: MessagesStatus, now: number): string {
   if (st.reader.state !== 'ok' && !w.found) return 'unknown until the reader answers';
   if (!w.found) return "not found (WhatsApp for Mac isn't on this Mac, or isn't linked to a phone yet)";
   if (!w.schemaOk) return 'found, but this version stores chats differently (Messages needs an update)';
+  // The reader reads nothing while WhatsApp's database is closed, its newest message included.
+  if (w.newestAt === null) return 'found, newest message unknown (WhatsApp is closed)';
   return `found, ${w.running ? 'running' : 'closed'}, newest message ${ago(w.newestAt, now)}`;
 }
 
@@ -268,7 +289,12 @@ function fdaText(ctx: CliContext, st: MessagesStatus): string {
   );
 }
 
-function morningText(st: MessagesStatus, now: number): string {
+/** The morning run's time and last run; unknown while messages.db is closed (`why`: say the broken sentence). */
+function morningText(st: MessagesStatus, now: number, why: boolean): string {
+  if (st.morning === null) {
+    if (st.broken) return `unknown: ${why ? st.broken : "Messages data won't open (above)"}`;
+    return st.enabled ? "unknown (Messages data isn't open yet)" : 'unknown while Messages is off. Turn it on: jantar messages on';
+  }
   const at = st.morning.at ? `at ${st.morning.at}` : 'off (set its time on the phone: Messages > Settings)';
   return `${at}, last ran ${ago(st.morning.lastRunAt, now)}`;
 }
@@ -290,11 +316,12 @@ async function status(ctx: CliContext): Promise<number> {
   const now = ctx.deps.now();
   ctx.io.out(
     `Messages: ${st.enabled ? 'on' : 'off. Turn it on: jantar messages on'}\n` +
+      (st.broken ? `Messages data: ${st.broken}\n` : '') +
       `Reader: ${readerText(st)}\n` +
       `WhatsApp: ${whatsappText(st, now)}\n` +
       `Full Disk Access: ${fdaText(ctx, st)}\n` +
       `Skipped chats: ${st.skipped}${st.skipUnmatched ? ` (${st.skipUnmatched} ${st.skipUnmatched === 1 ? 'names' : 'name'} no chat on this Mac now; check them: jantar messages skip list)` : ''}\n` +
-      `Morning run: ${morningText(st, now)}\n`,
+      `Morning run: ${morningText(st, now, false)}\n`,
   );
   return EXIT.ok;
 }
@@ -502,6 +529,7 @@ async function chats(ctx: CliContext, flags: Flags): Promise<number> {
     return EXIT.ok;
   }
   const zone = zoneOf(ctx);
+  ctx.io.out(WHATSAPP_NOTE);
   for (const c of r.chats) ctx.io.out(chatLine(c, zone));
   if (r.total > r.chats.length) ctx.io.out(`(${r.chats.length} of ${r.total}: more with --limit)\n`);
   return EXIT.ok;
@@ -536,21 +564,25 @@ async function search(ctx: CliContext, words: readonly string[], flags: Flags): 
   const zone = zoneOf(ctx);
   ctx.io.out(WHATSAPP_NOTE);
   for (const h of r.hits) {
-    ctx.io.out(`${h.chatKey}  ${when(h.at, zone)}  ${clip(h.chatName, 40)} · ${h.fromMe ? 'me' : clip(h.sender, 40)}: ${clean(h.snippet)}\n`);
+    ctx.io.out(`${h.chatKey}  ${when(h.at, zone)}  ${clip(h.chatName, 40)} · ${h.fromMe ? OWNER_MARK : nameOf(h.sender, 40)}: ${clean(h.snippet)}\n`);
   }
   return EXIT.ok;
 }
 
 async function calls(ctx: CliContext): Promise<number> {
   const r = await get<CallsToReturnResponse>(ctx, MESSAGES_ROUTES.messagesCalls.path);
+  // A call list the reader may not or can't read is left out: said, so no calls isn't read as nobody called.
+  const unread = [...(r.waCalls === false ? [MESSAGES_SAYS.waCallsUnread] : []), ...(r.phoneCalls === false ? [MESSAGES_SAYS.phoneCallsUnread] : [])];
   if (r.calls.length === 0) {
     ctx.io.out('No missed calls to return.\n');
-    return EXIT.ok;
+  } else {
+    const zone = zoneOf(ctx);
+    ctx.io.out(WHATSAPP_NOTE);
+    for (const c of r.calls) {
+      ctx.io.out(`${when(c.at, zone)}  missed ${c.via === 'phone' ? 'phone' : 'WhatsApp'}${c.video ? ' video' : ''} call  ${clip(c.who, 60)}\n`);
+    }
   }
-  const zone = zoneOf(ctx);
-  for (const c of r.calls) {
-    ctx.io.out(`${when(c.at, zone)}  missed ${c.via === 'phone' ? 'phone' : 'WhatsApp'}${c.video ? ' video' : ''} call  ${clip(c.who, 60)}\n`);
-  }
+  for (const line of unread) ctx.io.out(`${line}\n`);
   return EXIT.ok;
 }
 
@@ -601,6 +633,7 @@ async function skip(ctx: CliContext, rest: readonly string[], flags: Flags): Pro
         return EXIT.ok;
       }
       const zone = zoneOf(ctx);
+      ctx.io.out(WHATSAPP_NOTE);
       for (const e of entries) ctx.io.out(`${e.chatKey}  added ${when(e.addedAt, zone)}  ${e.kind.padEnd(9)}  ${clip(e.name, 60)}\n`);
       return EXIT.ok;
     }
@@ -610,6 +643,7 @@ async function skip(ctx: CliContext, rest: readonly string[], flags: Flags): Pro
       if (!picked.ok) return picked.code;
       await callDaemon(ctx.ctl, 'POST', MESSAGES_ROUTES.messagesSkipAdd.path, { chatKey: picked.chatKey }, { idempotencyKey: ctx.deps.randomId(), timeoutMs: READ_TIMEOUT_MS });
       const name = picked.name ?? (await list().catch(() => null))?.skip.find((e) => e.chatKey === picked.chatKey)?.name ?? picked.chatKey;
+      ctx.io.out(WHATSAPP_NOTE);
       ctx.io.out(
         `Skipped "${clip(name, 60)}": Messages never reads it again. A 1:1 skips that person everywhere (their calls, and their lines in groups show as [skipped]).\n`,
       );
@@ -653,9 +687,13 @@ async function skipReset(ctx: CliContext, forget: boolean): Promise<number> {
     await ctx.deps.sleep(SETUP_POLL_MS);
     r = await ask();
   }
+  const forgot = r.forgot ?? [];
+  if (r.skipped.length > 0 || r.left.length > 0 || forgot.length > 0) ctx.io.out(WHATSAPP_NOTE);
   for (const e of r.skipped) ctx.io.out(`Skipped again: "${clip(e.name, 60)}" (${e.kind})\n`);
   if (forget) {
-    ctx.io.out('Messages reads again. Skip any chat it must not read now: jantar messages skip add <name|chat id>\n');
+    // Named, so he knows which to skip again.
+    for (const e of forgot) ctx.io.out(`Let go: "${clip(e.name, 60)}" (${e.kind})\n`);
+    ctx.io.out(`Messages reads again. Skip ${forgot.length > 0 ? 'those' : 'any chat it must not read'} now: jantar messages skip add <name|chat id>\n`);
     return EXIT.ok;
   }
   if (r.waiting) {
@@ -722,7 +760,7 @@ async function morning(ctx: CliContext, flags: Flags): Promise<number> {
   if (flags.now && dry) throw new UsageError('give --now or --dry-run, not both');
   const now = ctx.deps.now();
   if (!flags.now && !dry) {
-    ctx.io.out(`Morning run: ${morningText(await getStatus(ctx), now)}\nRun it now: jantar messages morning --now (or --dry-run to see what it would make)\n`);
+    ctx.io.out(`Morning run: ${morningText(await getStatus(ctx), now, true)}\nRun it now: jantar messages morning --now (or --dry-run to see what it would make)\n`);
     return EXIT.ok;
   }
   const run = await callDaemon<MorningRun>(ctx.ctl, 'POST', MESSAGES_ROUTES.messagesMorningRun.path, dry ? { dryRun: true } : {}, {
@@ -752,7 +790,8 @@ export default defineCommand(
   {
     name: 'messages',
     summary: 'Messages: your WhatsApp for Claude sessions, the phone and the morning run. On or off, setup, read, skip.',
-    usage: 'jantar messages [on | off | status | setup | chats | read <name|chat id> | search <words> | calls | skip [list | add | remove] <name|chat id> | skip reset [--forget] | morning]',
+    usage:
+      'jantar messages [on | off | status | setup | chats | read <name|chat id> | search <words> | calls | skip [list | add | remove] <name|chat id> | skip reset [--forget] | morning | lockscreen names <on|off>]',
     owner: 'WP-MESSAGES',
     help:
       '  messages | messages status     on or off, the reader, WhatsApp, Full Disk Access, skipped chats, the morning run\n' +
@@ -768,6 +807,8 @@ export default defineCommand(
       "  messages skip reset [--forget]  after the reader's salt was lost: skip the same chats again by name\n" +
       '  messages morning [--now | --dry-run]\n' +
       '                                 the morning pass now (--dry-run shows what it would make and writes nothing)\n' +
+      '  messages lockscreen names <on|off>\n' +
+      '                                 a WhatsApp todo\'s ring says its title on a locked phone (off: "WhatsApp" and the time)\n' +
       'A name two chats share lists both (exit 2): say which by its id. Nothing is ever sent to WhatsApp.',
   },
   async (argv, ctx) => {
@@ -810,8 +851,19 @@ export default defineCommand(
         only(flags, action, ['now', 'dry-run']);
         if (rest.length) throw new UsageError('morning takes no argument');
         return morning(ctx, flags);
+      case 'lockscreen': {
+        only(flags, action, []);
+        const [what, value] = rest;
+        if (what !== 'names' || (value !== 'on' && value !== 'off') || rest.length !== 2) throw new UsageError('lockscreen takes: names on, or names off');
+        await changeSettings(ctx, { messages: { lockScreenNames: value === 'on' } }, (st) =>
+          st.messages.lockScreenNames
+            ? "WhatsApp todos' pushes say their titles on a locked phone (a call-back names the person, or the number).\n"
+            : 'WhatsApp todos\' pushes say only "WhatsApp" and the time on a locked phone.\n',
+        );
+        return EXIT.ok;
+      }
       default:
-        throw new UsageError(`unknown action "${clip(action, 20)}" (on, off, status, setup, chats, read, search, calls, skip or morning)`);
+        throw new UsageError(`unknown action "${clip(action, 20)}" (on, off, status, setup, chats, read, search, calls, skip, morning or lockscreen)`);
     }
   },
 );

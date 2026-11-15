@@ -14,13 +14,15 @@
  *   Life refusing the todos is in the report; Today, drafts, Undo and the times;
  *   a morning time after the call-back time still rings each call-back; a
  *   skip takes what the morning made from that chat off Today, out of the
- *   reports and out of Life, and stops a run going that read it (only); a
- *   later Run now, or a failed run, keeps the morning's summary, todos and
- *   Undo on Today; a Claude run that takes minutes still leaves every
- *   call-back ringing; Todos off drafts replies only; Run now and a dry run
- *   log their reads under their caller; a timer run refused by a dry run
- *   runs after it; a time set after it passed waits for tomorrow; a draft
- *   the owner answered in WhatsApp leaves Today.
+ *   reports and out of Life, and stops a run going that read it (only);
+ *   each run of the day that made something keeps its summary, todos and
+ *   Undo on Today (a later Run now, an empty timer run or a failed one
+ *   never hides or takes the morning's); a reader of another build fails a
+ *   run with the update-needed sentence; a Claude run that takes minutes
+ *   still leaves every call-back ringing; Todos off drafts replies only;
+ *   Run now and a dry run log their reads under their caller; a timer run
+ *   refused by a dry run runs after it; a time set after it passed waits
+ *   for tomorrow; a draft the owner answered in WhatsApp leaves Today.
  * Synthetic chat keys, fake numbers and invented names only.
  */
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
@@ -808,7 +810,7 @@ describe('the morning run', () => {
     // Nothing in Life, no draft, no call-back; Today's run is the newest real one (none).
     const open = t.life.todos.listTodos({ done: false });
     expect(open.ok && open.value.todos).toEqual([]);
-    expect(t.svc.morning.today()).toEqual({ run: null, made: null, drafts: [], callbacks: [] });
+    expect(t.svc.morning.today()).toEqual({ run: null, made: [], drafts: [], callbacks: [] });
     // last() is the newest report, the dry one included (stored without its preview).
     expect(t.svc.morning.last()).toEqual({ ...dry, preview: undefined });
     expect(JSON.stringify(t.svc.morning.last())).not.toContain('preview');
@@ -933,7 +935,7 @@ describe('the morning run', () => {
     // Asha's draft is off Today, and the summary that read her chat is gone from every report.
     expect(today.drafts).toEqual([]);
     expect(today.run).not.toHaveProperty('summary');
-    expect(today.made).not.toHaveProperty('summary');
+    expect(today.made[0]).not.toHaveProperty('summary');
     expect(t.svc.morning.last()).not.toHaveProperty('summary');
     expect(today.callbacks.map((c) => c.who)).toEqual(['Ravi Test']);
 
@@ -1010,7 +1012,7 @@ describe('the morning run', () => {
     const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer) });
     const morning = await t.svc.morning.run({ trigger: 'timer' });
     expect(morning).toMatchObject({ state: 'ok', counts: { todos: 2 } });
-    expect(t.svc.morning.today()).toMatchObject({ run: morning, made: morning });
+    expect(t.svc.morning.today()).toMatchObject({ run: morning, made: [morning] });
 
     // After lunch: Run now finds nothing new, then one fails.
     fresh = false;
@@ -1020,16 +1022,16 @@ describe('the morning run', () => {
     let today = t.svc.morning.today();
     // The newest run for its line; the morning's for its summary, its todos and Undo.
     expect(today.run).toEqual(noon);
-    expect(today.made).toEqual(morning);
+    expect(today.made).toEqual([morning]);
     down = true;
     t.clock.advance(HOUR);
     const failed = await t.svc.morning.run({ trigger: 'now' });
     expect(failed.state).toBe('failed');
     today = t.svc.morning.today();
     expect(today.run).toEqual(failed);
-    expect(today.made).toEqual(morning);
+    expect(today.made).toEqual([morning]);
     // Its Undo still works.
-    expect(t.svc.morning.undo(today.made!.id, PHONE)).toEqual({ ok: true, value: true });
+    expect(t.svc.morning.undo(today.made[0]!.id, PHONE)).toEqual({ ok: true, value: true });
     const open = t.life.todos.listTodos({ done: false });
     expect(open.ok && open.value.todos).toEqual([]);
 
@@ -1038,7 +1040,60 @@ describe('the morning run', () => {
     t.clock.advance(19 * HOUR);
     const tomorrow = await t.svc.morning.run({ trigger: 'timer' });
     expect(tomorrow.state).toBe('ok');
-    expect(t.svc.morning.today()).toMatchObject({ run: tomorrow, made: null });
+    expect(t.svc.morning.today()).toMatchObject({ run: tomorrow, made: [] });
+  });
+
+  it("every run today that made something keeps its own Undo: an earlier Run now after an empty timer run, a later one beside the morning's", async () => {
+    let phase: 'night' | 'quiet' | 'noon' = 'night';
+    const base = readerOf({ pk: () => 42 });
+    const charger: Message = { msgKey: `${ASHA}.3EB0A2`, at: '2026-11-14T07:00:00.000Z', fromMe: false, sender: 'Asha Test', kind: 'text', text: 'Bring the charger too' };
+    const page = (chats: { chat: ChatOwner; messages: Message[]; earlier: Message[] }[]) => ({ chats, nextCursor: { pk: 42, at: venue.at }, truncated: false, reset: false });
+    const handlers: FakeHandlers = {
+      ...base,
+      newSince: (a) => (phase === 'night' ? base.newSince!(a) : phase === 'noon' ? page([{ chat: asha, messages: [charger], earlier: [] }]) : page([])),
+      waCalls: (a) => (phase === 'night' ? base.waCalls!(a) : { calls: [] }),
+      chats: (a) => (phase === 'night' ? base.chats!(a) : { chats: [], total: 0 }),
+    };
+    const answer = (text: string): MorningAnswer =>
+      text.includes('Bring the charger') ? { ...EMPTY, todos: [{ title: 'Bring the charger', ref: idIn(text, /<m id="(m\d+)"[^>]*>Bring the charger/) }] } : fullAnswer(text);
+    // Sat 07:00 in the Life zone: a Run now makes the night's todos, draft and call-back.
+    const t = await morningSetup({ handlers, claude: claudeSays(answer), now: '2026-11-14T01:30:00.000Z' });
+    const early = await t.svc.morning.run({ trigger: 'now' });
+    expect(early).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+
+    // 08:30: the timer's run finds nothing new. The 07:00 run keeps its place, its summary and its Undo.
+    phase = 'quiet';
+    t.clock.advance(90 * MIN);
+    const timer = await t.svc.morning.run({ trigger: 'timer' });
+    expect(timer).toMatchObject({ state: 'ok', counts: { todos: 0, replies: 0, callbacks: 0 } });
+    expect(t.svc.morning.today()).toMatchObject({ run: timer, made: [early] });
+
+    // 13:00: a Run now makes one more todo. Both runs are listed, newest first, each with its own Undo.
+    phase = 'noon';
+    t.clock.advance(4 * HOUR + 30 * MIN);
+    const noon = await t.svc.morning.run({ trigger: 'now' });
+    expect(noon).toMatchObject({ state: 'ok', counts: { todos: 1 } });
+    expect(t.svc.morning.today()).toMatchObject({ run: noon, made: [noon, early] });
+    const open = () => {
+      const r = t.life.todos.listTodos({ done: false });
+      return r.ok ? r.value.todos.map((x) => x.title).sort() : r;
+    };
+    expect(open()).toEqual(['Bring the charger', 'Call back Ravi Test', 'Check the venue booking', 'Send Asha the deck']);
+    // The morning's Undo takes only the morning's; the noon one's stays, and has its own.
+    expect(t.svc.morning.undo(early.id, PHONE)).toEqual({ ok: true, value: true });
+    expect(open()).toEqual(['Bring the charger']);
+    expect(t.svc.morning.undo(noon.id, PHONE)).toEqual({ ok: true, value: true });
+    expect(open()).toEqual([]);
+
+    // Tomorrow: yesterday's runs aren't today's.
+    t.clock.advance(12 * HOUR);
+    expect(t.svc.morning.today().made).toEqual([]);
+  });
+
+  it("a reader of another build fails the run with the update-needed sentence, not WhatsApp's", async () => {
+    const t = await morningSetup({ handlers: { ...readerOf({ pk: () => 42 }), newSince: () => ({ rows: [] }) }, claude: claudeSays(fullAnswer) });
+    const run = await t.svc.morning.run({ trigger: 'now' });
+    expect(run).toMatchObject({ state: 'failed', why: MESSAGES_SAYS.updateNeeded });
   });
 
   it('a Claude run that takes minutes: each call-back and timed todo still rings, or keeps its day (time_passed)', async () => {

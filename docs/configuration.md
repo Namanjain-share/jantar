@@ -91,6 +91,7 @@ Each of these is a Mac-only setting: a phone can never change it.
 | `jantar messages chats \| read <name\|chat id> \| search <words> \| calls` | your chats, one chat, lines holding words, missed calls to return ([At the Mac](messages.md#at-the-mac)) |
 | `jantar messages skip list \| add <name\|chat id> \| remove <name\|chat id>` | the chats Messages never reads (removing only here, never from a phone) |
 | `jantar messages morning [--now \| --dry-run]` | the morning run now, or what it would make |
+| `jantar messages lockscreen names on \| off` | whether a WhatsApp todo's ring says its title on a locked phone (off: "WhatsApp" and the time) |
 | `jantar chat on \| off \| status` | Chat, which does what you ask across Jantar with Undo and asks before deleting ([Chat](assistant.md)); `off` hides it and closes the Siri door, the history stays; `status` names the models, the history on disk and the door |
 | `jantar chat clear [--broken] [--yes] \| keep <days> \| voice-model <m>` | delete the history (what it added stays); how long it is kept (`ask.keepDays`, 1-365, 30); the model a Siri question runs on (`ask.voiceModel`, `sonnet`) |
 | `jantar chat shortcut add \| list \| revoke <id\|--all> \| steps` | the Siri Shortcut's keys ([Ask Jantar with Siri](shortcut.md#ask-jantar-with-siri)); `add` only in your own Terminal, the key shown once |
@@ -196,7 +197,7 @@ full schema, with every default, is `packages/protocol/src/settings.ts`.
 | `intel` | `enabled` (off), `sources` (up to 10 files); 0.8: `read` (off: reading saved links), `speechLocale` (`en-IN`) | the Mac |
 | `accounts` | `kept`, `prime`, `primeKept` | the Mac |
 | `fleet` | v0.6: `enabled` (off); the pairings themselves are in `jantar.db` | the Mac (`jantar fleet`) |
-| `messages` | 0.15: `enabled` (off); the morning and call-back times live in `messages.db` (set on the phone) | the Mac (`jantar messages`) |
+| `messages` | 0.15: `enabled` (off), `lockScreenNames` (off: a call-back or timed todo from WhatsApp says only "WhatsApp" and its time on a locked phone; `jantar messages lockscreen names on`); the morning and call-back times live in `messages.db` (set on the phone) | the Mac (`jantar messages`) |
 | `bins` | absolute paths to `claude`, `cswap`, `osascript` and the rest, found by `jantar install` (launchd's `PATH` is minimal); 0.8: `ytDlp` (optional) | the Mac |
 | `autoswitch` | the ceilings Jantar shows (`ceiling` 97 %, `weekly_ceiling` 95 %) and the hold list; Jantar itself does not switch accounts | the Mac, or an admin device |
 | `notify`, `usage` | push bodies and kinds, a mute, and `urgent` (the Answer soon push, on); the cswap poller (`auto`: only while the legacy ccw tool's bot is not running) | the Mac, or an admin device |

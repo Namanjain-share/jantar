@@ -3,8 +3,10 @@
  * against the fake API: the freshness line (and the stale warning), the
  * summary, the todos the morning made (each opens its Life todo), Waiting on
  * you (Copy, Open in WhatsApp only for a 1:1 with a number, Done and Dismiss
- * with Undo), Call back, Run now and Undo this morning, the reader's
- * problems, and the switch off. Every name and number is made up.
+ * with Undo), Call back, Run now and Undo this morning (an Undo for each
+ * run today that made something, each naming its time), the run's notes,
+ * the reader's problems, and the switch off. Every name and number is made
+ * up.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -147,7 +149,7 @@ describe('Messages: Today', () => {
 
   it("a later Run now that made nothing keeps the morning's summary, the todos it made and its Undo", async () => {
     const noon = run({ id: '01JMSGRVN00000000000000002', trigger: 'now', at: '2026-01-15T13:00:00.000Z', counts: { chats: 0, messages: 0, calls: 0, todos: 0, replies: 0, callbacks: 0, dropped: 0 }, todoIds: [], summary: undefined });
-    const api = messagesApi({ 'GET /v1/messages/today': today({ run: noon, made: run() }), 'POST /v1/messages/morning/:runId/undo': { ok: true } });
+    const api = messagesApi({ 'GET /v1/messages/today': today({ run: noon, made: [run()] }), 'POST /v1/messages/morning/:runId/undo': { ok: true } });
     open(api);
     // The newest run's line; the morning's summary and todos.
     expect(await screen.findByText(/^Last run Thu 13:00/)).toBeTruthy();
@@ -158,6 +160,42 @@ describe('Messages: Today', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo it' }));
     await waitFor(() => expect(requested(api, 'POST', '/v1/messages/morning/:runId/undo')).toEqual([expect.objectContaining({ params: { runId: IDS.run } })]));
     expect(await screen.findByText(/This morning was undone/)).toBeTruthy();
+  });
+
+  it('every run today that made something has its own Undo, each asking first and naming its time', async () => {
+    const NOON_ID = '01JMSGRVN00000000000000003';
+    const noon = run({ id: NOON_ID, trigger: 'now', at: '2026-01-15T13:00:00.000Z', counts: { chats: 1, messages: 1, calls: 0, todos: 1, replies: 0, callbacks: 0, dropped: 0 }, todoIds: ['01JMSGT0D00000000000000002'], summary: 'Asha Test wants the charger too.' });
+    const api = messagesApi({ 'GET /v1/messages/today': today({ run: noon, made: [noon, run()] }), 'POST /v1/messages/morning/:runId/undo': { ok: true } });
+    open(api);
+    // Both summaries, each under its time.
+    expect(await screen.findByText('Asha Test wants the charger too.')).toBeTruthy();
+    expect(screen.getByText('Asha Test asked for the deck by Friday. Group One wants the invoice checked.')).toBeTruthy();
+    // Both runs' todos.
+    expect((await section('Todos made')).textContent).toContain('2');
+    expect(screen.queryByRole('button', { name: 'Undo this morning' })).toBeNull();
+    // The morning's Undo: it asks, names the run, and undoes that run only.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the 08:00 run' }));
+    const ask = screen.getByRole('group', { name: 'Undo the 08:00 run' });
+    expect(ask.textContent).toContain('the 08:00 run made');
+    fireEvent.click(within(ask).getByRole('button', { name: 'Undo it' }));
+    await waitFor(() => expect(requested(api, 'POST', '/v1/messages/morning/:runId/undo')).toEqual([expect.objectContaining({ params: { runId: IDS.run } })]));
+    expect(await screen.findByText(/The 08:00 run was undone/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo the 08:00 run' })).toBeNull();
+    // The noon one keeps its own.
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the 13:00 run' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Undo the 13:00 run' })).getByRole('button', { name: 'Undo it' }));
+    await waitFor(() => expect(requested(api, 'POST', '/v1/messages/morning/:runId/undo')).toHaveLength(2));
+    expect(requested(api, 'POST', '/v1/messages/morning/:runId/undo')[1]).toMatchObject({ params: { runId: NOON_ID } });
+  });
+
+  it("the run's notes show under its line: calls not read, Life refused", async () => {
+    const a = open(messagesApi({ 'GET /v1/messages/today': today({ run: run({ waCalls: false, lifeRefused: 'life_refused' }) }) }));
+    expect(await screen.findByText("WhatsApp calls weren't read.")).toBeTruthy();
+    expect(screen.getByText('Life refused the rest of the todos and call-backs (Todos off, or the WhatsApp project gone).')).toBeTruthy();
+    a.unmount();
+    open(messagesApi({ 'GET /v1/messages/today': today({ run: run({ phoneCalls: false, lifeRefused: 'limit' }) }) }));
+    expect(await screen.findByText("The iPhone call log wasn't read.")).toBeTruthy();
+    expect(screen.getByText("Life's open-todo limit stopped the rest of the todos and call-backs.")).toBeTruthy();
   });
 
   it("a failed run says why, and a run still going says so", async () => {

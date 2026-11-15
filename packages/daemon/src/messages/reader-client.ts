@@ -9,14 +9,16 @@
  * reader's own error code, `down` (no socket, refused, or it closed with
  * the call in flight), `timeout` (no answer in READER_TIMEOUT_MS: the reader
  * keeps its own 2 s and 5 s deadlines, so this is a reader that hangs),
- * `bad_request` (args that don't check, never sent) or `unsupported` (an
- * answer that doesn't check: a reader of another build). A failure's
+ * `bad_request` (args that don't check, never sent) or `unsupported` with
+ * READER_MISMATCH (an answer that doesn't check: a reader of another build,
+ * which says.ts tells apart from WhatsApp's own `unsupported`). A failure's
  * message is its code and the reader's fixed detail, never data.
  */
 import { createConnection, type Socket } from 'node:net';
 import type { Clock, TimerId } from '../contracts.js';
 import { systemClock } from '../core/clock.js';
 import { READER_ARGS, ReaderReplySchema, parseReaderData, type ReaderArgs, type ReaderData, type ReaderError, type ReaderOp } from './reader-protocol.js';
+import { READER_MISMATCH } from './says.js';
 
 /** How long a call waits for its answer. */
 export const READER_TIMEOUT_MS = 10_000;
@@ -171,7 +173,7 @@ class SocketReaderClient implements ReaderClient {
     try {
       p.resolve(parseReaderData(p.op, reply.data.data));
     } catch {
-      p.reject(new ReaderFailure('unsupported', `the reader's ${p.op} answer doesn't check`));
+      p.reject(new ReaderFailure('unsupported', READER_MISMATCH));
     }
   }
 

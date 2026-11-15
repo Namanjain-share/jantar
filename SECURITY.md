@@ -2410,9 +2410,10 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   Messages opens nothing there that was closed. Only the iPhone call log
   (`~/Library/Application Support/CallHistoryDB/`) needs Full Disk Access,
   and it is optional: setup asks for it only for that, on the reader's
-  file alone, never on `node`. macOS ties the grant to the build, so the
-  reader is rebuilt only when a release changes its source (a sha256 key
-  beside it), and status says when it must be granted again.
+  file alone, never on `node`. macOS may tie the grant to the build (a
+  real-Mac check is open), so the reader is rebuilt only when a release
+  changes its source (a sha256 key beside it), and status says when it
+  must be granted again.
 - **What the grant opens.** macOS gives Full Disk Access to the program
   file, whoever starts it, and the reader serves any process running as
   the owner. With the grant, such a process can ask it for the iPhone
@@ -2452,7 +2453,10 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   the `phone` field is dropped, but a person with no name in the address
   book or on WhatsApp is named by their number (`+91 …`) as a chat, a
   group sender or a caller, everywhere: call-backs need a name, and that
-  is the only one there is.
+  is the only one there is. What `jantar messages` prints of other
+  people's words has escape codes, bidi controls and line separators taken
+  out, after the data note, and the owner's own lines show as `[you]`,
+  which no name can show (a name's brackets print as parentheses).
 - **The ask rule is a speed bump.** `jantar mcp install` adds an `ask`
   rule for the five WhatsApp tools to the shared `~/.claude/settings.json`
   (through the hooks installer's guarded write: the symlink followed, a
@@ -2519,7 +2523,8 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   caller but the CLI) goes on: it drops the old keys, lets the reader make
   a new salt, and skips again every chat with each old entry's name and
   kind. Reads stay refused while any entry isn't found, until the owner
-  lets it go (`--forget`).
+  lets it go (`--forget`, taken only after a reset looked the entries up
+  with the reader running, and answered with the names it let go).
 - **Known gaps.** In groups and calls WhatsApp names many people by an
   `@lid` id; the reader links it to their number through WhatsApp's
   `LID.sqlite` and `ContactsV2.sqlite`. Some `@lid`s have no link there
@@ -2539,9 +2544,12 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   starts with a data note, and message text, captions, search snippets and
   any sentence holding a file name WhatsApp gave sit inside `data()` frames
   a sender can't close; names are one line with tags escaped. The owner's
-  own lines carry a mark, never a name. `MCP_INSTRUCTIONS` tells the model
-  to read only what the user asks and never to quote chats into web
-  requests, posts or files unless asked.
+  own lines carry a mark, never a name, and anyone else's name that reads
+  as "me" shows as "me (another person)" there, in the morning input and in
+  the CLI. `MCP_INSTRUCTIONS` tells the model to read only what the user
+  asks and never to quote chats into web requests, posts or files unless
+  asked. `calls_to_return` says when a call list wasn't read, so no calls
+  there is never taken for nobody called.
 - **The morning run:** up to about 50,000 tokens of a day's messages and up
   to 5 pictures (shrunk to 1024 px by `jantar-media`, metadata removed) per
   run, to Claude under the account the shared runner picks.
@@ -2549,7 +2557,12 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   messages go to Claude under his account.
 - **The push:** counts only ("Morning: 6 todos, 3 replies waiting, 2
   call-backs"), to control devices, never a name or a word; it follows the
-  owner's notification mute.
+  owner's notification mute. A call-back or a timed todo the morning made
+  rings like any timed Life todo, and its push says only "WhatsApp" and
+  its time, since its title can name a person, an unknown caller's number
+  or words from a chat. Only `messages.lockScreenNames`, set at the Mac
+  (`jantar messages lockscreen names on`, never from a phone), puts its
+  title there, by `notify.bodies`, as Work's follow-ups do.
 - **Logs, events, audit rows and errors** hold chat keys, counts, error
   kinds and fixed sentences only. A write's audit row is its target id (a
   chat key, a draft id, a run id) with no parameters. The reader's stderr
@@ -2631,6 +2644,8 @@ drafts, todos, call-backs and summary from view, and stops a run going),
 headers), `mcp.test.ts` (`todos_here` frames a WhatsApp todo) and
 `mcp-install.test.ts` with
 `packages/daemon/test/hooks/ask-rules.test.ts` (the ask rules, the
-guarded write). The peer-uid check is verified by source inspection
-only: `reader.test.ts` checks that the reader calls `getpeereid` and
-compares with its own uid, since a test can't connect as another user.
+guarded write), and `packages/daemon/test/life/push.test.ts` (a WhatsApp
+todo's ring says only "WhatsApp" and its time). The peer-uid check is
+verified by source inspection only: `reader.test.ts` checks that the
+reader calls `getpeereid` and compares with its own uid, since a test
+can't connect as another user.

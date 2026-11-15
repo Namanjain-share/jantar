@@ -365,11 +365,19 @@ export const FleetSettingsSchema = z.object({
 /**
  * 0.15 Messages: the owner's WhatsApp chats and calls, read on the Mac by
  * its reader and never sent to. Off until turned on at the Mac
- * (`jantar messages on`); only the switch lives here (the skip list, the
- * morning and call-back times are in messages.db).
+ * (`jantar messages on`); only the switch and what its todos say on the
+ * lock screen live here (the skip list, the morning and call-back times are
+ * in messages.db).
  */
 export const MessagesSettingsSchema = z.object({
   enabled: z.boolean().default(false),
+  /**
+   * A todo the morning run made (a call-back names the person or the number)
+   * rings with its title (by notify.bodies), as any todo. Off: "WhatsApp ·
+   * 11:00", nothing of the chat on the lock screen. At the Mac:
+   * `jantar messages lockscreen names on`. An older daemon drops it.
+   */
+  lockScreenNames: z.boolean().default(false),
 });
 
 export const AccountsSettingsSchema = z.object({

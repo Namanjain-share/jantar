@@ -78,10 +78,13 @@ export function draft(id: string, over: Partial<Draft> = {}): Draft {
   };
 }
 
+/** Today's answer; `made` (unless given) holds its run when that went well and made something, as the daemon's would. */
 export function today(over: Partial<MessagesTodayResponse> = {}): MessagesTodayResponse {
+  const r = 'run' in over ? (over.run ?? null) : run();
+  const made = r !== null && r.state === 'ok' && r.trigger !== 'dry' && r.counts.todos + r.counts.replies + r.counts.callbacks > 0;
   return {
-    run: run(),
-    made: null,
+    run: r,
+    made: made ? [r] : [],
     drafts: [draft(IDS.draftAsha), draft(IDS.draftGroup, { chatKey: IDS.group, chatName: 'Group One', phone: undefined, theyAsked: 'Can you check the invoice?', draft: 'Checking it now.' })],
     callbacks: [{ todoId: IDS.callback, who: 'Ravi Test', at: '2026-01-15T11:00:00.000Z' }],
     ...over,

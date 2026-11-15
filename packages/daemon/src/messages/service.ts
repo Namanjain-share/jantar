@@ -51,19 +51,24 @@
  *   closed after its await drops the answer (ApiError messages_unavailable).
  * - status() asks the reader whatever the switch says (setup polls it) and
  *   never throws: not_installed (no reader built), update_needed (a reader
- *   built from another source, or speaking another protocol version), down,
- *   then the reader's own flags.
+ *   built from another source, or speaking another protocol version), down
+ *   (its sentence names the fix), then the reader's own flags. It carries
+ *   messages.db's broken sentence, and the morning times only while
+ *   messages.db is open (else unknown).
+ * - Calls to return leave out a calls store the reader may not or can't
+ *   read, as the morning run does, and say which (waCalls, phoneCalls).
+ * - Today lists each run of the Life zone's day that made something, so
+ *   each keeps its Undo.
  * - Nothing here logs a name, a number or text: chat keys and counts only.
  */
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { instantAt, isValidTimeZone } from '@jantar/life-core';
+import { dayKeyOf, instantAt, isValidTimeZone } from '@jantar/life-core';
 import { MESSAGES_LIMITS, type Settings } from '@jantar/protocol';
 import {
   ChatKeySchema,
   DraftSchema,
   MessagesPrefsSchema,
-  type Call,
   type CallsToReturnResponse,
   type Chat,
   type Draft,
@@ -115,7 +120,7 @@ import {
   forgetChat,
   lastRunAt,
   listReads,
-  madeRun,
+  madeRuns,
   newestRun,
   openMessagesDb,
   putRun,
@@ -128,7 +133,7 @@ import {
 import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
 import { CALLBACK_TITLE, applyMorning, dismissAnswered, removeChatTodos, undoMorning, type ApplyResult } from './morning/apply.js';
 import { budget, droppedReport } from './morning/budget.js';
-import { collect, missedCalls, type Batch } from './morning/collect.js';
+import { callsFrom, collect, missedCalls, type Batch } from './morning/collect.js';
 import { OWNER_NAME, morningInput } from './morning/input.js';
 import { morningImages, pickImages, runMorning } from './morning/run.js';
 import { MorningTimer, type NextMorning, type WhatsAppReady } from './morning/timer.js';
@@ -377,12 +382,14 @@ class MessagesShell implements MessagesService {
     };
     return {
       enabled: this.ctx.settings.get().messages.enabled,
+      ...(this.brokenReason ? { broken: this.brokenReason } : {}),
       reader,
       whatsapp,
       phone,
       skipped: this.skipStore ? safe(() => this.skipStore!.list().length, readerSkipped) : readerSkipped,
       ...(skipUnmatched !== undefined ? { skipUnmatched } : {}),
-      morning: db ? safe(() => ({ at: readPrefs(db).morningAt, lastRunAt: lastRunAt(db) }), { at: null, lastRunAt: null }) : { at: null, lastRunAt: null },
+      // Unknown while messages.db is closed (off, or broken): never "off, never ran".
+      morning: db ? safe(() => ({ at: readPrefs(db).morningAt, lastRunAt: lastRunAt(db) }), null) : null,
     };
   }
 
@@ -403,7 +410,7 @@ class MessagesShell implements MessagesService {
     return { state: 'ok' };
   }
 
-  /** The reader didn't answer status. Its answer not checking is a reader of another build. */
+  /** The reader didn't answer status. Its answer not checking is a reader of another build; down, its own sentence names the fix (the 503s keep MESSAGES_SAYS.down). */
   private failedLine(e: unknown): ReaderLine {
     const code = e instanceof ReaderFailure ? e.code : 'down';
     switch (code) {
@@ -411,8 +418,10 @@ class MessagesShell implements MessagesService {
         return { state: 'no_access', detail: readerSays(code, e instanceof ReaderFailure ? e.detail : undefined) ?? MESSAGES_SAYS.noAccess };
       case 'unsupported':
         return { state: 'update_needed', detail: MESSAGES_SAYS.updateNeeded };
+      case 'down':
+        return { state: 'down', detail: MESSAGES_SAYS.readerDown };
       default:
-        return { state: 'down', detail: readerSays(code) ?? MESSAGES_SAYS.down };
+        return { state: 'down', detail: readerSays(code) ?? MESSAGES_SAYS.readerDown };
     }
   }
 
@@ -475,12 +484,9 @@ class MessagesShell implements MessagesService {
     this.needReads();
     const sinceMs = this.ctx.clock.now() - MESSAGES_LIMITS.waitingDays * DAY_MS;
     const since = this.ctx.clock.iso(sinceMs);
-    const wa = await this.reader.call('waCalls', { since });
-    // The iPhone log needs Full Disk Access on the reader; WhatsApp's calls count without it.
-    const phone = await this.reader.call('phoneCalls', { since }).catch((e: unknown) => {
-      if (e instanceof ReaderFailure && e.code === 'no_access') return { calls: [] as Call[] };
-      throw e;
-    });
+    // As the morning run: a store refused (the iPhone's without Full Disk Access) or changed by an update is left out, and named.
+    const wa = await callsFrom(this.reader, 'waCalls', since);
+    const phone = await callsFrom(this.reader, 'phoneCalls', since);
     const calls = [...wa.calls, ...phone.calls].filter((c) => Date.parse(c.at) >= sinceMs);
     const keys = [...new Set(calls.flatMap((c) => (c.incoming && c.missed && c.chatKey ? [c.chatKey] : [])))];
     const wrote: Record<string, string | null> = {};
@@ -489,7 +495,11 @@ class MessagesShell implements MessagesService {
     const open = missedCalls(calls, wrote).filter((c) => !c.returned);
     open.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     this.logRead('calls', by, undefined, open.length);
-    return { calls: open.map((c) => ({ ...c, returned: false as const })) };
+    return {
+      calls: open.map((c) => ({ ...c, returned: false as const })),
+      ...(wa.read ? {} : { waCalls: false as const }),
+      ...(phone.read ? {} : { phoneCalls: false as const }),
+    };
   }
 
   reads(limit: number): ReadLogEntry[] {
@@ -577,7 +587,9 @@ class MessagesShell implements MessagesService {
    * can start with a new salt; then each is looked for in the chats and
    * every chat of that exact name and kind is skipped again (a shared name
    * skips each: more hidden, never less). Reads stay refused while any is
-   * left, until the owner lets them go (`forget`) and skips them by hand.
+   * left, until the owner lets them go (`forget`, answered with their names)
+   * and skips them by hand; `forget` is refused until a lookup went through
+   * with the reader back, so it never empties a list nobody looked for.
    * `waiting` while the reader isn't back. The Mac's CLI only.
    */
   private async skipReset(o: { forget?: boolean }, actor: Actor): Promise<LifeResult<MessagesSkipReset>> {
@@ -587,6 +599,8 @@ class MessagesShell implements MessagesService {
     let left = skip.resetLeft();
     if (left === null) {
       if (!skip.saltLost()) return { ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipResetNotNeeded };
+      // Nothing looked up yet: nothing to let go.
+      if (o.forget === true) return { ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipForgetFirst };
       try {
         // Over a skip.json that won't read too: its keys were made with the lost salt.
         left = skip.resetStart();
@@ -600,6 +614,8 @@ class MessagesShell implements MessagesService {
       this.log.warn('messages: the skip list was reset after the salt was lost', { count: left.length });
     }
     if (o.forget === true) {
+      // Only what a lookup with the reader back couldn't find (not while it is coming back).
+      if (!skip.resetLooked()) return { ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipForgetFirst };
       try {
         skip.setResetLeft([]);
       } catch (e) {
@@ -607,7 +623,8 @@ class MessagesShell implements MessagesService {
         return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
       }
       if (left.length > 0) this.log.warn('messages: chats not found after a reset were let go', { count: left.length });
-      return { ok: true, value: { skipped: [], left: [], waiting: false } };
+      // Named, so the owner knows which to skip again by hand.
+      return { ok: true, value: { skipped: [], left: [], forgot: left, waiting: false } };
     }
 
     const found = new Map<string, SkipEntry>();
@@ -641,7 +658,7 @@ class MessagesShell implements MessagesService {
       db.tx(() => {
         for (const e of skipped) now.add(e);
         now.writeMirror();
-        now.setResetLeft(still);
+        now.setResetLeft(still, !waiting);
       });
       this.wrote();
     } catch (e) {
@@ -816,7 +833,7 @@ class MessagesShell implements MessagesService {
     return OK;
   }
 
-  /** The newest run (not a dry one), the run Today reports on, the open reply drafts and the call-back todos still open, newest first; never a skipped chat's. */
+  /** The newest run (not a dry one), the Life zone day's runs that made something, the open reply drafts and the call-back todos still open, newest first; never a skipped chat's. */
   private today(): MessagesTodayResponse {
     const { db } = this.need();
     const rows = db
@@ -836,7 +853,9 @@ class MessagesShell implements MessagesService {
       });
       return d.success ? [d.data] : [];
     });
-    return { run: newestRun(db, true), made: madeRun(db), drafts, callbacks: this.callbacks(db) };
+    const tz = this.zone();
+    const dayStart = instantAt(dayKeyOf(new Date(this.ctx.clock.now()), tz), '00:00', tz).toISOString();
+    return { run: newestRun(db, true), made: madeRuns(db, dayStart), drafts, callbacks: this.callbacks(db) };
   }
 
   /** The call-back todos the morning made that are still open in Life, none from a skipped chat (who: the title after CALLBACK_TITLE; at: when it rings). */

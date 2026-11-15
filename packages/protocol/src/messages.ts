@@ -185,9 +185,15 @@ export type MessagesReadsQuery = z.infer<typeof MessagesReadsQuerySchema>;
 export const MessagesReaderStateSchema = z.enum(['ok', 'down', 'no_access', 'not_installed', 'update_needed', 'unsupported']);
 export type MessagesReaderState = z.infer<typeof MessagesReaderStateSchema>;
 
-/** Behind no switch, so the phone and the CLI can say what is missing. Counts and times only, never a name. */
+/**
+ * Behind no switch, so the phone and the CLI can say what is missing. Counts
+ * and times only, never a name. `broken`: messages.db won't open (the
+ * sentence every other route answers). `morning` null: unknown while
+ * messages.db is closed (Messages off, or broken).
+ */
 export const MessagesStatusSchema = z.object({
   enabled: z.boolean(),
+  broken: z.string().optional(),
   reader: z.object({ state: MessagesReaderStateSchema, detail: z.string().optional() }),
   whatsapp: z.object({ found: z.boolean(), running: z.boolean(), newestAt: IsoDateSchema.nullable(), schemaOk: z.boolean() }),
   /** The iPhone call log (it needs Full Disk Access on the reader; WhatsApp's files don't). */
@@ -195,7 +201,7 @@ export const MessagesStatusSchema = z.object({
   skipped: count,
   /** Skipped chats that name no chat or person on this Mac now (the skip still holds for that person's own ids); left out until the reader has looked. */
   skipUnmatched: count.optional(),
-  morning: z.object({ at: HhMmSchema.nullable(), lastRunAt: IsoDateSchema.nullable() }),
+  morning: z.object({ at: HhMmSchema.nullable(), lastRunAt: IsoDateSchema.nullable() }).nullable(),
 });
 export type MessagesStatus = z.infer<typeof MessagesStatusSchema>;
 
@@ -229,7 +235,12 @@ export type MessagesSearchResponse = z.infer<typeof MessagesSearchResponseSchema
 /** A missed call the owner hasn't returned: no later call to that person and no message to them since. */
 export const CallToReturnSchema = CallSchema.extend({ returned: z.literal(false) });
 export type CallToReturn = z.infer<typeof CallToReturnSchema>;
-export const CallsToReturnResponseSchema = z.object({ calls: z.array(CallToReturnSchema) });
+/** `waCalls`, `phoneCalls`: false when WhatsApp's calls or the iPhone call log weren't read (refused, or changed by an update), so their calls aren't here; absent otherwise. */
+export const CallsToReturnResponseSchema = z.object({
+  calls: z.array(CallToReturnSchema),
+  waCalls: z.literal(false).optional(),
+  phoneCalls: z.literal(false).optional(),
+});
 export type CallsToReturnResponse = z.infer<typeof CallsToReturnResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -248,12 +259,15 @@ export type SkipResetBody = z.infer<typeof SkipResetBodySchema>;
  * After the reader's salt was lost: `skipped`, the chats found again by the
  * old entries' names and kinds (every chat with that exact name, so a shared
  * name skips each); `left`, the entries not found yet (reads stay refused
- * while any is left); `waiting`, the reader hasn't come back with its new
- * salt yet (ask again).
+ * while any is left); `forgot`, on `forget`, the entries let go (skip them
+ * again by hand); `waiting`, the reader hasn't come back with its new salt
+ * yet (ask again).
  */
+const LostEntrySchema = z.object({ name: z.string(), kind: ChatKindSchema });
 export const MessagesSkipResetSchema = z.object({
   skipped: z.array(SkipEntrySchema),
-  left: z.array(z.object({ name: z.string(), kind: ChatKindSchema })),
+  left: z.array(LostEntrySchema),
+  forgot: z.array(LostEntrySchema).optional(),
   waiting: z.boolean(),
 });
 export type MessagesSkipReset = z.infer<typeof MessagesSkipResetSchema>;
@@ -365,14 +379,14 @@ export type MorningRunBody = z.infer<typeof MorningRunBodySchema>;
 /**
  * The Today screen: the newest run (for its line: when, running, failed),
  * open reply drafts and the call-back todos (`at`: when it rings). `made`:
- * the run whose summary, todos and Undo Today shows, the newest that went
- * well and made anything since the newest timer run started (any, before the
- * first), so a later Run now that made nothing, or one that failed, never
- * hides the morning's; null when there is none.
+ * the runs whose summaries, todos and Undo Today shows, each that went well
+ * and made anything on the Life zone's current day, newest first, at most
+ * MESSAGES_LIMITS.todayRuns. A later Run now never takes the morning's Undo
+ * away, and an empty one, or one that failed, never hides it.
  */
 export const MessagesTodayResponseSchema = z.object({
   run: MorningRunSchema.nullable(),
-  made: MorningRunSchema.nullable(),
+  made: z.array(MorningRunSchema).max(MESSAGES_LIMITS.todayRuns),
   drafts: z.array(DraftSchema),
   callbacks: z.array(z.object({ todoId: LifeIdSchema, who: z.string(), at: IsoDateSchema.optional() })),
 });

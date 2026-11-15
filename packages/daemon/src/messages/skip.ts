@@ -21,7 +21,8 @@
  * owner's reset at the Mac goes on: `resetStart` sets every entry aside by
  * name and kind (meta RESET_KEY) and empties the list, so the reader can
  * make a new salt; the service then skips each chat found again by its name
- * and keeps reads refused while any is left (`resetLeft`).
+ * and keeps reads refused while any is left (`resetLeft`). Only after a
+ * lookup with the reader back (`resetLooked`) may the owner let the rest go.
  */
 import { randomBytes } from 'node:crypto';
 import { chmodSync, closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
@@ -33,7 +34,7 @@ import type { MessagesDb } from './db.js';
 export const SKIP_FILE = 'skip.json';
 /** The reader's salt, beside skip.json (jantar-messages-reader.swift loadSalt). */
 export const SALT_FILE = 'salt';
-/** meta: the entries a reset after a lost salt has still to find again (LostEntry[] as JSON). */
+/** meta: the entries a reset after a lost salt has still to find again, and whether a lookup went through with the reader back ({left, looked} as JSON). */
 const RESET_KEY = 'skip.reset';
 /** skip.json's format, as the reader parses it. */
 export const SKIP_FILE_VERSION = 1;
@@ -51,6 +52,8 @@ export interface LostEntry {
   kind: ChatKind;
 }
 const LostListSchema = z.array(z.object({ name: z.string(), kind: ChatKindSchema }));
+/** RESET_KEY's value; a bare list (as first written) has not been looked up. */
+const ResetSchema = z.union([z.object({ left: LostListSchema, looked: z.boolean() }), LostListSchema.transform((left) => ({ left, looked: false }))]);
 
 export interface SkipStore {
   /** Oldest first. */
@@ -82,8 +85,10 @@ export interface SkipStore {
   resetStart(): LostEntry[];
   /** The entries a reset has still to find, or null when none is going (a value that won't read: one unnamed entry). */
   resetLeft(): LostEntry[] | null;
-  /** What is still to find; none ends the reset. */
-  setResetLeft(left: readonly LostEntry[]): void;
+  /** The reset's last lookup went through with the reader back (false while none is going, or its value won't read). */
+  resetLooked(): boolean;
+  /** What is still to find, and whether this lookup went through with the reader back; none ends the reset. */
+  setResetLeft(left: readonly LostEntry[], looked?: boolean): void;
 }
 
 /**
@@ -173,6 +178,16 @@ export function mirroredKeys(file: string): string[] {
   return o.chatKeys as string[];
 }
 
+/** RESET_KEY's value, or null when it won't read. */
+function readReset(raw: string): { left: LostEntry[]; looked: boolean } | null {
+  try {
+    const r = ResetSchema.safeParse(JSON.parse(raw));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The skip list in `db`, mirrored into `dir` (paths.messagesDir). */
 export function createSkipStore(db: MessagesDb, dir: string): SkipStore {
   const file = join(dir, SKIP_FILE);
@@ -253,7 +268,7 @@ export function createSkipStore(db: MessagesDb, dir: string): SkipStore {
         lost.push(e);
       }
       db.tx(() => {
-        if (lost.length > 0) db.setMeta(RESET_KEY, JSON.stringify(lost));
+        if (lost.length > 0) db.setMeta(RESET_KEY, JSON.stringify({ left: lost, looked: false }));
         db.prepare('DELETE FROM skip').run();
         writeMirror();
       });
@@ -262,17 +277,15 @@ export function createSkipStore(db: MessagesDb, dir: string): SkipStore {
     resetLeft() {
       const raw = db.meta(RESET_KEY);
       if (raw === undefined) return null;
-      try {
-        const left = LostListSchema.safeParse(JSON.parse(raw));
-        if (left.success) return left.data;
-      } catch {
-        // below
-      }
-      return [{ name: SKIP_KEPT_NAME, kind: 'dm' }];
+      return readReset(raw)?.left ?? [{ name: SKIP_KEPT_NAME, kind: 'dm' }];
     },
-    setResetLeft(left) {
+    resetLooked() {
+      const raw = db.meta(RESET_KEY);
+      return raw !== undefined && readReset(raw)?.looked === true;
+    },
+    setResetLeft(left, looked = false) {
       if (left.length === 0) db.deleteMeta(RESET_KEY);
-      else db.setMeta(RESET_KEY, JSON.stringify(left));
+      else db.setMeta(RESET_KEY, JSON.stringify({ left, looked }));
     },
   };
 }

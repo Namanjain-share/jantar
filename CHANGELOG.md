@@ -62,9 +62,13 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   time already gone when the run makes it rings at the next quarter hour),
   and reply drafts; anything that doesn't cite a message it was given is
   dropped. One push holds counts only ("Morning: 6 todos, 3 replies
-  waiting, 2 call-backs") and follows your notification mute. A run never
-  makes the same thing twice, and Undo this morning takes a run back.
-  `jantar messages morning --dry-run` shows what it would make.
+  waiting, 2 call-backs") and follows your notification mute. A call-back
+  or timed todo rings as "WhatsApp · 11:00" on a locked phone, no name,
+  unless you turn titles on at the Mac (`jantar messages lockscreen names
+  on`). A run never makes the same thing twice, and each run of the day
+  that made something keeps its own Undo, so a later Run now never takes
+  the morning's. `jantar messages morning --dry-run` shows what it would
+  make.
 - **On the phone**: Messages, after Meetings. Today has how fresh the data
   was, the summary, Waiting on you (Copy, Open in WhatsApp with the draft
   typed in for a 1:1, Done, Dismiss), Call back and the todos made, with
@@ -84,7 +88,10 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   skipped, and if the reader's salt is lost it won't start until
   `jantar messages skip reset` skips the same chats again by name.
 - **At the Mac**: `jantar messages chats`, `read`, `search`, `calls`,
-  `skip` and `morning`. A name two chats share lists both and stops.
+  `skip` and `morning`. A name two chats share lists both and stops. Your
+  own lines show as `[you]`, and characters that could reorder a line or
+  start a fake one are taken out. `calls` (and `calls_to_return`) says
+  when the iPhone call log or WhatsApp's calls weren't read.
 - In Chat, todos the morning made are someone else's words: Chat reads them
   as data, and a change it then wants waits for your tap. Its "Looking
   at" chip names a todo from a meeting or WhatsApp by kind only, never by

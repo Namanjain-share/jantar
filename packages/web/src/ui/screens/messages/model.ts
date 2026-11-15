@@ -28,6 +28,7 @@ export const REMOVE_AT_MAC = `Remove at the Mac: ${CLI_NAME} messages skip remov
 export const NO_RUN = 'No morning run yet. Set a morning time in Settings, or Run now.';
 export const RUNNING = 'The morning run is going now.';
 export const UNDONE = "This morning was undone: its open todos are gone and its drafts dismissed.";
+const UNDO_ONE = { label: 'Undo this morning', ask: "Remove this morning's open todos and call-backs, and dismiss its reply drafts?", done: UNDONE } as const;
 
 export const KIND_WORD: Record<ChatKind, string> = { dm: '1:1', group: 'Group', community: 'Community' };
 export const VIA_WORD: Record<ReadVia, string> = { mcp: 'Claude session', cli: 'Terminal', phone: 'Phone', morning: 'Morning run' };
@@ -48,6 +49,14 @@ function parts(ms: number, tz: string | null | undefined, date: boolean): Intl.D
   } catch {
     return new Intl.DateTimeFormat('en-GB', o).formatToParts(new Date(ms));
   }
+}
+
+/** "07:58": an instant's time on the Life clock (the phone's when `tz` is unknown). */
+export function timeText(iso: string, tz?: string | null): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  const p = parts(ms, tz, false);
+  return `${p.find((x) => x.type === 'hour')?.value ?? ''}:${p.find((x) => x.type === 'minute')?.value ?? ''}`;
 }
 
 /** "Fri 07:58", or with `date` "Fri 13 Nov 07:58": an instant on the Life clock (the phone's when `tz` is unknown). */
@@ -112,6 +121,21 @@ export function runNotes(run: MorningRun): string[] {
   return out;
 }
 
+/**
+ * Undo's words for one of today's runs (`many`: more than one made
+ * something today): "Undo this morning" for the only one, else each by its
+ * time ("Undo the 08:00 run"), so a later Run now never takes the morning's.
+ */
+export function undoWords(run: MorningRun, tz: string | null | undefined, many: boolean): { label: string; ask: string; done: string } {
+  if (!many) return UNDO_ONE;
+  const time = timeText(run.at, tz);
+  return {
+    label: `Undo the ${time} run`,
+    ask: `Remove the open todos and call-backs the ${time} run made, and dismiss its reply drafts?`,
+    done: `The ${time} run was undone: its open todos are gone and its drafts dismissed.`,
+  };
+}
+
 /** Whether Undo this morning has something to undo: a real run that went well and made something. */
 export function canUndo(run: MorningRun | null): run is MorningRun {
   if (!run || run.state !== 'ok' || run.trigger === 'dry') return false;
@@ -119,7 +143,7 @@ export function canUndo(run: MorningRun | null): run is MorningRun {
 }
 
 const READER_SAYS: Record<Exclude<MessagesStatus['reader']['state'], 'ok'>, string> = {
-  down: `Messages can't read WhatsApp right now: the reader isn't running. At the Mac: ${CLI_NAME} messages status`,
+  down: `The reader isn't running. At the Mac: ${CLI_NAME} messages setup (it restarts it); its errors are in ~/.jantar/logs/messages-reader.err.log`,
   no_access: `Messages can't read WhatsApp right now. At the Mac: ${CLI_NAME} messages setup`,
   not_installed: `The reader isn't set up on this Mac. At the Mac: ${CLI_NAME} messages setup`,
   update_needed: `The reader changed in this release. At the Mac: ${CLI_NAME} messages setup`,

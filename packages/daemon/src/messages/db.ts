@@ -20,6 +20,7 @@
  * message text but a draft's quote of what they asked, never a WhatsApp id.
  */
 import { basename } from 'node:path';
+import { MESSAGES_LIMITS } from '@jantar/protocol';
 import {
   DEFAULT_MESSAGES_PREFS,
   MessagesPrefsSchema,
@@ -249,20 +250,19 @@ export function newestRun(db: MessagesDb, real: boolean): MorningRun | null {
 const MADE_SCAN = 50;
 
 /**
- * The run Today reports on (MessagesTodayResponse `made`): the newest one,
- * not dry, that went well and made anything, since the newest timer run
- * started (from any run while there is none); null when none did.
+ * The runs Today reports on (MessagesTodayResponse `made`): each one, not
+ * dry, that went well and made anything, started at `since` or later (the
+ * Life zone's day), newest first, at most MESSAGES_LIMITS.todayRuns.
  */
-export function madeRun(db: MessagesDb): MorningRun | null {
-  const since = (db.prepare("SELECT max(at) AS at FROM runs WHERE trigger = 'timer'").get() as { at: string | null } | undefined)?.at ?? null;
-  const rows = db
-    .prepare(`SELECT json FROM runs WHERE trigger <> 'dry' AND state = 'ok'${since ? ' AND at >= ?' : ''} ORDER BY at DESC, rowid DESC LIMIT ?`)
-    .all(...(since ? [since, MADE_SCAN] : [MADE_SCAN])) as { json: string }[];
+export function madeRuns(db: MessagesDb, since: string): MorningRun[] {
+  const rows = db.prepare("SELECT json FROM runs WHERE trigger <> 'dry' AND state = 'ok' AND at >= ? ORDER BY at DESC, rowid DESC LIMIT ?").all(since, MADE_SCAN) as { json: string }[];
+  const out: MorningRun[] = [];
   for (const row of rows) {
     const run = parseRun(row.json);
-    if (run && run.counts.todos + run.counts.replies + run.counts.callbacks > 0) return run;
+    if (run && run.counts.todos + run.counts.replies + run.counts.callbacks > 0) out.push(run);
+    if (out.length >= MESSAGES_LIMITS.todayRuns) break;
   }
-  return null;
+  return out;
 }
 
 /** The chats a run sends to Claude (a skip later takes that run's summary away). */

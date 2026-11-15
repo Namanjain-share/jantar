@@ -709,4 +709,6 @@ export const MESSAGES_LIMITS = Object.freeze({
   quietMs: 120_000,
   morningTimeoutMs: 300_000,
   todosPerRun: 20,
+  /** Today lists this many of the day's runs that made something, at most, each with its Undo. */
+  todayRuns: 5,
 });

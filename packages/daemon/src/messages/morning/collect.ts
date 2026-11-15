@@ -13,7 +13,8 @@
  *   the reader may not open (the iPhone's without Full Disk Access) or no
  *   longer reads (`unsupported`: a WhatsApp or iOS update changed it) is
  *   left out quietly, with `waCalls: false` or `phone: false` for the run's
- *   report, so the lines still make todos; anything else fails the run.
+ *   report, so the lines still make todos; anything else fails the run (a
+ *   reader of another build too). callsToReturn (service.ts) does the same.
  *   Only missed incoming calls are kept, each marked `returned` (missedCalls).
  * - `waiting`: a 1:1 whose last line in the batch is theirs, within
  *   waitingDays, with nothing from the owner to that person since (under
@@ -33,6 +34,7 @@ import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
 import { ReaderFailure, type ReaderClient } from '../reader-client.js';
 import { READER_CHATS_MAX, READER_KEYS_MAX, type ReaderCursor, type ReaderError, type ReaderNewSince } from '../reader-protocol.js';
+import { READER_MISMATCH } from '../says.js';
 
 /** Where the morning feed got to (stored after a run that went well). */
 export type Cursor = ReaderCursor;
@@ -156,12 +158,12 @@ export function missedCalls(calls: readonly Call[], wrote: Readonly<Record<strin
     });
 }
 
-/** One calls store's calls since `since`; `read: false` when it is left out (CALLS_LEFT_OUT). */
-async function callsFrom(reader: ReaderClient, op: 'waCalls' | 'phoneCalls', since: string): Promise<{ calls: Call[]; read: boolean }> {
+/** One calls store's calls since `since`; `read: false` when it is left out (CALLS_LEFT_OUT; never a reader of another build). */
+export async function callsFrom(reader: ReaderClient, op: 'waCalls' | 'phoneCalls', since: string): Promise<{ calls: Call[]; read: boolean }> {
   try {
     return { calls: (await reader.call(op, { since })).calls, read: true };
   } catch (e) {
-    if (e instanceof ReaderFailure && CALLS_LEFT_OUT.has(e.code)) return { calls: [], read: false };
+    if (e instanceof ReaderFailure && CALLS_LEFT_OUT.has(e.code) && e.detail !== READER_MISMATCH) return { calls: [], read: false };
     throw e;
   }
 }

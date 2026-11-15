@@ -44,6 +44,7 @@ import type { Message } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
 import { tagEscaper } from '../../rewrite/context.js';
 import { CONTROL, LINE_END } from '../../rewrite/guards.js';
+import { NOT_OWNER, OWNER_NAME, readsAsOwner } from '../says.js';
 import { aboutMe, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 
 /** Every tag of the input and the answer: escaped inside any data. */
@@ -56,10 +57,8 @@ export interface RefMap {
   k: Map<string, string>;
 }
 
-/** The `from` of the owner's own lines (beside their by_user mark). */
-export const OWNER_NAME = 'me';
-/** Anyone else's name that reads as OWNER_NAME. */
-const NOT_OWNER = `${OWNER_NAME} (another person)`;
+/** The `from` of the owner's own lines (beside their by_user mark); anyone else's name that reads as it is NOT_OWNER (says.ts). */
+export { OWNER_NAME };
 
 export interface MorningInputOptions {
   now: Date;
@@ -70,8 +69,6 @@ export interface MorningInputOptions {
 }
 
 const escapeTags = tagEscaper(MORNING_TAGS);
-/** Characters that show as nothing: a name with them still reads as what is left. */
-const UNSEEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 /** A time this many days back or fewer shows its weekday only. */
 const WEEKDAY_ONLY_DAYS = 6;
@@ -142,7 +139,7 @@ export function dataText(s: string): string {
 /** A name as an attribute's value; one that reads as the owner's (OWNER_NAME) never does. */
 export function dataName(s: string): string {
   const name = s.replace(LINE_END, ' ').replace(CONTROL, '').replace(/\s+/g, ' ').trim();
-  if (name.normalize('NFKC').replace(UNSEEN, '').trim().toLowerCase() === OWNER_NAME) return NOT_OWNER;
+  if (readsAsOwner(name)) return NOT_OWNER;
   return escapeTags(name).replace(/"/g, '&quot;');
 }
 

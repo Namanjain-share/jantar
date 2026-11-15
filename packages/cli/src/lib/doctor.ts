@@ -686,7 +686,7 @@ export async function runDoctor(i: DoctorInput): Promise<DoctorReport> {
     ...(node ? await fleetNodeChecks(i, probe) : await fleetHubChecks(i, probe)),
     ...(node ? [] : one(await captureDoorCheck(i, probe))),
     ...(node ? [] : one(await captureDoorCheck(i, probe, 'chat'))),
-    ...(mac && !node ? one(await messagesReaderCheck(i, probe)) : []),
+    ...(mac && !node ? await messagesChecks(i, probe) : []),
   ];
   const counts: Record<CheckStatus, number> = { ok: 0, warn: 0, fail: 0, info: 0 };
   for (const c of checks) counts[c.status] += 1;
@@ -1050,34 +1050,39 @@ const SETUP_FIX = 'jantar messages setup';
 /**
  * jantar-messages-reader, once Messages is on: the daemon's word on it (ok,
  * or what's wrong and its fix), or with the daemon down whether it is built
- * and its LaunchAgent written. Full Disk Access is only the iPhone call
- * log's, so its absence is said, never warned.
+ * and its LaunchAgent written. A reader that answers but reads nothing
+ * (WhatsApp closed, the skip list's file, a reset going: status's detail)
+ * is warned, never ok. Full Disk Access is only the iPhone call log's, so
+ * its absence is said, never warned. A messages.db that won't open is its
+ * own warning (its sentence names the fix).
  */
-async function messagesReaderCheck(i: DoctorInput, probe: DaemonProbe): Promise<DoctorCheck | null> {
-  if (!i.settings.settings.messages.enabled) return null;
+async function messagesChecks(i: DoctorInput, probe: DaemonProbe): Promise<DoctorCheck[]> {
+  if (!i.settings.settings.messages.enabled) return [];
   const base = { id: 'messages-reader', title: 'Messages reader' } as const;
   if (!probe.running) {
     const built = await exists(i.paths.messagesReaderBin);
     const agent = await plistExists(plistPath(i.paths, READER_LABEL));
     const detail = `${built ? 'built' : 'not built'}, LaunchAgent ${agent ? 'installed' : 'not installed'} (the daemon is down, so it can't say more)`;
-    return built && agent ? { ...base, status: 'info', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX };
+    return [built && agent ? { ...base, status: 'info', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX }];
   }
   let st: MessagesStatus;
   try {
     st = await callDaemon<MessagesStatus>(i.ctl, 'GET', MESSAGES_ROUTES.messagesStatus.path, undefined, { timeoutMs: 15_000 });
   } catch (e) {
-    return { ...base, status: 'warn', detail: `the daemon didn't say: ${(e as Error).message}` };
+    return [{ ...base, status: 'warn', detail: `the daemon didn't say: ${(e as Error).message}` }];
   }
+  const data: DoctorCheck[] = st.broken ? [{ id: 'messages-data', title: 'Messages data', status: 'warn', detail: st.broken }] : [];
   const r = st.reader;
   if (r.state === 'ok') {
+    if (r.detail) return [{ ...base, status: 'warn', detail: `answers, but: ${r.detail}` }, ...data];
     const phone = st.phone.readable
       ? 'the iPhone call log reads too'
       : "the iPhone call log doesn't read: Full Disk Access on the reader isn't granted (optional), or this Mac has no iPhone call log";
-    return { ...base, status: 'ok', detail: `answers${r.detail ? ` (${r.detail})` : ''}; ${phone}` };
+    return [{ ...base, status: 'ok', detail: `answers; ${phone}` }, ...data];
   }
   const detail = `${r.state.replace('_', ' ')}${r.detail ? `: ${r.detail}` : ''}`;
   // A WhatsApp that stores chats differently needs a Jantar update, not setup.
-  return r.state === 'unsupported' ? { ...base, status: 'warn', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX };
+  return [r.state === 'unsupported' ? { ...base, status: 'warn', detail } : { ...base, status: 'warn', detail, fix: SETUP_FIX }, ...data];
 }
 
 async function sleepCheck(i: DoctorInput): Promise<DoctorCheck> {

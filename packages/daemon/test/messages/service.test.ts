@@ -1,10 +1,12 @@
 /**
  * The daemon's Messages part (0.15, messages/service.ts) against a fake
  * reader (fake-reader.ts: the reader's protocol, no Swift):
- * - status: a socket that doesn't answer is `down`; no reader installed is
- *   `not_installed`; an installed reader built from another source (its
- *   .key) or speaking another version is `update_needed`; the reader's own
- *   flags map to `unsupported`, `no_access` and details;
+ * - status: a socket that doesn't answer is `down`, its sentence naming the
+ *   fix; no reader installed is `not_installed`; an installed reader built
+ *   from another source (its .key) or speaking another version is
+ *   `update_needed`; the reader's own flags map to `unsupported`,
+ *   `no_access` and details; a messages.db that won't open is in it, and
+ *   the morning run is unknown while messages.db is closed;
  * - every read lands in the read log with ids and counts only (never text,
  *   a name or a number), the newest READS_KEEP kept;
  * - the skip list lives in messages.db and its 0600 mirror (skip.json, what
@@ -14,12 +16,15 @@
  *   written over, and reads wait for it), a mirror deleted or edited
  *   outside is written again before the next read, and a change that fails
  *   leaves the mirror as the table is; after a lost salt status says so,
- *   and the Mac's reset finds the old chats again by name before reads go on;
+ *   and the Mac's reset finds the old chats again by name before reads go
+ *   on (`--forget` only after a lookup with the reader back, naming them);
  * - media: an image comes back shrunk by jantar-media (stubbed), anything
  *   else by name and size, and the reader's spool copy is gone either way;
  *   a job left from a crash goes at start;
  * - callsToReturn leaves out calls returned by a later message, an outgoing
- *   call or a later answered call;
+ *   call or a later answered call, and a calls store refused or changed
+ *   (named in the answer), never a reader of another build;
+ * - Today's runs: the day's runs that made something, at most five;
  * - with the real reader (where Swift builds it): the skip list the daemon
  *   writes is the one the reader enforces, and media comes through its spool.
  */
@@ -29,19 +34,19 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SettingsSchema } from '@jantar/protocol';
-import { MessagesStatusSchema, type Call, type Chat, type Message } from '@jantar/protocol/messages';
-import type { Actor, CcwLegacySource, LifeService, MessagesService, Paths, UsageSource } from '../../src/contracts.js';
+import { MessagesStatusSchema, type Call, type Chat, type Message, type MorningRun } from '@jantar/protocol/messages';
+import type { Actor, CcwLegacySource, DaemonContext, LifeService, MessagesService, Paths, UsageSource } from '../../src/contracts.js';
 import { FakeClock } from '../../src/core/clock.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
 import { createTestContext } from '../../src/core/testing.js';
 import { resolvePaths } from '../../src/config.js';
-import { READS_KEEP, addRead, listReads, openMessagesDb } from '../../src/messages/db.js';
+import { MESSAGES_BROKEN_REASON, READS_KEEP, addRead, listReads, madeRuns, openMessagesDb, putRun } from '../../src/messages/db.js';
 import { buildMessagesService, type ImageShrinker } from '../../src/messages/index.js';
 import { ReaderFailure, createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
 import { READER_SOURCE, READER_VERSION, readerSourceKey, type ReaderOp, type ReaderStatus } from '../../src/messages/reader-protocol.js';
-import { MESSAGES_SAYS } from '../../src/messages/says.js';
+import { MESSAGES_SAYS, READER_MISMATCH } from '../../src/messages/says.js';
 import { SKIP_KEPT_NAME } from '../../src/messages/skip.js';
-import { readerError, startFakeReader, type FakeHandlers, type FakeReader } from './fake-reader.js';
+import { readerError, startFakeReader, type FakeHandler, type FakeHandlers, type FakeReader } from './fake-reader.js';
 import { makeWhatsAppFixture } from './fixture.js';
 import { buildReader, whatsAppRunning } from './reader-build.js';
 import { keyOf, startReader } from './reader-harness.js';
@@ -114,6 +119,7 @@ interface Setup {
   svc: MessagesService;
   paths: Paths;
   reader: FakeReader | null;
+  ctx: DaemonContext;
 }
 
 /** The part on a test context (FakeClock at NOW, Messages on), the reader installed from this source, and a fake reader when `handlers` are given. */
@@ -135,7 +141,7 @@ async function setup(o: { handlers?: FakeHandlers; shrinker?: ImageShrinker; dbF
   );
   await svc.start();
   cleanups.push(() => svc.stop());
-  return { svc, paths, reader };
+  return { svc, paths, reader, ctx };
 }
 
 describe('status', () => {
@@ -145,7 +151,8 @@ describe('status', () => {
     expect(MessagesStatusSchema.parse(st)).toEqual(st);
     expect(st).toEqual({
       enabled: true,
-      reader: { state: 'down', detail: MESSAGES_SAYS.down },
+      // Status's own sentence names the fix (the 503s keep MESSAGES_SAYS.down).
+      reader: { state: 'down', detail: MESSAGES_SAYS.readerDown },
       whatsapp: { found: false, running: false, newestAt: null, schemaOk: false },
       phone: { readable: false },
       skipped: 0,
@@ -186,6 +193,29 @@ describe('status', () => {
     expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.skipBroken });
     st = { ...READY, whatsapp: { ...READY.whatsapp, running: false, newestAt: null, walMtime: null } };
     expect((await t.svc.status()).reader).toEqual({ state: 'ok', detail: MESSAGES_SAYS.closed });
+    // Every read answers busy while WhatsApp is closed: the sentence says nothing reads, not only the newest.
+    expect(MESSAGES_SAYS.closed).toBe('WhatsApp is closed, and Messages reads nothing while it is. Open WhatsApp on the Mac.');
+  });
+
+  it("status says messages.db won't open, and the morning run is unknown while messages.db is closed", async () => {
+    // A folder where messages.db should be: it won't open.
+    const dbFile = join(dir, 'messages.db');
+    mkdirSync(dbFile);
+    const t = await setup({ dbFile, handlers: { status: () => READY } });
+    expect(t.svc.broken()).toBe(MESSAGES_BROKEN_REASON);
+    const broken = await t.svc.status();
+    expect(MessagesStatusSchema.parse(broken)).toEqual(broken);
+    expect(broken).toMatchObject({ enabled: true, reader: { state: 'ok' }, broken: MESSAGES_BROKEN_REASON, morning: null });
+  });
+
+  it('status while Messages is off: nothing broken, the morning run unknown (a time may be saved), never "off, never"', async () => {
+    const on = await setup({ handlers: { status: () => READY } });
+    expect(on.svc.morning.setPrefs({ morningAt: '08:00' }, CLI)).toEqual({ ok: true, value: true });
+    expect((await on.svc.status()).morning).toEqual({ at: '08:00', lastRunAt: null });
+    await on.ctx.settings.patch({ messages: { enabled: false } });
+    const off = await on.svc.status();
+    expect(off).toMatchObject({ enabled: false, morning: null });
+    expect(off).not.toHaveProperty('broken');
   });
 });
 
@@ -559,12 +589,54 @@ describe('the skip list', () => {
     expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: true, value: { skipped: [], left: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false } });
 
     // The owner lets it go (he skips it by hand): reads go on, the found ones skipped.
-    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual({ ok: true, value: { skipped: [], left: [], waiting: false } });
+    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual({ ok: true, value: { skipped: [], left: [], forgot: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false } });
     expect(await t.svc.chats({ limit: 30 }, { via: 'cli' })).toMatchObject({ total: after.length });
     expect((await t.svc.status()).reader).toEqual({ state: 'ok' });
     expect(t.svc.skip.list().map((e) => e.chatKey).sort()).toEqual([NEW.asha, NEW.group, NEW.mom1, NEW.mom2].sort());
     writeFileSync(salt, Buffer.alloc(32, 8), { mode: 0o600 });
     expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: false, code: 'conflict' });
+  });
+
+  it('skip reset --forget lets go only of chats a reset looked for with the reader back, and names them', async () => {
+    const before: Record<string, Chat> = { [ASHA]: chat(ASHA, 'Asha Test'), [RAVI]: chat(RAVI, 'Ravi Test') };
+    const t = await setup({
+      handlers: {
+        read: (a) => {
+          const c = before[String(a.chatKey)];
+          if (!c) throw readerError('not_found');
+          return { chat: c, messages: [], more: false };
+        },
+      },
+    });
+    for (const k of [ASHA, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: true });
+    const salt = join(t.paths.messagesDir, 'salt');
+    writeFileSync(salt, Buffer.alloc(32, 7), { mode: 0o600 });
+    rmSync(salt);
+    await t.reader!.close();
+    const first = { ok: false, code: 'conflict', reason: MESSAGES_SAYS.skipForgetFirst };
+
+    // A first call with --forget looks nothing up: refused, and the list is as it was.
+    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual(first);
+    expect(t.svc.skip.list().map((e) => e.chatKey).sort()).toEqual([ASHA, RAVI].sort());
+
+    // The reset starts; while the reader isn't back, --forget is still refused.
+    expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: true, value: { skipped: [], waiting: true } });
+    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual(first);
+    await expect(t.svc.chats({ limit: 30 }, { via: 'cli' })).rejects.toMatchObject({ code: 'messages_unavailable', message: MESSAGES_SAYS.skipResetLeft });
+
+    // The reader back with a new salt: Asha is found, Ravi isn't.
+    const NEW_ASHA = 'ce1b2c3d4e5f6a7b8';
+    const reader = await startFakeReader(t.paths.messagesReaderSock, {
+      status: () => READY,
+      chats: (a) => (String(a.q).startsWith('Asha') ? { chats: [chat(NEW_ASHA, 'Asha Test')], total: 1 } : { chats: [], total: 0 }),
+    });
+    cleanups.push(() => reader.close());
+    expect(await t.svc.skip.reset({}, CLI)).toMatchObject({ ok: true, value: { left: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false } });
+
+    // Now --forget lets Ravi go and names him, so the owner knows whom to skip again; reads go on.
+    expect(await t.svc.skip.reset({ forget: true }, CLI)).toEqual({ ok: true, value: { skipped: [], left: [], forgot: [{ name: 'Ravi Test', kind: 'dm' }], waiting: false } });
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([NEW_ASHA]);
+    expect(await t.svc.chats({ limit: 30 }, { via: 'cli' })).toEqual({ chats: [], total: 0 });
   });
 
   it('status passes on how many skips name no chat on this Mac', async () => {
@@ -750,6 +822,68 @@ describe('calls to return', () => {
     });
     expect((await t.svc.callsToReturn({ via: 'cli' })).calls.map((c) => c.callKey)).toEqual([raviWa.callKey]);
   });
+
+  it("a calls store refused or changed by an update is left out and named, as the morning run does; the other still answers", async () => {
+    const raviWa = call(2, { at: '2026-11-13T10:00:00.000Z', who: 'Ravi Test', chatKey: RAVI });
+    const momPhone = call(3, { at: '2026-11-13T11:00:00.000Z', who: 'Mom', chatKey: MOM, via: 'phone' });
+    let wa: FakeHandler = () => ({ calls: [raviWa] });
+    let phone: FakeHandler = () => ({ calls: [momPhone] });
+    const t = await setup({ handlers: { waCalls: (a) => wa(a), phoneCalls: (a) => phone(a), lastFromMe: () => ({ [RAVI]: null, [MOM]: null }) } });
+    const answer = async () => {
+      const r = await t.svc.callsToReturn({ via: 'cli' });
+      return { ...r, calls: r.calls.map((c) => c.callKey) };
+    };
+    expect(await answer()).toEqual({ calls: [momPhone.callKey, raviWa.callKey] });
+    for (const code of ['no_access', 'unsupported'] as const) {
+      phone = () => {
+        throw readerError(code);
+      };
+      expect(await answer(), code).toEqual({ calls: [raviWa.callKey], phoneCalls: false });
+      phone = () => ({ calls: [momPhone] });
+      wa = () => {
+        throw readerError(code);
+      };
+      expect(await answer(), code).toEqual({ calls: [momPhone.callKey], waCalls: false });
+      wa = () => ({ calls: [raviWa] });
+    }
+    // A reader of another build is never left out quietly: the read fails, and says to run setup.
+    wa = () => ({ calls: [{ callKey: 'an old shape' }] });
+    await expect(t.svc.callsToReturn({ via: 'cli' })).rejects.toMatchObject({ code: 'unsupported', detail: READER_MISMATCH });
+  });
+});
+
+describe("Today's runs", () => {
+  const made = (id: string, at: string, o: Partial<MorningRun> = {}): MorningRun => ({
+    id,
+    at,
+    trigger: 'now',
+    state: 'ok',
+    stale: false,
+    newestAt: null,
+    counts: { chats: 1, messages: 1, calls: 0, todos: 1, replies: 0, callbacks: 0, dropped: 0 },
+    dropped: [],
+    todoIds: [],
+    ...o,
+  });
+
+  it("lists the day's runs that made something, newest first, at most five", () => {
+    const r = openMessagesDb(':memory:');
+    if (!r.ok) throw new Error(r.reason);
+    const db = r.db;
+    try {
+      const id = (n: number) => `01JFZ8X8Y3T0V5G9WQK2M4N0${String(n).padStart(2, '0')}`;
+      // Yesterday's, a dry run, a failed one and one that made nothing never count.
+      putRun(db, made(id(1), '2026-11-13T23:59:00.000Z'));
+      putRun(db, made(id(2), '2026-11-14T00:10:00.000Z', { trigger: 'dry' }));
+      putRun(db, made(id(3), '2026-11-14T00:20:00.000Z', { state: 'failed' }));
+      putRun(db, made(id(4), '2026-11-14T00:30:00.000Z', { counts: { chats: 0, messages: 0, calls: 0, todos: 0, replies: 0, callbacks: 0, dropped: 0 } }));
+      for (let n = 5; n <= 11; n += 1) putRun(db, made(id(n), `2026-11-14T0${n - 4}:00:00.000Z`, { trigger: n === 5 ? 'timer' : 'now' }));
+      expect(madeRuns(db, '2026-11-14T00:00:00.000Z').map((x) => x.id)).toEqual([id(11), id(10), id(9), id(8), id(7)]);
+      expect(madeRuns(db, '2026-11-14T06:30:00.000Z').map((x) => x.id)).toEqual([id(11)]);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('the reader client', () => {
@@ -769,7 +903,8 @@ describe('the reader client', () => {
     const [st, chats] = await Promise.all([client.call('status', {}), client.call('chats', { limit: 5 })]);
     expect(st).toEqual(READY);
     expect(chats.total).toBe(1);
-    await expect(client.call('read', { chatKey: ASHA, limit: 5 })).rejects.toMatchObject({ code: 'unsupported' });
+    // A reader of another build: its own detail, which the routes and the morning run say as "update needed".
+    await expect(client.call('read', { chatKey: ASHA, limit: 5 })).rejects.toMatchObject({ code: 'unsupported', detail: READER_MISMATCH });
     // Args are checked before anything is sent.
     const sent = reader.calls.length;
     await expect(client.call('read', { chatKey: 'Asha', limit: 5 })).rejects.toMatchObject({ code: 'bad_request' });

@@ -32,6 +32,10 @@
  *   (/work?tab=clients&id=<clientId>), or the deal of one with no client
  *   (/work?tab=deals&id=<dealId>; Todos gives a deal's todo its client on
  *   every write since), ids only.
+ * - 0.15 Messages: a todo the morning run made (`from: 'messages'`: a
+ *   call-back names the person or the number, a todo quotes a chat) says
+ *   only "WhatsApp · HH:MM" unless messages.lockScreenNames is on (then its
+ *   title by notify.bodies, as any todo).
  */
 import { workOn, type Due, type Todo } from '@jantar/protocol';
 import { dayKeyOf, hhmmOf, instantAt } from '@jantar/life-core';
@@ -111,6 +115,8 @@ export function personOfSpace(space: string): string | undefined {
 export interface FollowUpPush {
   work: boolean;
   names: boolean;
+  /** 0.15: whether a todo from WhatsApp (`from: 'messages'`) may say its title (messages.lockScreenNames). */
+  whatsAppNames?: boolean;
 }
 
 export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean, tz: string, bodies: 'full' | 'short' | 'generic', person?: string, followUp: FollowUpPush = { work: false, names: false }): LifePush {
@@ -123,6 +129,8 @@ export function todoPush(t: Todo | null, id: string, dueAt: Date, late: boolean,
   const isFollowUp = client !== undefined || deal !== undefined;
   let body: string;
   if (isFollowUp && !followUp.names) body = `Follow-up · ${time}`;
+  // 0.15: the morning run's (a call-back names the person) shows no chat's words unless he turned names on at the Mac.
+  else if (t?.from === 'messages' && followUp.whatsAppNames !== true) body = `WhatsApp · ${time}`;
   else if (bodies === 'generic' || !title) body = `Tap to open · ${time}`;
   else if (bodies === 'short') body = `${clip(title, SHORT_TITLE)} · ${time}`;
   else body = `${title} · ${time}`;
@@ -152,7 +160,7 @@ export function todoPingHandler(core: LifeCore, deps: Pick<LifeModuleDeps, 'ctx'
       const id = rows[0]?.ref ?? '';
       const hit = repo.anySpace(id);
       const s = deps.ctx.settings.get();
-      const followUp = { work: workOn(s), names: s.life.workLockScreenNames };
+      const followUp = { work: workOn(s), names: s.life.workLockScreenNames, whatsAppNames: s.messages.lockScreenNames };
       // Only his own space's todos are follow-ups (a client or a deal is refused anywhere else).
       const todo = hit && hit.space !== '' ? (({ contactId: _c, dealId: _d, ...rest }) => rest)(hit.todo) : (hit?.todo ?? null);
       return todoPush(todo, id, dueAt, late, core.tz(), s.notify.bodies, hit ? personOfSpace(hit.space) : rows[0]?.person, followUp);

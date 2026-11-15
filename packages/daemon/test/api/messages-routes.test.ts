@@ -140,7 +140,7 @@ function fakeMorning(seen: string[]): MorningApi {
       seen.push(`run ${o.trigger}`);
       return { ...RUN, trigger: o.trigger };
     },
-    today: () => ({ run: RUN, made: RUN, drafts: [DRAFT], callbacks: [] }),
+    today: () => ({ run: RUN, made: [RUN], drafts: [DRAFT], callbacks: [] }),
     setDraft: (id, state) => {
       seen.push(`draft ${id} ${state}`);
       return OK;
@@ -341,6 +341,22 @@ describe('reading', () => {
     expect([big.statusCode, err(big.body)]).toEqual([400, { code: 'invalid_request', message: MESSAGES_SAYS.tooBig }]);
   });
 
+  it("a reader of another build: an answer that doesn't check says to run setup, never that WhatsApp changed", async () => {
+    const t = await messagesApi({
+      handlers: {
+        ...READER,
+        // Shapes an older reader might send.
+        chats: () => ({ list: [{ id: ASHA, title: 'Asha Test' }] }),
+        waCalls: () => ({ calls: [{ key: 'k1', when: NOW }] }),
+      },
+    });
+    for (const url of ['/v1/messages/chats', '/v1/messages/calls']) {
+      for (const r of [await tcp(t, 'GET', url), await ctl(t, 'GET', url)]) {
+        expect([r.statusCode, err(r.body)], url).toEqual([503, { code: 'messages_unavailable', message: MESSAGES_SAYS.updateNeeded }]);
+      }
+    }
+  });
+
   it("no_access says what the reader's detail names: WhatsApp missing, its contact files, the call log, else Full Disk Access", async () => {
     let detail: string | undefined;
     const t = await messagesApi({
@@ -414,7 +430,8 @@ describe('reading', () => {
     expect((await ctl(t, 'GET', `/v1/messages/chats/${ASHA}`, undefined, mcp)).statusCode).toBe(200);
     expect((await ctl(t, 'GET', '/v1/messages/search?q=deck')).json()).toMatchObject({ hits: [{ msgKey: `${ASHA}.3EB0A1`, snippet: DECK }] });
     // A phone can't claim to be a Claude session.
-    expect((await tcp(t, 'GET', '/v1/messages/calls', undefined, mcp)).json()).toEqual({ calls: [{ ...missed(1, 'Asha Test', ASHA), returned: false }] });
+    // The iPhone call log refused: left out, and the answer says so.
+    expect((await tcp(t, 'GET', '/v1/messages/calls', undefined, mcp)).json()).toEqual({ calls: [{ ...missed(1, 'Asha Test', ASHA), returned: false }], phoneCalls: false });
     // A pid that isn't one is left out; the folder still counts.
     const odd = { ...mcp, [MESSAGES_CALLER_HEADERS.pid]: '-3', [MESSAGES_CALLER_HEADERS.folder]: 'plain' };
     expect((await ctl(t, 'GET', '/v1/messages/chats', undefined, odd)).statusCode).toBe(200);
@@ -570,7 +587,7 @@ describe('the skip list', () => {
     const reads = await ctl(t, 'GET', '/v1/messages/chats');
     expect([reads.statusCode, err(reads.body)]).toEqual([503, { code: 'messages_unavailable', message: MESSAGES_SAYS.skipResetLeft }]);
     const forgot = await ctl(t, 'POST', '/v1/messages/skip/reset', { forget: true });
-    expect([forgot.statusCode, forgot.json()]).toEqual([200, { skipped: [], left: [], waiting: false }]);
+    expect([forgot.statusCode, forgot.json()]).toEqual([200, { skipped: [], left: [], forgot: [{ name: 'Asha Test', kind: 'dm' }], waiting: false }]);
     expect((await ctl(t, 'GET', '/v1/messages/chats')).statusCode).toBe(200);
     // The reader made its new salt: nothing more to reset.
     writeFileSync(join(t.messagesDir, 'salt'), Buffer.alloc(32, 1), { mode: 0o600 });
@@ -663,7 +680,7 @@ describe('the audit', () => {
 
   it("the morning's screens answer through the part: today, prefs", async () => {
     const t = await messagesApi({ handlers: READER });
-    expect((await tcp(t, 'GET', '/v1/messages/today')).json()).toEqual({ run: RUN, made: RUN, drafts: [DRAFT], callbacks: [] });
+    expect((await tcp(t, 'GET', '/v1/messages/today')).json()).toEqual({ run: RUN, made: [RUN], drafts: [DRAFT], callbacks: [] });
     expect((await tcp(t, 'GET', '/v1/messages/prefs')).json()).toEqual({ morningAt: '07:30', callbackAt: '11:00' });
   });
 });

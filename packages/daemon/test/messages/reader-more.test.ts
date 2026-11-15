@@ -647,6 +647,26 @@ describe.skipIf(!reader)('jantar-messages-reader: search, morning feed, media, c
     expect((await phone()).map((c) => c.who)).toEqual(['ravi.test@example.com', 'Unknown', 'Neel Test']);
   });
 
+  it("a WhatsApp id with a device part (':<n>') in the iPhone call log is that person", async () => {
+    // Another app logged Ravi's and Asha's ids with a device number, as WhatsApp writes ids for a linked device.
+    addPhoneCall(10, paths.jids.ravi.replace('@', ':7@'), 'com.example.Calls', '2026-11-13T12:00:00.000Z');
+    addPhoneCall(11, paths.jids.ashaLid.replace('@', ':12@'), 'com.example.Calls', '2026-11-13T12:30:00.000Z');
+    const r = await start();
+    const ravi = keyOf(r.state, paths.jids.ravi);
+    const asha = keyOf(r.state, paths.jids.ashaLid);
+    const phone = async () => ReaderCallsSchema.parse(await r.ok('phoneCalls', { since: FIXTURE_SINCE })).calls;
+    const ph = await phone();
+    expect(ph).toMatchObject([
+      { at: '2026-11-13T11:00:00.000Z', who: 'Ravi Test' },
+      { at: '2026-11-13T12:00:00.000Z', who: 'Ravi Test', chatKey: ravi },
+      { at: '2026-11-13T12:30:00.000Z', who: 'Asha Test', chatKey: asha },
+    ]);
+    expect(JSON.stringify(ph)).not.toMatch(/@s\.whatsapp\.net|@lid|:7|:12/);
+    // Skipped: the device part never lets them through.
+    writeSkip(r.state, [ravi, asha]);
+    expect(await phone()).toEqual([]);
+  });
+
   it('calls cut at whole milliseconds, as reads do', async () => {
     const r = await start();
     // since = a call's own time keeps it; a millisecond later leaves it out.

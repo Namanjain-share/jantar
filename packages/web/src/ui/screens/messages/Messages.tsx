@@ -7,6 +7,7 @@
  *   WhatsApp data up to Fri 07:58               or the stale warning
  *   Messages can't read WhatsApp right now: …   the reader's problem, if any
  *   Last run Fri 08:00 · 12 chats · 140 messages · 3 calls
+ *   WhatsApp calls weren't read.                its notes, if any (runNotes)
  *   [ Run now ]  Undo this morning              Undo asks first
  *   SUMMARY            the model's, as text
  *   WAITING ON YOU 2   DraftRow: Copy, Open in WhatsApp (a 1:1 with a
@@ -15,9 +16,11 @@
  *   TODOS MADE 3       each opens its Life todo
  *
  * The lines at the top are the newest run's; the summary, Todos made and
- * Undo are the run that made them (Today's `made`: a later Run now that
- * made nothing, or one that failed, never hides the morning's), else the
- * newest run's.
+ * Undo are the runs that made them (Today's `made`: each run of the Life
+ * zone's day that made something, so an empty or failed later run never
+ * hides the morning's, and a later Run now never takes its Undo), else the
+ * newest run's. With more than one, each summary is under its time and
+ * each Undo names its run ("Undo the 08:00 run").
  *
  * Sections are cards in columns from a pane of 640 (Columns), rails below.
  * Data comes over REST, again on lifeTick (the run's todos are Life's) and
@@ -30,7 +33,7 @@
 import { CaretRightIcon, GearSixIcon, WarningIcon } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Todo } from '@jantar/protocol';
-import type { Draft, MessagesTodayResponse } from '@jantar/protocol/messages';
+import type { Draft, MessagesTodayResponse, MorningRun } from '@jantar/protocol/messages';
 import { routePath, type MessagesView } from '../../../lib/router.js';
 import { useDeps } from '../../context.js';
 import { Button } from '../../kit/Button.js';
@@ -45,7 +48,7 @@ import { Page, useOffline, useUndo, useWrite } from '../life/today/parts.js';
 import { CallbackRow } from './CallbackRow.js';
 import { DraftRow } from './DraftRow.js';
 import { MessagesSettings } from './MessagesSettings.js';
-import { NO_RUN, RUNNING, RUNNING_POLL_MS, UNDONE, canUndo, dueText, freshness, plural, readerLine, runLine } from './model.js';
+import { NO_RUN, RUNNING, RUNNING_POLL_MS, canUndo, dueText, freshness, plural, readerLine, runLine, runNotes, runWhen, undoWords } from './model.js';
 import { MessagesError, useMessages } from './parts.js';
 
 export interface MessagesProps {
@@ -83,11 +86,13 @@ function MessagesToday() {
   const load = useLifeLoad('messages:today', () => m.today());
   const status = useLifeLoad('messages:status', () => m.status());
   const run = load.data?.run ?? null;
-  // The run whose summary, todos and Undo show.
-  const report = load.data ? (load.data.made ?? run) : null;
-  // The todos it made, by their ids, from Life's open todos (while Todos are on).
+  // Today's runs that made something, each with its Undo; the summaries and todos shown (else the newest run's).
+  const made = load.data?.made ?? [];
+  const shown = made.length > 0 ? made : run ? [run] : [];
+  const todoIds = [...new Set(shown.flatMap((r) => r.todoIds))];
+  // The todos they made, by their ids, from Life's open todos (while Todos are on).
   const todosOn = life && lifeStatus?.modules.todos === true;
-  const todos = useLifeLoad(todosOn && report && report.todoIds.length > 0 ? `messages:todos:${report.id}` : null, () => api.todosList());
+  const todos = useLifeLoad(todosOn && todoIds.length > 0 ? `messages:todos:${shown.map((r) => r.id).join(',')}` : null, () => api.todosList());
 
   // While a run is going, ask again every 10 s (visible and online only): the run sends no tick.
   const going = run?.state === 'running';
@@ -118,29 +123,32 @@ function MessagesToday() {
   };
 
   const undoWrite = useWrite();
-  const [asking, setAsking] = useState(false);
-  // The run Undo this morning undid (its line says so; the button goes).
-  const [undone, setUndone] = useState<string | null>(null);
+  // The run whose Undo is asking first.
+  const [asking, setAsking] = useState<string | null>(null);
+  // The runs Undo undid (each line says so; its button goes).
+  const [undone, setUndone] = useState<ReadonlySet<string>>(() => new Set());
 
   const runWrite = useWrite();
   const runNow = async () => {
     const r = await runWrite.run('run', (k) => m.run(k));
     if (r.ok) {
-      setUndone(null);
+      setUndone(new Set());
       reload();
       status.reload();
     }
   };
 
-  const undoRun = async () => {
-    if (!report) return;
-    const r = await undoWrite.run(`undo:${report.id}`, (k) => m.undo(report.id, k));
+  const undoRun = async (id: string) => {
+    const r = await undoWrite.run(`undo:${id}`, (k) => m.undo(id, k));
     if (!r.ok) return;
-    setAsking(false);
-    setUndone(report.id);
+    setAsking(null);
+    setUndone((u) => new Set(u).add(id));
     reload();
     todos.reload();
   };
+  const many = made.length > 1;
+  const undoable = made.filter((r) => canUndo(r) && !undone.has(r.id));
+  const askingRun = asking ? (made.find((r) => r.id === asking && canUndo(r)) ?? null) : null;
 
   const box = useRef<HTMLDivElement>(null);
   const cards = useCardWidth(box);
@@ -152,7 +160,9 @@ function MessagesToday() {
   if (!load.data) {
     body = load.error ? <MessagesError error={load.error} offline={offline} onRetry={load.reload} /> : <LifeLoading caption="Asking the Mac…" />;
   } else {
-    body = <Sections today={load.data} gone={gone} tz={tz} cards={cards} todos={todos.data?.todos ?? null} offline={offline} busy={draftWrite.busy} onState={(d, s) => void mark(d, s)} />;
+    body = (
+      <Sections today={load.data} runs={shown} todoIds={todoIds} gone={gone} tz={tz} cards={cards} todos={todos.data?.todos ?? null} offline={offline} busy={draftWrite.busy} onState={(d, s) => void mark(d, s)} />
+    );
   }
 
   const fresh = run ? freshness(run, tz) : null;
@@ -171,9 +181,23 @@ function MessagesToday() {
         ) : null}
         {problem ? <CommandSentence sentence={problem} className="break-words" /> : null}
         {run ? <p className="break-words type-mono text-ink-3">{runLine(run, tz)}</p> : null}
+        {/* What the run couldn't do: calls not read, Life's limit or refusal. */}
+        {run
+          ? runNotes(run).map((note) => (
+              <p key={note} data-note className="break-words type-small text-ink-2">
+                {note}
+              </p>
+            ))
+          : null}
         {run?.state === 'failed' && run.why ? <p className="break-words type-small text-ink-2">{run.why}</p> : null}
         {going ? <p className="type-small text-ink-2">{RUNNING}</p> : null}
-        {report && undone === report.id ? <p role="status" className="type-small text-ink-2">{UNDONE}</p> : null}
+        {made
+          .filter((r) => undone.has(r.id))
+          .map((r) => (
+            <p key={r.id} role="status" className="type-small text-ink-2">
+              {undoWords(r, tz, many).done}
+            </p>
+          ))}
       </div>
       {load.data ? (
         <div data-actions className="flex flex-wrap items-center gap-8 px-16 pb-12">
@@ -181,21 +205,23 @@ function MessagesToday() {
             {runWrite.busy ? <Spinner label="Running" /> : null}
             {runWrite.busy ? 'Running…' : 'Run now'}
           </Button>
-          {canUndo(report) && undone !== report.id && !asking ? (
-            <Button variant="text" disabled={offline || undoWrite.busy} onClick={() => setAsking(true)} className="coarse:min-w-44">
-              Undo this morning
-            </Button>
-          ) : null}
+          {askingRun
+            ? null
+            : undoable.map((r) => (
+                <Button key={r.id} variant="text" disabled={offline || undoWrite.busy} onClick={() => setAsking(r.id)} className="coarse:min-w-44">
+                  {undoWords(r, tz, many).label}
+                </Button>
+              ))}
         </div>
       ) : null}
-      {asking && canUndo(report) ? (
-        <div role="group" aria-label="Undo this morning" className="mx-16 mb-12 rounded-btn border border-line-strong px-12 py-8">
-          <p className="type-small text-ink">Remove this morning's open todos and call-backs, and dismiss its reply drafts?</p>
+      {askingRun ? (
+        <div role="group" aria-label={undoWords(askingRun, tz, many).label} className="mx-16 mb-12 rounded-btn border border-line-strong px-12 py-8">
+          <p className="type-small text-ink">{undoWords(askingRun, tz, many).ask}</p>
           <div data-actions className="mt-8 flex flex-wrap items-center gap-8">
-            <Button variant="primary" disabled={offline || undoWrite.busy} onClick={() => void undoRun()} className="coarse:min-w-44">
+            <Button variant="primary" disabled={offline || undoWrite.busy} onClick={() => void undoRun(askingRun.id)} className="coarse:min-w-44">
               Undo it
             </Button>
-            <Button variant="text" onClick={() => setAsking(false)} className="coarse:min-w-44">
+            <Button variant="text" onClick={() => setAsking(null)} className="coarse:min-w-44">
               Keep
             </Button>
           </div>
@@ -216,6 +242,8 @@ function MessagesToday() {
 
 function Sections({
   today,
+  runs,
+  todoIds,
   gone,
   tz,
   cards,
@@ -225,6 +253,10 @@ function Sections({
   onState,
 }: {
   today: MessagesTodayResponse;
+  /** The runs whose summaries show: today's that made something, else the newest. */
+  runs: readonly MorningRun[];
+  /** The todos those runs made. */
+  todoIds: readonly string[];
   /** Drafts marked here, off the list until the next answer leaves them out (or Undo brings them back). */
   gone: ReadonlySet<string>;
   tz: string | null | undefined;
@@ -236,14 +268,19 @@ function Sections({
   onState: (d: Draft, state: 'done' | 'dismissed') => void;
 }) {
   const { callbacks } = today;
-  const run = today.made ?? today.run;
   const drafts = today.drafts.filter((d) => !gone.has(d.id));
-  if (!run && drafts.length === 0 && callbacks.length === 0) return <p className="px-16 py-16 type-small text-ink-2">{NO_RUN}</p>;
+  if (runs.length === 0 && drafts.length === 0 && callbacks.length === 0) return <p className="px-16 py-16 type-small text-ink-2">{NO_RUN}</p>;
   const sections: ReactNode[] = [];
-  if (run?.summary) {
+  const summed = runs.filter((r) => r.summary);
+  if (summed.length > 0) {
     sections.push(
       <Panel key="summary" label="Summary" card={cards}>
-        <p className="whitespace-pre-line break-words px-16 py-12 type-body text-ink-2">{run.summary}</p>
+        {summed.map((r) => (
+          <div key={r.id} className="px-16 py-12">
+            {summed.length > 1 ? <p className="type-mono text-ink-3">{runWhen(r, tz)}</p> : null}
+            <p className="whitespace-pre-line break-words type-body text-ink-2">{r.summary}</p>
+          </div>
+        ))}
       </Panel>,
     );
   }
@@ -271,7 +308,7 @@ function Sections({
       )}
     </Panel>,
   );
-  if (run && run.todoIds.length > 0) sections.push(<TodosMade key="todos" ids={run.todoIds} todos={todos} cards={cards} />);
+  if (todoIds.length > 0) sections.push(<TodosMade key="todos" ids={todoIds} todos={todos} cards={cards} />);
   return cards ? (
     <Columns min={340} className="px-16 pt-4">
       {sections}

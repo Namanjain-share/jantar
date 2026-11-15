@@ -7,12 +7,20 @@
  * 400 (api/routes/messages.ts says noChat, noFile, tooBig or badAsk).
  * `no_access` is told apart by the reader's fixed detail, which names the
  * file macOS refused (or that isn't there): WhatsApp's files don't need Full
- * Disk Access, so that sentence is only for what none of the others fit.
+ * Disk Access, so that sentence is only for what none of the others fit. An
+ * answer the client couldn't check (READER_MISMATCH) is a reader of another
+ * build: updateNeeded, never WhatsApp's `unsupported`.
+ *
+ * Also how someone else's name that reads as the owner's own mark shows
+ * (NOT_OWNER), wherever Messages shows a sender.
  */
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { ReaderError } from './reader-protocol.js';
 
 const MB = 1024 * 1024;
+
+/** The reader client's detail for an answer that doesn't check: a reader of another build, so its sentence is updateNeeded. */
+export const READER_MISMATCH = "the reader's answer doesn't check";
 
 /** "Messages can't read WhatsApp right now: {reason}. At the Mac: jantar messages status" (Review Focus 5). */
 export function cantRead(reason: string): string {
@@ -27,11 +35,12 @@ export const MESSAGES_SAYS = {
   skipRemoveMacOnly: 'Removing a chat from the skip list is done at the Mac: jantar messages skip remove <chat>',
   off: 'Messages is off. At the Mac: jantar messages on',
   // Status details.
+  readerDown: "The reader isn't running. At the Mac: jantar messages setup (it restarts it); its errors are in ~/.jantar/logs/messages-reader.err.log",
   notInstalled: "The reader isn't set up on this Mac. At the Mac: jantar messages setup",
   noWhatsApp: "WhatsApp for Mac isn't on this Mac, or isn't linked to a phone yet.",
   contacts:
     "Messages can't read WhatsApp right now: WhatsApp's contact files (ContactsV2.sqlite, LID.sqlite) are missing or macOS refused them to the reader, and the skip list needs them. At the Mac: jantar messages setup",
-  closed: 'WhatsApp is closed: open it on the Mac so Messages can read the newest messages.',
+  closed: 'WhatsApp is closed, and Messages reads nothing while it is. Open WhatsApp on the Mac.',
   skipBroken: "The skip list file won't read, so Messages reads nothing until it is written again (turn Messages off and on at the Mac).",
   skipLocked:
     "The skip list file (skip.json, in ~/.jantar/messages) won't open or isn't one Messages wrote, so Messages reads nothing and won't write over it. At the Mac: make it readable again, or move it aside and check jantar messages skip list.",
@@ -42,6 +51,8 @@ export const MESSAGES_SAYS = {
     "Chats skipped before the reader's salt was lost aren't all skipped again yet, so Messages reads nothing. At the Mac: jantar messages skip reset",
   skipResetNotNeeded: "The reader's salt is there, so the skip list still matches its chats: there is nothing to reset.",
   skipResetMacOnly: 'Resetting the skip list is done at the Mac: jantar messages skip reset',
+  skipForgetFirst:
+    "First run jantar messages skip reset: --forget lets go only of chats a reset looked for, with the reader running, and couldn't find.",
   // Answers.
   busy: cantRead('WhatsApp is busy or closed'),
   timeout: cantRead('WhatsApp took too long to answer'),
@@ -58,6 +69,9 @@ export const MESSAGES_SAYS = {
   notInSpool: cantRead('the reader handed over a file from outside its spool, so it was left alone'),
   notAChat: 'No chat with that id (it may be skipped already, or gone).',
   notSkipped: "That chat isn't on the skip list.",
+  // Calls to return: a call list left out (as the morning run's report says).
+  waCallsUnread: "WhatsApp's calls weren't read, so missed WhatsApp calls aren't listed.",
+  phoneCallsUnread: "The iPhone call log wasn't read (it needs Full Disk Access on the reader), so missed phone calls aren't listed.",
   // The routes' 404 and 400 (a skipped chat or sender is told as one that isn't there).
   noChat: 'No chat with that name or id.',
   noFile: 'No file for that message on this Mac.',
@@ -98,7 +112,7 @@ function noAccessSays(detail: string | undefined): string {
   return MESSAGES_SAYS.noAccess;
 }
 
-/** The sentence for a reader failure the owner can fix (503), or null for the caller's own 404 or 400. `detail`: the reader's, for `no_access`. */
+/** The sentence for a reader failure the owner can fix (503), or null for the caller's own 404 or 400. `detail`: the reader's, for `no_access`; READER_MISMATCH for `unsupported`. */
 export function readerSays(code: ReaderError | 'down', detail?: string): string | null {
   switch (code) {
     case 'down':
@@ -106,7 +120,8 @@ export function readerSays(code: ReaderError | 'down', detail?: string): string 
     case 'no_access':
       return noAccessSays(detail);
     case 'unsupported':
-      return MESSAGES_SAYS.unsupported;
+      // An answer the client couldn't check is a reader of another build, not WhatsApp's layout.
+      return detail === READER_MISMATCH ? MESSAGES_SAYS.updateNeeded : MESSAGES_SAYS.unsupported;
     case 'busy':
       return MESSAGES_SAYS.busy;
     case 'timeout':
@@ -116,4 +131,16 @@ export function readerSays(code: ReaderError | 'down', detail?: string): string 
     case 'skipped':
       return null;
   }
+}
+
+/** How the owner's own lines are signed where a name would be (the morning input, beside its by_user mark). */
+export const OWNER_NAME = 'me';
+/** Anyone else's name that reads as OWNER_NAME, as Messages shows it everywhere (the morning input, `jantar mcp`, the CLI). */
+export const NOT_OWNER = `${OWNER_NAME} (another person)`;
+/** Characters that show as nothing: a name with them still reads as what is left. */
+const UNSEEN = /[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+
+/** Whether someone else's name reads as OWNER_NAME: any case or width, hidden characters or spaces around it. */
+export function readsAsOwner(name: string): boolean {
+  return name.normalize('NFKC').replace(UNSEEN, '').trim().toLowerCase() === OWNER_NAME;
 }

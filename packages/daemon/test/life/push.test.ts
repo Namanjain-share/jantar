@@ -177,6 +177,17 @@ describe('LP4 (todo part): the lock screen', () => {
     expect(todoPush(todo, todo.id, due, true, 'Asia/Kolkata', 'full').body).toBe(`Missed at 11:00 · ${todo.title} · 11:00`);
   });
 
+  it('0.15: a todo the morning run made from WhatsApp says only "WhatsApp" and its time, unless its names are on at the Mac', () => {
+    const wa = { ...todo, title: 'Call back Ravi Test', from: 'messages' as const };
+    expect(todoPush(wa, wa.id, due, false, 'Asia/Kolkata', 'full')).toMatchObject({ title: 'Todo due', body: 'WhatsApp · 11:00', url: `/todos?id=${wa.id}` });
+    expect(todoPush(wa, wa.id, due, true, 'Asia/Kolkata', 'short').body).toBe('Missed at 11:00 · WhatsApp · 11:00');
+    const names = { work: false, names: false, whatsAppNames: true };
+    expect(todoPush(wa, wa.id, due, false, 'Asia/Kolkata', 'full', undefined, names).body).toBe('Call back Ravi Test · 11:00');
+    expect(todoPush(wa, wa.id, due, false, 'Asia/Kolkata', 'generic', undefined, names).body).toBe('Tap to open · 11:00');
+    // A meeting's todo is as any todo.
+    expect(todoPush({ ...wa, from: 'meeting' }, wa.id, due, false, 'Asia/Kolkata', 'full').body).toBe('Call back Ravi Test · 11:00');
+  });
+
   it("a deleted todo's push says nothing about it", () => {
     expect(todoPush(null, todo.id, due, false, 'UTC', 'full').body).toBe('Tap to open · 05:30');
   });
@@ -200,6 +211,22 @@ describe('LP4 (todo part): the lock screen', () => {
       expect(JSON.stringify(generic)).not.toContain(LIFE_MARKER);
       await ctx.settings.patch({ notify: { bodies: 'full' } });
       expect(handler.push([row], new Date(row.nextAt as string), false).body).toContain(LIFE_MARKER);
+    });
+
+    it("0.15: a WhatsApp todo's ring follows messages.lockScreenNames", async () => {
+      core = createTestLifeCore({ tz: 'Asia/Kolkata', settings: { todos: true } });
+      core.clock.set('2026-10-30T04:00:00.000Z');
+      const f = makeFakes(ctx);
+      const todos = buildTodosModule(core, { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy });
+      const made = todos.createTodo({ title: 'Call back Ravi Test', due: { day: '2026-10-30', time: '11:00' } }, { kind: 'system' }, { from: 'messages' });
+      if (!made.ok) throw new Error(made.reason);
+      const handler = core.scheduler.handlers.get('todo');
+      const row = core.scheduler.row('todo', made.value.id);
+      if (!handler || !row) throw new Error('no todo ping');
+      await ctx.settings.patch({ notify: { bodies: 'full' } });
+      expect(handler.push([row], new Date(row.nextAt as string), false).body).toBe('WhatsApp · 11:00');
+      await ctx.settings.patch({ messages: { lockScreenNames: true } });
+      expect(handler.push([row], new Date(row.nextAt as string), false).body).toBe('Call back Ravi Test · 11:00');
     });
   });
 });

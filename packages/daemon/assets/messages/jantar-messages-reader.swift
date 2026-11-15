@@ -387,9 +387,13 @@ func userJid(_ raw: String?) -> String? {
 }
 
 /// `address` (lower case) when it is one of WhatsApp's ids (a person, a group, a list), which never leave the reader.
+/// A device part (":<digits>" before the "@", as WhatsApp writes a linked device's id) is dropped: it is that person.
 func whatsAppId(_ address: String) -> String? {
   let id = address.lowercased()
-  return ([USER_SUFFIX, LID_SUFFIX, GROUP_SUFFIX] + LEFT_OUT_SUFFIXES).contains { id.hasSuffix($0) } ? id : nil
+  guard ([USER_SUFFIX, LID_SUFFIX, GROUP_SUFFIX] + LEFT_OUT_SUFFIXES).contains(where: { id.hasSuffix($0) }) else { return nil }
+  guard let at = id.firstIndex(of: "@"), let colon = id[..<at].firstIndex(of: ":"),
+        isAsciiDigits(id[id.index(after: colon)..<at]) else { return id }
+  return String(id[..<colon]) + String(id[at...])
 }
 
 func lidJid(_ raw: String?) -> String? {
