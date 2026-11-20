@@ -38,7 +38,6 @@ import {
   BriefcaseIcon,
   ChartBarHorizontalIcon,
   ChatCircleDotsIcon,
-  ChatsCircleIcon,
   DeviceMobileIcon,
   DotsThreeIcon,
   FilesIcon,
@@ -49,6 +48,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Features } from '@jantar/protocol';
 import { LIFE_ROUTES, type Route } from '../../lib/router.js';
+import { MessagesGlyph } from './messages-glyph.js';
 import { PeopleGlyph } from './people-glyph.js';
 
 export interface NavItem {
@@ -84,8 +84,8 @@ export const NAV: readonly NavItem[] = [
   { route: 'devices', href: '/devices', label: 'Devices', icon: DeviceMobileIcon, touch: false },
   { route: 'intel', href: '/intel', label: 'Intel', icon: BookmarksIcon, feature: 'intel', group: 'library' },
   { route: 'meetings', href: '/meetings', label: 'Meetings', icon: VideoConferenceIcon, feature: 'meetings', group: 'library' },
-  // 0.15: after Meetings.
-  { route: 'messages', href: '/messages', label: 'Messages', icon: ChatsCircleIcon, feature: 'messages', group: 'library' },
+  // 0.15: after Meetings. Its icon is drawn (messages-glyph.tsx): Phosphor's ChatsCircle put the main load over its gate.
+  { route: 'messages', href: '/messages', label: 'Messages', icon: MessagesGlyph, feature: 'messages', group: 'library' },
   // v0.11: last, so on a phone it sits in More.
   // The words are people-core's PEOPLE_LABEL and PEOPLE_SHORT_LABEL, spelled out: importing them here would pull
   // people-core into the main load (test/v011-nav.test.tsx compares).

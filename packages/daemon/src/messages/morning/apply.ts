@@ -24,13 +24,14 @@
  *   its older open ones (it replaces them). A person (Caller) is their 1:1,
  *   their number (shown, or their 1:1's as the batch or a draft has it) and
  *   the name shown, as callerKey reads them (an earlier call-back's from its
- *   title): two with a 1:1 are one by it alone; otherwise the new one's
- *   number decides when it has one (two people can share a name), else its
- *   name. So a caller with no 1:1 who starts one since, or a person whose
- *   call no longer finds their 1:1, gets one call-back. A caller the reader
- *   names Unknown has neither (only that call is theirs), and a call-back
- *   from a line in a group is the group's (`made.person` 0): neither is
- *   ever taken for anyone's.
+ *   title): two with a 1:1 are one by it alone; otherwise two with a number
+ *   by it (two people can share a name), else by the name. So a caller with
+ *   no 1:1 who starts one since, or a person whose call no longer finds
+ *   their 1:1, gets one call-back; a number shown alone finds a 1:1 only
+ *   by the number this run knows for it. A caller the reader names Unknown
+ *   (alone or among others on a call) has neither (only that call is
+ *   theirs), and a call-back from a line in a group is the group's
+ *   (`made.person` 0): neither is ever taken for anyone's.
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
@@ -65,7 +66,7 @@
  * logs: titles, notes and drafts are other people's words.
  */
 import { dayKeyOf, hhmmOf, instantAt, weekdayOf } from '@jantar/life-core';
-import { MESSAGES_LIMITS, type Due, type TodoPriority } from '@jantar/protocol';
+import { MESSAGES_LIMITS, type Due, type Todo, type TodoPriority } from '@jantar/protocol';
 import type { ChatOwner, Draft, Message, MessagesPrefs, MorningAnswer } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
 import type { Actor, LifeResult, LifeService } from '../../contracts.js';
@@ -209,13 +210,14 @@ function knowsSomeone(p: Caller): boolean {
 }
 
 /**
- * `a` (a new call-back) is for the person `b` is: the same 1:1 when both have
- * one; else `a`'s number when it has one (a shared name never decides
- * then), else its name.
+ * `a` and `b` are one person: the same 1:1 when both have one; else the same
+ * number when both have one (two people can share a name); else the same
+ * name. So a saved contact shown by name with no 1:1 is the one their new
+ * 1:1 names, whether or not that 1:1's number is known.
  */
 function samePerson(a: Caller, b: Caller): boolean {
   if (a.chat !== undefined && b.chat !== undefined) return a.chat === b.chat;
-  if (a.tel !== undefined) return a.tel === b.tel;
+  if (a.tel !== undefined && b.tel !== undefined) return a.tel === b.tel;
   return a.name !== undefined && a.name === b.name;
 }
 
@@ -518,23 +520,27 @@ export function removeChatTodos(d: Pick<ApplyDeps, 'life' | 'db'>, chatKey: stri
 
 /**
  * Every chat on the skip list: each todo and call-back the morning made from
- * it that is open in Life goes, as removeChatTodos takes them (a restored
- * Life backup made before a skip brings them back). Asks Life only when such
- * a chat has any made. How many went.
+ * it that is open in Life and unchanged since its chat's skip goes, as
+ * removeChatTodos takes them (a restored Life backup made before a skip
+ * brings them back, stamped before it). One changed since is the owner's
+ * and stays: done at the skip and reopened, snoozed, edited. Asks Life only
+ * when such a chat has any made. How many went.
  */
 export function removeSkippedTodos(d: Pick<ApplyDeps, 'life' | 'db'>, actor: Actor): LifeResult<number> {
-  const targets = (
-    d.db.prepare("SELECT target_id FROM made WHERE kind IN ('todo', 'callback') AND target_id IS NOT NULL AND chat_key IN (SELECT chat_key FROM skip)").all() as { target_id: string }[]
-  ).map((r) => r.target_id);
-  return removeOpen(d.life, targets, actor);
+  const rows = d.db
+    .prepare("SELECT m.target_id, s.added_at FROM made m JOIN skip s ON s.chat_key = m.chat_key WHERE m.kind IN ('todo', 'callback') AND m.target_id IS NOT NULL")
+    .all() as { target_id: string; added_at: string }[];
+  const skippedAt = new Map(rows.map((r) => [r.target_id, Date.parse(r.added_at)]));
+  // A stamp that won't read counts as from before the skip.
+  return removeOpen(d.life, [...skippedAt.keys()], actor, (t) => !(Date.parse(t.updatedAt) > (skippedAt.get(t.id) ?? Number.NaN)));
 }
 
-/** Each of `targets` still open in Life goes (removeTodo as `actor`); how many went. */
-function removeOpen(life: ApplyDeps['life'], targets: readonly string[], actor: Actor): LifeResult<number> {
+/** Each of `targets` still open in Life (and `fits`, when given) goes (removeTodo as `actor`); how many went. */
+function removeOpen(life: ApplyDeps['life'], targets: readonly string[], actor: Actor, fits?: (t: Todo) => boolean): LifeResult<number> {
   if (targets.length === 0) return { ok: true, value: 0 };
   const open = life.todos.listTodos({ done: false });
   if (!open.ok) return open;
-  const still = new Set(open.value.todos.map((t) => t.id));
+  const still = new Set(open.value.todos.filter((t) => !fits || fits(t)).map((t) => t.id));
   let removed = 0;
   for (const id of targets) {
     if (!still.has(id)) continue;

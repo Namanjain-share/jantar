@@ -595,7 +595,7 @@ describe('the skip list', () => {
       },
     });
     const later =
-      "Life isn't open right now (every Life module and People have been off since Jantar started, or Life needs attention), so any open todos and call-backs the morning made from this chat leave Life once it opens.";
+      "Life isn't open right now (every Life module and People have been off since Jantar started or since a Life restore, or Life needs attention), so any open todos and call-backs the morning made from this chat leave Life once it opens.";
     expect(MESSAGES_SAYS.skipTodosLater).toBe(later);
     const add = await tcp(t, 'POST', '/v1/messages/skip', { chatKey: ASHA });
     expect([add.statusCode, add.json()]).toEqual([200, { ok: true, note: later }]);

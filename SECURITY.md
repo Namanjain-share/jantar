@@ -2500,9 +2500,10 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   then the open todos and call-backs made from it leave Life, as Undo
   removes them (a done one stays the owner's), and the mark goes. If
   Life's todos refuse then (life.db closed: once open in a daemon run it
-  stays open, even with every Life module turned off again, so it is
-  closed only while every Life module and People have been off since the
-  daemon started, or while Life is broken), the skip still holds at once
+  stays open, even with every Life module turned off again, until a Life
+  restore done with all of them off; so it is closed only while every
+  Life module and People have been off since the daemon started or since
+  such a restore, or while Life is broken), the skip still holds at once
   and its answer says any open todos leave later; the mark keeps them
   owed, and the removal is tried again until it goes through: when
   life.db opens while messages.db is open (before the scheduler's first
@@ -2513,14 +2514,16 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   time messages.db opens, every chat on the skip list loses its open
   todos and call-backs again (only a chat the morning made something
   from costs a look at Life), so a restored Life backup made before a
-  skip can't bring them back. Taking a chat off the list brings back
-  nothing its skip removed, and a removal still owed goes through all the
-  same. Today leaves out a skipped chat's drafts and call-backs whatever
-  happened before. A skip while a morning run is going stops that run
-  when it read that chat (or a call with that person): it is stored
-  failed and makes nothing. A run that read only a skipped person's lines
-  in a group goes on, and items made from such lines came from the group,
-  so they stay until removed in Life.
+  skip can't bring them back. Only one unchanged since the skip goes (a
+  restored one is stamped before it): one the owner changed after it,
+  such as a done one he opened again, is his and stays. Taking a chat off
+  the list brings back nothing its skip removed, and a removal still owed
+  goes through all the same. Today leaves out a skipped chat's drafts and
+  call-backs whatever happened before. A skip while a morning run is
+  going stops that run when it read that chat (or a call with that
+  person): it is stored failed and makes nothing. A run that read only a
+  skipped person's lines in a group goes on, and items made from such
+  lines came from the group, so they stay until removed in Life.
 - **It fails closed.** Reads are refused until `skip.json` has been
   written since messages.db opened; a `skip.json` that won't parse makes
   the reader refuse reads. One that won't open or breaks the reader's
@@ -2650,8 +2653,9 @@ such a line and anything that happens:
   again. One settings change that turns Messages and a Life module on
   together can still ring one once, late, the same way, since Life opens
   first. A skipped chat's todos that a Life backup restored while
-  Messages is off are the same. Each such push says only "WhatsApp" and
-  the time unless lock-screen names are on.
+  Messages is off are the same, and one he changes before Messages is on
+  again stays. Each such push says only "WhatsApp" and the time unless
+  lock-screen names are on.
 
 Pinned by `packages/daemon/test/messages/reader.test.ts` and
 `reader-more.test.ts` (the real reader on a synthetic WhatsApp: the skip
@@ -2672,7 +2676,8 @@ framing and taint), `morning-timer.test.ts` (a skip takes the morning's
 drafts, todos, call-backs and summary from view, and stops a run going;
 one while Life is closed says so, and its todos leave once Life answers,
 across a restart too, as the system but for the chat skipped; a restored
-Life backup doesn't bring them back),
+Life backup doesn't bring them back, and one done at the skip and
+reopened since stays),
 `packages/daemon/test/life/service.test.ts` (a hook given to life.db's
 open runs before its first sweep),
 `packages/cli/test/mcp-messages.test.ts` (data frames, the caller

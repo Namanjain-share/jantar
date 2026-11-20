@@ -66,10 +66,11 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   or timed todo rings as "WhatsApp · 11:00" on a locked phone, no name,
   unless you turn titles on at the Mac (`jantar messages lockscreen names
   on`). A run never makes the same thing twice, and one call-back stays
-  open per person (their 1:1, number or name; callers shown as "Unknown"
-  each get their own). Each run of the day that made something keeps its
-  own Undo, so a later Run now never takes the morning's. `jantar
-  messages morning --dry-run` shows what it would make.
+  open per person (their 1:1, number or name, as far as Messages knows
+  them; callers shown as "Unknown" each get their own). Each run of the
+  day that made something keeps its own Undo, so a later Run now never
+  takes the morning's. `jantar messages morning --dry-run` shows what it
+  would make.
 - **On the phone**: Messages, after Meetings. Today has how fresh the data
   was, the summary, Waiting on you (Copy, Open in WhatsApp with the draft
   typed in for a 1:1, Done, Dismiss), Call back and the todos made, with
@@ -83,8 +84,9 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   call-backs, a summary that read it), and a run going that read that
   chat stops. If Life isn't open at the time, the skip says so, and those
   todos leave Life once it opens, with Messages on. A Life backup you
-  restore later doesn't bring them back. A phone can add a skip but never
-  remove one: that is `jantar messages skip remove` at the Mac.
+  restore later doesn't bring them back, with Messages on. A phone can
+  add a skip but never remove one: that is `jantar messages skip remove`
+  at the Mac.
   A person WhatsApp never linked to a number can still show in groups.
   It fails closed: a skip list file the reader would refuse is never
   written over, a missing contact file stops reads while anything is

@@ -10,9 +10,9 @@
  *   time it states, else at the call-back time, and one whose time has
  *   passed rings at the next quarter hour; one open per person (a caller
  *   with no 1:1: by their number however it was dialled, or their name;
- *   across a 1:1 and none, either way; a call with a number by it, not a
- *   name someone else shares), never for each caller shown as Unknown, and
- *   a group line's stays the group's;
+ *   across a 1:1 and none, either way, in one run or two; two calls with a
+ *   number by it), never for each caller shown as Unknown (alone or with
+ *   others on a call), and a group line's stays the group's;
  * - `made` keeps the chat each item came from and whose call-back it is (a
  *   file from before gets both, as far as they can be known);
  * - replies are drafts (a 1:1's number, none for a group), one per chat: a
@@ -57,6 +57,8 @@ const RUN_A = '01JMORNINGRUNA000000000000';
 const RUN_B = '01JMORNINGRUNB000000000000';
 const RUN_C = '01JMORNINGRUNC000000000000';
 const RUN_D = '01JMORNINGRUND000000000000';
+const RUN_E = '01JMORNINGRUNE000000000000';
+const RUN_F = '01JMORNINGRUNF000000000000';
 const EMPTY: MorningAnswer = { summary: '', todos: [], replies: [], callbacks: [] };
 
 /** A missed incoming call, not returned (an iPhone call with no 1:1 unless `o` says otherwise). */
@@ -529,6 +531,26 @@ describe('applyMorning', () => {
       'Call back Neel Test',
       'Call back Ravi Test',
     ]);
+
+    // A saved contact the phone shows by name, with no 1:1, then a call from their new 1:1, which this batch has with
+    // its number: one person by the name (only one of the two calls has a number). In one run (Tara) and across two (Mira).
+    const tara = chat(12, 'Tara Test', { phone: '919990000012' });
+    const mira = chat(13, 'Mira Test', { phone: '919990000013' });
+    const taraByName = missedCall(37, 'Tara Test', '2026-11-14T02:30:00.000Z');
+    const taraCall = missedCall(38, 'Tara Test', '2026-11-14T02:35:00.000Z', { via: 'whatsapp', chatKey: tara.chatKey });
+    const miraByName = missedCall(39, 'Mira Test', '2026-11-14T02:40:00.000Z');
+    const day5 = prepared(batchOf([bc(tara, [line(tara, '2026-11-14T02:36:00.000Z', { text: 'Tried calling you' })], { waiting: true })], [taraByName, taraCall, miraByName]));
+    const refs5 = [taraByName, taraCall, miraByName].map((c) => idFor(day5.refs, c.callKey));
+    const out5 = applyMorning({ ...EMPTY, callbacks: refs5.map((ref) => ({ ref, who: 'Them', why: 'Called' })) }, day5.refs, day5.kept, r.deps({ runId: RUN_E }));
+    expect(out5.callbacks.map((c) => c.who)).toEqual(['Tara Test', 'Mira Test']);
+    expect(out5.dropped).toEqual([{ kind: 'callback', ref: refs5[1], why: 'duplicate' }]);
+    const miraCall = missedCall(40, 'Mira Test', '2026-11-14T02:50:00.000Z', { via: 'whatsapp', chatKey: mira.chatKey });
+    const day6 = prepared(batchOf([bc(mira, [line(mira, '2026-11-14T02:51:00.000Z', { text: 'Call me back' })], { waiting: true })], [miraCall]));
+    const k6 = idFor(day6.refs, miraCall.callKey);
+    const out6 = applyMorning({ ...EMPTY, callbacks: [{ ref: k6, who: 'Them', why: 'Called again' }] }, day6.refs, day6.kept, r.deps({ runId: RUN_F }));
+    expect(out6.callbacks).toEqual([]);
+    expect(out6.dropped).toEqual([{ kind: 'callback', ref: k6, why: 'duplicate' }]);
+    expect(r.open().filter((t) => t.title === 'Call back Tara Test' || t.title === 'Call back Mira Test')).toHaveLength(2);
   });
 
   it("a call-back from a line in a group is the group's: a missed call from that person with no 1:1 still makes one", () => {
@@ -544,7 +566,7 @@ describe('applyMorning', () => {
     expect(out.dropped).toEqual([]);
   });
 
-  it("callers shown as Unknown are never taken for each other; a call with a number goes by it, not by a name someone else shares", () => {
+  it('callers shown as Unknown are never taken for each other; a call shown by its number goes by it', () => {
     const r = build();
     const s = sample();
     // Two withheld numbers (the reader names both Unknown) in one run, and a third the next morning while both are open.
@@ -563,16 +585,23 @@ describe('applyMorning', () => {
       { kind: 'callback', ref: idFor(day2.refs, third.callKey), why: 'duplicate' },
     ]);
 
-    // An iPhone contact named as Ravi is, with no 1:1, has a call-back open; then Ravi Test calls from his 1:1, whose
-    // number this batch has: a number, so not taken for the other one.
+    // A call shown by its number goes by it: another number, or a 1:1 with another number, is someone else.
     const r2 = build();
-    const other = missedCall(53, 'Ravi Test', '2026-11-13T08:00:00.000Z');
-    const p1 = prepared(batchOf([], [other]));
-    expect(applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(p1.refs, other.callKey), who: 'Ravi', why: 'Missed call' }] }, p1.refs, p1.kept, r2.deps()).callbacks).toHaveLength(1);
-    const p2 = prepared(batchOf([bc(s.ravi, [s.l.injection], { waiting: true })], [s.calls.raviWa]));
-    const out3 = applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(p2.refs, s.calls.raviWa.callKey), who: 'Ravi', why: 'Missed call' }] }, p2.refs, p2.kept, r2.deps({ runId: RUN_B }));
-    expect(out3.callbacks.map((c) => c.who)).toEqual(['Ravi Test']);
-    expect(r2.open().filter((t) => t.title === 'Call back Ravi Test')).toHaveLength(2);
+    const byNumber = missedCall(53, '+91 99900 00055', '2026-11-13T08:00:00.000Z');
+    const p1 = prepared(batchOf([], [byNumber]));
+    expect(applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(p1.refs, byNumber.callKey), who: 'Them', why: 'Missed call' }] }, p1.refs, p1.kept, r2.deps()).callbacks).toHaveLength(1);
+    const p2 = prepared(batchOf([bc(s.ravi, [s.l.injection], { waiting: true })], [s.calls.raviWa, missedCall(54, '+91 99900 00056', '2026-11-14T01:00:00.000Z')]));
+    const refs3 = [s.calls.raviWa.callKey, callKey(54)].map((k) => idFor(p2.refs, k));
+    const out3 = applyMorning({ ...EMPTY, callbacks: refs3.map((ref) => ({ ref, who: 'Them', why: 'Missed call' })) }, p2.refs, p2.kept, r2.deps({ runId: RUN_B }));
+    expect(out3.callbacks.map((c) => c.who)).toEqual(['Ravi Test', '+91 99900 00056']);
+    expect(out3.dropped).toEqual([]);
+
+    // A call with several people and no group, one of them Unknown, is that call alone too.
+    const several = [57, 58].map((n, i) => missedCall(n, 'Asha Test, Unknown', `2026-11-14T03:${i}0:00.000Z`, { via: 'whatsapp' }));
+    const p3 = prepared(batchOf([], several));
+    const out4 = applyMorning({ ...EMPTY, callbacks: several.map((c) => ({ ref: idFor(p3.refs, c.callKey), who: 'Them', why: 'Missed call' })) }, p3.refs, p3.kept, r2.deps({ runId: RUN_C }));
+    expect(out4.callbacks.map((c) => c.who)).toEqual(['Asha Test, Unknown', 'Asha Test, Unknown']);
+    expect(out4.dropped).toEqual([]);
   });
 
   it('a reply to a line the owner answered later in the same batch is left out (answered); one to a line still unanswered is drafted', () => {

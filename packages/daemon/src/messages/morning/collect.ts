@@ -173,12 +173,13 @@ export const NAMED = 'who:';
  * NUMBER_SUFFIX_DIGITS once it has that many ("+91 99900 00009",
  * "09990000009" and "+919990000009" are one; TEL); a name or an address by
  * its letters, case and spacing aside (NAMED). Null for the reader's
- * Unknown (READER_UNKNOWN: every withheld number and unnamed caller) or
- * nothing: no one to tell apart by it. Never a chat key.
+ * Unknown (READER_UNKNOWN: every withheld number and unnamed caller), also
+ * as one of several people on a call with no group (the reader joins their
+ * names with ", "), or nothing: no one to tell apart by it. Never a chat key.
  */
 export function callerKey(who: string): string | null {
   const t = who.trim();
-  if (t === '' || t === READER_UNKNOWN) return null;
+  if (t === '' || t.split(',').some((part) => part.trim() === READER_UNKNOWN)) return null;
   const digits = t.replace(/[^0-9]/g, '');
   if (digits && NUMBER.test(t)) return `${TEL}${digits.slice(-NUMBER_SUFFIX_DIGITS)}`;
   return `${NAMED}${t.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase()}`;
@@ -188,7 +189,9 @@ export function callerKey(who: string): string | null {
  * A call's person, for which calls returned which (missedCalls) and the
  * missed calls left out per person (budget.ts): their 1:1's key; with none,
  * callerKey of the name or number shown; a caller the reader names Unknown
- * only that call, as nothing tells them from another.
+ * (alone or among others) only that call, as nothing tells them from
+ * another. A call with no 1:1 and a later one from the 1:1 that person
+ * started since are two people here.
  */
 export function callerOf(c: Call): string {
   return c.chatKey ?? callerKey(c.who) ?? `call:${c.callKey}`;

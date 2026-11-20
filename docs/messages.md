@@ -157,11 +157,12 @@ command line or the morning run.
 - **If Life isn't open when you skip**, the chat is still skipped at
   once, and the phone and `jantar messages skip add` say any open todos
   from it leave later. Once any Life module or People has been on since
-  Jantar started, Life stays open, even after you turn them all off. It
-  isn't open when all of them have been off since Jantar started, or
-  when Life needs attention. Messages keeps that in messages.db and tries
-  again until they are gone: when Life opens (turning a Life module on
-  removes them before any can ring), when Messages starts or is turned
+  Jantar started, Life stays open, even after you turn them all off,
+  until a Life restore done while all of them are off. It isn't open when
+  all of them have been off since Jantar started or since such a restore,
+  or when Life needs attention. Messages keeps that in messages.db and
+  tries again until they are gone: when Life opens (turning a Life module
+  on removes them before any can ring), when Messages starts or is turned
   on, and at every skip, status, Today and morning run (not a dry run).
   With Messages off they stay in Life and ring as usual until it is on
   again.
@@ -169,7 +170,8 @@ command line or the morning run.
   opens with Messages on, and each time Messages opens, the open todos
   and call-backs the morning made from a chat on the skip list leave
   Life again. Restored while Messages is off, they ring as usual until it
-  is on again.
+  is on again. One you changed after the skip stays yours: a todo you had
+  done at the skip and opened again later, or one you snoozed or edited.
 - **Removing a chat from the skip list brings back nothing** its skip
   removed. Todos still waiting for Life to open leave all the same.
 - Status updates, channels and broadcast lists are never read, skipped or
@@ -281,6 +283,12 @@ A muted group isn't told apart in 0.15: it counts as busy only when it is
 one of those. Where WhatsApp keeps a chat's mute is still to be found on a
 real Mac ([M16](real-mac-checks.md#messages-015)).
 
+A missed call counts as returned when, after it, you wrote to that
+person, called them, or a call between you connected. A call the reader
+matched to no 1:1 goes by the number or name shown: once that person has
+started a 1:1 with you, writing or calling there doesn't return the
+earlier call.
+
 What didn't fit is listed in the run's report: missed calls by person,
 then each chat (a person still waiting, by the lines they wait on). The
 list stops at 50 and says how many more.
@@ -324,11 +332,14 @@ so, rather than reporting nothing new, and `jantar messages morning
   them makes no second one. A person is their WhatsApp 1:1, their number
   (however it was dialled: with +91, a 0 or neither) and the name shown,
   so someone who called with no 1:1 and then calls from one (or the
-  other way round) still gets one. When a call has a number, the number
-  decides, since two people can share a name; with none, the name does.
-  Callers shown as "Unknown" (a withheld number) each get their own. A
-  call-back made from a line in a group is the group's, so a missed call
-  from that person still makes one.
+  other way round) still gets one. When both calls have a number, the
+  number decides, since two people can share a name; otherwise the name
+  does. A call shown only as a number is matched to a 1:1 only when
+  Jantar knows that chat's number: the run reads that chat, or the chat
+  has had a reply draft. Callers shown as "Unknown" (a withheld number,
+  alone or with others on one call) each get their own. A call-back made
+  from a line in a group is the group's, so a missed call from that
+  person still makes one.
 - **Reply drafts**, under Waiting on you: who, what they asked, and a
   short reply in the chat's own language and tone. One per chat: a newer
   draft replaces the older one, and a draft goes at the next run once you

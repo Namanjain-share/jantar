@@ -42,15 +42,17 @@
  *   Undo takes them (as whoever skipped it). Today leaves out a skipped
  *   chat's drafts and call-backs whatever happened before. The chat is
  *   owed to Life (SKIP_OWED_KEY, written in the skip's transaction) until
- *   its todos went: while life.db is closed (never opened since the daemon
- *   started, every Life module and People off; or Life broken) the skip
+ *   its todos went: while life.db is closed (not opened since the daemon
+ *   started or a Life restore, every Life module and People off; or Life
+ *   broken) the skip
  *   still answers at once, with MESSAGES_SAYS.skipTodosLater, and they are
  *   tried again (as the system, but at a skip of that chat) as life.db
  *   opens (LifeService.onOpen, before its first sweep), as messages.db
  *   opens, at every skip, status() and Today, and before a morning run that
  *   isn't dry (settleOwed). As life.db and messages.db open, every skipped
- *   chat's open todos and call-backs go too, so a restored Life backup
- *   made before a skip can't bring them back (clearSkipped).
+ *   chat's open todos and call-backs unchanged since its skip go too, so a
+ *   restored Life backup made before a skip can't bring them back
+ *   (clearSkipped); one the owner changed since stays his.
  * - The morning timer (morning/timer.ts) runs while messages.db is open
  *   (never under --read-only), at the morning time in the Life zone; a time
  *   or zone change rearms it, a run refused (another going) is asked for
@@ -637,7 +639,7 @@ class MessagesShell implements MessagesService {
    * As life.db or messages.db opens: what a skip still owes Life goes
    * (settleOwed), and so does every skipped chat's open todo and call-back a
    * restored Life backup made before its skip brought back (removeSkippedTodos,
-   * as the system). Only a skipped chat the morning made something from costs
+   * as the system: one the owner changed since the skip stays). Only a skipped chat the morning made something from costs
    * a look at Life. Life refusing is quiet. Never throws.
    */
   private clearSkipped(db: MessagesDb): void {

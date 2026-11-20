@@ -20,7 +20,8 @@
  *   across a restart too; a skip removes its own chat's todos as whoever
  *   skipped it, another owed chat's as the system; a restored Life backup
  *   made before a skip doesn't bring that chat's todos back (life.db or
- *   messages.db opening takes them again, until the chat is unskipped);
+ *   messages.db opening takes them again, until the chat is unskipped),
+ *   but one done at the skip and reopened since stays the owner's;
  *   each run of the day that made something keeps its summary, todos and
  *   Undo on Today (a later Run now, an empty timer run or a failed one
  *   never hides or takes the morning's); a reader of another build fails a
@@ -1109,6 +1110,32 @@ describe('the morning run', () => {
     restore();
     t.lifeOpened();
     expect(titles()).toEqual(ALL);
+  });
+
+  it('a skipped chat\'s todo done at the skip stays the owner\'s: reopened or changed later, no Life or Messages open takes it', async () => {
+    const handlers: FakeHandlers = { ...readerOf({ pk: () => 42 }), read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }) };
+    const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer) });
+    expect(await t.svc.morning.run({ trigger: 'now' })).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+    const list = (done: boolean) => {
+      const r = t.life.todos.listTodos({ done });
+      if (!r.ok) throw new Error(r.reason);
+      return r.value.todos;
+    };
+    const titles = () => list(false).map((x) => x.title).sort();
+    const venue = list(false).find((x) => x.title === 'Check the venue booking')!;
+    expect(t.life.todos.setDone(venue.id, true, CLI).ok).toBe(true);
+    t.clock.advance(MIN);
+    // The skip takes Ravi's open call-back; the todo he already did stays.
+    expect(await t.svc.skip.add(RAVI, PHONE)).toEqual({ ok: true, value: {} });
+    expect(titles()).toEqual(['Send Asha the deck']);
+    t.clock.advance(MIN);
+    // He reopens it: his, not one a restored backup brought back.
+    expect(t.life.todos.setDone(venue.id, false, CLI).ok).toBe(true);
+    t.lifeOpened();
+    expect(titles()).toEqual(['Check the venue booking', 'Send Asha the deck']);
+    await t.ctx.settings.patch({ messages: { enabled: false } });
+    await t.ctx.settings.patch({ messages: { enabled: true } });
+    expect(titles()).toEqual(['Check the venue booking', 'Send Asha the deck']);
   });
 
   it("a skip removes its own chat's todos as whoever skipped it, and other chats' still owed to Life as the system", async () => {

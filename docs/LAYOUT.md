@@ -1032,7 +1032,8 @@ reader's LaunchAgent in `lib/launchd.ts` (`READER_LABEL`), doctor's reader
 line, `uninstall` boots it out; `commands/mcp.ts`'s five WhatsApp tools,
 `install`, `status` and `ask`, and the slim entry `bin/jantar-mcp.mjs` with
 `src/mcp-main.ts`. The web: `ui/screens/messages/` (Today and Settings, in
-their own chunk). Tests: `packages/protocol/test/messages.test.ts`;
+their own chunk) and the place's icon, drawn in `ui/shell/messages-glyph.tsx`
+as People's is. Tests: `packages/protocol/test/messages.test.ts`;
 `packages/daemon/test/messages/**` (`fixture.ts` writes a synthetic
 WhatsApp with fake ids, `reader-build.ts` compiles the real reader, skipped
 without `swiftc`; `fake-reader.ts` for the rest),
@@ -1040,4 +1041,8 @@ without `swiftc`; `fake-reader.ts` for the rest),
 `packages/cli/test/{messages,mcp-messages,mcp-install}.test.ts` and the
 sentences sweep (`jantar messages`); `packages/web/test/messages/**` and
 `test/integration/web-fixture-messages.ts` in the layout matrix.
-`scripts/check-secrets.mjs` gains `whatsapp-jid`.
+`scripts/check-secrets.mjs` gains `whatsapp-jid`. The first load is 279.3 kB
+of `MAIN_JS_MAX` 280 kB (278.8 on 0.14.1: the Messages place and route,
+and what the protocol gained). With Phosphor's ChatsCircle icon it was
+280.1 kB, over the gate, so the icon is drawn instead. `MAIN_JS_MAX` was
+not raised.

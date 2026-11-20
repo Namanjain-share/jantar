@@ -7,7 +7,8 @@
  *   wrote (wroteAt), and marks the 1:1s waiting on him (those with
  *   nothing new too, from the reader's waiting list), each chat's tier and
  *   the calls he returned (a caller with no 1:1 by their number however it
- *   is written, or their name; each caller shown as Unknown on their own);
+ *   is written, or their name; each caller shown as Unknown, alone or
+ *   among others on a call, on their own; READER_UNKNOWN is the reader's);
  * - budget() keeps what fits the token estimate (UTF-8 bytes / 3, of the
  *   lines as input.ts escapes them), filled in tier order: waiting 1:1s
  *   (each one's unanswered lines before any one's context) and the windows
@@ -22,7 +23,7 @@
  * The fixture's 5,000-line group runs on the real reader (skipped where
  * Swift can't build it); the rest on synthetic batches and the fake reader.
  */
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -33,10 +34,10 @@ import { HEADER_TOKENS, REPORT_DROPPED_MAX, budget, droppedReport, estimateToken
 import { collect, missedCalls, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
 import { lineBody, morningInput } from '../../src/messages/morning/input.js';
 import { createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
-import { READER_KEYS_MAX } from '../../src/messages/reader-protocol.js';
+import { READER_KEYS_MAX, READER_UNKNOWN } from '../../src/messages/reader-protocol.js';
 import { readerError, startFakeReader, type FakeHandlers } from './fake-reader.js';
 import { FIXTURE_NOW, makeWhatsAppFixture, type FixturePaths } from './fixture.js';
-import { buildReader, whatsAppRunning } from './reader-build.js';
+import { READER_ASSET, buildReader, whatsAppRunning } from './reader-build.js';
 import { keyOf, startReader, type Running } from './reader-harness.js';
 
 const bin = await buildReader();
@@ -394,6 +395,9 @@ describe('budget', () => {
       // A name with no 1:1 missed twice, its case and spacing aside.
       call(5, 'Neel Test', 3),
       call(6, 'neel  test', 2),
+      // A WhatsApp call with several people and no group, one of them Unknown: missed, then another such call connected.
+      call(10, 'Asha Test, Unknown', 3, { via: 'whatsapp' }),
+      call(11, 'Asha Test, Unknown', 2, { via: 'whatsapp', missed: false, durationS: 60 }),
     ];
     const marked = missedCalls(calls, {});
     expect(marked.map((c) => [c.who, c.returned])).toEqual([
@@ -401,15 +405,30 @@ describe('budget', () => {
       ['Unknown', false],
       ['Neel Test', false],
       ['neel  test', false],
+      ['Asha Test, Unknown', false],
     ]);
-    // None fits: each person's left out once, an Unknown caller each on their own line.
-    const more = [...marked, { ...call(7, 'Unknown', 1), returned: false }, { ...call(8, '+919990000008', 1), returned: false }, { ...call(9, '09990000008', 1), returned: false }];
+    // None fits: each person's left out once, an Unknown caller (alone or among others) each on their own line.
+    const more = [
+      ...marked,
+      { ...call(7, 'Unknown', 1), returned: false },
+      { ...call(8, '+919990000008', 1), returned: false },
+      { ...call(9, '09990000008', 1), returned: false },
+      { ...call(12, 'Unknown, Unknown', 1, { via: 'whatsapp' }), returned: false },
+      { ...call(13, 'Unknown, Unknown', 1, { via: 'whatsapp' }), returned: false },
+    ];
     expect(budget(batchOf([], more), HEADER_TOKENS).dropped).toEqual([
       { chatName: 'Unknown', kept: 0, left: 1, call: true },
       { chatName: 'Neel Test', kept: 0, left: 2, call: true },
+      { chatName: 'Asha Test, Unknown', kept: 0, left: 1, call: true },
       { chatName: 'Unknown', kept: 0, left: 1, call: true },
       { chatName: '+919990000008', kept: 0, left: 2, call: true },
+      { chatName: 'Unknown, Unknown', kept: 0, left: 1, call: true },
+      { chatName: 'Unknown, Unknown', kept: 0, left: 1, call: true },
     ]);
+  });
+
+  it("READER_UNKNOWN is the reader's own Unknown (jantar-messages-reader.swift)", () => {
+    expect(readFileSync(READER_ASSET, 'utf8')).toContain(`\nlet UNKNOWN = ${JSON.stringify(READER_UNKNOWN)}\n`);
   });
 
   it('a reply to the owner is about him wherever his line is', () => {
