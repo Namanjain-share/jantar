@@ -7,7 +7,8 @@
  * `files.list` (folder and count, never the text searched for). One walk
  * per device at a time: a newer search from the same device stops the one
  * before it, and a search whose request goes away stops too (409 for a
- * stopped one, which nobody is waiting for).
+ * stopped one, which nobody is waiting for). A request already gone when
+ * its handler starts stops nothing: it answers 409 at once.
  *
  * The pipeline has already checked the device, the control scope and
  * `files.enabled`, and parsed the query. Here:
@@ -128,6 +129,8 @@ export const FILES_ROUTE_IMPLS: RouteTable = {
       const actor = needActor(c.auth);
       countRequest(c, s);
       const who = actorName(c.auth);
+      // Gone before it started (a stale request the tunnel delivered late): it must not stop the live one.
+      if (c.req.raw.destroyed || c.reply.raw.destroyed || c.req.raw.socket?.destroyed === true) throw new ApiError('conflict', FIND_STOPPED);
       let running = findsRunning.get(s);
       if (!running) {
         running = new Map();

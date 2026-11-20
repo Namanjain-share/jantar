@@ -397,6 +397,25 @@ describe('GET /v1/files/find', () => {
     expect(both.map((r) => r.statusCode)).toEqual([200, 200]);
   });
 
+  it('a request already gone when it starts (late, out of order) stops nothing: the live search goes on', async () => {
+    env = fpEnv();
+    for (const dir of ['a', 'b', 'c']) env.write(join(env.proj, dir, `${dir}-hit.txt`), '');
+    const { get, policy } = await serve();
+    const held = holdReads(policy, 1);
+    const live = get('root=r.proj&q=hit');
+    await vi.waitFor(() => expect(held.spy.mock.calls.length).toBeGreaterThanOrEqual(2));
+    const reads = held.spy.mock.calls.length;
+    const late = new AbortController();
+    late.abort();
+    await get('root=r.proj&q=hi', late.signal).catch((e: unknown) => e);
+    // It read nothing of its own.
+    expect(held.spy.mock.calls.length).toBe(reads);
+    held.release();
+    const res = await live;
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { entries: unknown[] }).entries).toHaveLength(3);
+  });
+
   it('a request that goes away stops its walk at the next folder', async () => {
     env = fpEnv();
     for (const dir of ['a', 'b', 'c', 'd']) env.write(join(env.proj, dir, `${dir}-hit.txt`), '');
