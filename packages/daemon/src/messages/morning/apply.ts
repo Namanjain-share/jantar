@@ -17,10 +17,12 @@
  *   waiting with nothing new gets no second draft: any line it waits on
  *   drafted before is a duplicate, even one budget() left out this time
  *   (its `waitsOn`).
- * - One of each per person: a call-back for someone (their 1:1) who has one
- *   open in Life, made by this run or an earlier one, is a `duplicate`; so
- *   is a second draft for a chat in one answer. A new draft for a chat
- *   dismisses its older open ones (it replaces them).
+ * - One of each per person: a call-back for someone who has one open in
+ *   Life, made by this run or an earlier one, is a `duplicate` (a person:
+ *   their 1:1; a caller with no 1:1, their number or name as callerKey
+ *   reads it, against the open call-backs made from such calls, by their
+ *   titles); so is a second draft for a chat in one answer. A new draft for
+ *   a chat dismisses its older open ones (it replaces them).
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
@@ -44,7 +46,9 @@
  * - Replies are drafts (state open; a 1:1's number for Open in WhatsApp, a
  *   group none; `at`: when the cited line was written). A draft whose chat
  *   the owner has written to since is dismissed before a run applies
- *   (dismissAnswered).
+ *   (dismissAnswered), and a reply citing a line he wrote after in that
+ *   chat (the batch's `wroteAt`, at or after the line) is never made
+ *   (`answered`).
  * - A dry run writes nothing (no project, todo, draft or `made` row) and
  *   answers the same, without ids.
  *
@@ -62,7 +66,7 @@ import { newId } from '../../core/ids.js';
 import { CONTROL, LINE_END } from '../../rewrite/guards.js';
 import type { MessagesDb } from '../db.js';
 import { MESSAGES_SAYS } from '../says.js';
-import { openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { callerKey, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 import { lineBody, type RefMap } from './input.js';
 
 /** The Life project the morning's todos go to. */
@@ -93,7 +97,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
 export type MadeKind = 'todo' | 'reply' | 'callback';
-export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | 'time_not_stated' | 'time_passed';
+export type DropWhy = 'unknown_ref' | 'duplicate' | 'limit' | 'life_refused' | 'time_not_stated' | 'time_passed' | 'answered';
 
 export interface ApplyDeps {
   life: Pick<LifeService, 'todos'>;
@@ -279,18 +283,28 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     if (late) drop('todo', t.ref, 'time_passed');
   }
 
-  // A person's call-back still open in Life, by their 1:1: this run's, or one an earlier run made.
+  // A person's call-back still open in Life: this run's, or one an earlier run made. A person with a 1:1 by its key
+  // (`made`'s chat), a caller with no 1:1 by callerKey of the title's who, among the call-backs made with no chat.
   const calledBack = new Set<string>();
-  let openIds: Set<string> | null = null;
-  const callbackOpen = (person: string): boolean => {
+  let openTitles: Map<string, string> | null = null;
+  const callbackOpen = (person: string, byChat: boolean): boolean => {
     if (calledBack.has(person)) return true;
-    const ids = (d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key = ? AND target_id IS NOT NULL").all(person) as { target_id: string }[]).map((r) => r.target_id);
+    const ids = (
+      (byChat
+        ? d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key = ? AND target_id IS NOT NULL").all(person)
+        : d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key IS NULL AND target_id IS NOT NULL").all()) as { target_id: string }[]
+    ).map((r) => r.target_id);
     if (ids.length === 0) return false;
-    if (openIds === null) {
+    if (openTitles === null) {
       const open = d.life.todos.listTodos({ done: false });
-      openIds = new Set(open.ok ? open.value.todos.map((t) => t.id) : []);
+      openTitles = new Map(open.ok ? open.value.todos.map((t) => [t.id, t.title]) : []);
     }
-    return ids.some((id) => openIds!.has(id));
+    const titles = openTitles;
+    return ids.some((id) => {
+      const title = titles.get(id);
+      if (title === undefined) return false;
+      return byChat || (title.startsWith(CALLBACK_TITLE) && callerKey(title.slice(CALLBACK_TITLE.length)) === person);
+    });
   };
 
   for (const c of answer.callbacks) {
@@ -303,9 +317,11 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     }
     const src = `callback:${call ? call.callKey : hit!.m.msgKey}`;
     const chatKey = call ? call.chatKey : hit!.chat.chatKey;
-    // A person is their 1:1 (a group's chat is many people).
-    const person = call ? call.chatKey : hit!.chat.kind === 'dm' ? chatKey : undefined;
-    if (isMade(src) || (!refused && person !== undefined && callbackOpen(person))) {
+    const who = whoOf(call, hit, c.who);
+    // A person is their 1:1 (a group's chat is many people); a caller with no 1:1, their number or name.
+    const byChat = !call || call.chatKey !== undefined;
+    const person = call ? (call.chatKey ?? callerKey(who)) : hit!.chat.kind === 'dm' ? chatKey : undefined;
+    if (isMade(src) || (!refused && person !== undefined && callbackOpen(person, byChat))) {
       drop('callback', c.ref, 'duplicate');
       continue;
     }
@@ -320,7 +336,6 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     // Still owed once its time is gone (a late run, a morning time after the call-back time): it rings soon.
     const late = time !== undefined && passed(day, time);
     if (late) ({ day, time } = nextQuarter(d.applyAt, d.tz));
-    const who = whoOf(call, hit, c.who);
     const why = multiLine(c.why, NOTES_MAX);
     const made = todo(src, 'callback', chatKey, { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
     if (!made) {
@@ -340,6 +355,12 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const hit = lineOf(r.ref, true);
     if (chatKey === undefined || !hit || hit.chat.chatKey !== chatKey) {
       drop('reply', r.ref, 'unknown_ref');
+      continue;
+    }
+    // He wrote in that chat at or after the line (in WhatsApp, in this batch): answered, as dismissAnswered has it.
+    const wrote = batch.wroteAt[chatKey];
+    if (wrote !== undefined && Date.parse(wrote) >= Date.parse(hit.m.at)) {
+      drop('reply', r.ref, 'answered');
       continue;
     }
     const src = `reply:${hit.m.msgKey}`;

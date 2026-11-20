@@ -6,6 +6,7 @@
  *   status says closed); a reminder missed while its module was off rings
  *   late once it is on again, whether or not another module stayed on; a
  *   zone change moves every ring; any life.* change emits life.changed {};
+ *   0.15: onOpen's hooks run as life.db opens, before its first sweep;
  * - a life.db that will not open: broken() is the sentence, the file is
  *   untouched, one "Life data needs attention" push, a code in the log;
  * - LD2: a module builder that throws leaves the daemon serving /healthz
@@ -166,6 +167,34 @@ describe('opening and closing with the switches', () => {
     await ctx.settings.patch({ life: { todos: true } });
     await ctx.clock.tick(30_000);
     expect(pushes.map((p) => p.body)).toEqual(['Missed at 11:00 · Example todo · 11:00']);
+  });
+
+  it("0.15: onOpen's hooks run each time life.db opens, before its first sweep, so a todo one removes never rings late", async () => {
+    // A timed todo, then a daemon start with every module off: its time passes while life.db is closed.
+    const before = service({ at: '2026-10-30T10:58:00.000Z' });
+    await before.start();
+    const made = before.todos.createTodo(todoBody({}, { timed: { day: '2026-10-30', time: '11:00' } }), { kind: 'cli' });
+    if (!made.ok) throw new Error(made.reason);
+    await before.stop();
+    const life = service({ settings: settings(), at: '2026-10-30T11:05:00.000Z' });
+    const seen: boolean[] = [];
+    life.onOpen(() => {
+      seen.push(life.todos.listTodos({ done: false }).ok);
+      // What Messages owes Life (a skipped chat's todo) leaves here.
+      life.todos.removeTodo(made.value.id, { kind: 'system' });
+    });
+    // A hook that throws is logged, never Life's failure.
+    life.onOpen(() => {
+      throw new Error('synthetic');
+    });
+    await life.start();
+    expect(seen).toEqual([]);
+    await ctx.settings.patch({ life: { todos: true } });
+    expect(seen).toEqual([true]);
+    expect(life.broken()).toBeNull();
+    await ctx.clock.tick(30_000);
+    // Without the hook the start sweep sends "Missed at 11:00" (above).
+    expect(pushes).toEqual([]);
   });
 
   it('v0.7: a post missed while posts were off rings late once they are on again (the switch resyncs post rows)', async () => {

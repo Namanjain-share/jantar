@@ -252,6 +252,13 @@ export const SkipAddBodySchema = z.strictObject({ chatKey: ChatKeySchema });
 export type SkipAddBody = z.infer<typeof SkipAddBodySchema>;
 export const MessagesSkipListSchema = z.object({ skip: z.array(SkipEntrySchema) });
 export type MessagesSkipList = z.infer<typeof MessagesSkipListSchema>;
+/**
+ * A skip, done at once. `note`: a fixed sentence the phone and the CLI show
+ * as it is, when part of it waits: Life wasn't open, so the open todos and
+ * call-backs the morning made from that chat leave Life once it opens again.
+ */
+export const MessagesSkipAddReplySchema = z.object({ ok: z.literal(true), note: z.string().optional() });
+export type MessagesSkipAddReply = z.infer<typeof MessagesSkipAddReplySchema>;
 /** `forget`: stop looking for the chats not found again (reads start again; skip them by hand at once). */
 export const SkipResetBodySchema = z.strictObject({ forget: z.boolean().optional() });
 export type SkipResetBody = z.infer<typeof SkipResetBodySchema>;
@@ -319,7 +326,8 @@ export type MorningRunState = z.infer<typeof MorningRunStateSchema>;
  * `life_refused`: Life refused it otherwise, closed or its project gone;
  * `time_not_stated`: its time went, the line states none; `time_passed`: its
  * time had passed when the run applied, so a todo keeps its day only and a
- * call-back rings at the next quarter hour).
+ * call-back rings at the next quarter hour; `answered`: a reply to a line
+ * the owner wrote after, in that chat).
  */
 export const MorningPreviewSchema = z.object({
   todos: z.array(z.object({ title: z.string() })),
@@ -328,7 +336,7 @@ export const MorningPreviewSchema = z.object({
   dropped: z.array(z.object({
     kind: z.enum(['todo', 'reply', 'callback']),
     ref: z.string(),
-    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'life_refused', 'time_not_stated', 'time_passed']),
+    why: z.enum(['unknown_ref', 'duplicate', 'limit', 'life_refused', 'time_not_stated', 'time_passed', 'answered']),
   })),
 });
 export type MorningPreview = z.infer<typeof MorningPreviewSchema>;
@@ -505,7 +513,7 @@ export const MESSAGES_ROUTES = {
   }),
   messagesSkipAdd: route({
     method: 'POST', path: '/v1/messages/skip', scope: 'control', phase: 'v0.15', ctl: true, feature: 'messages',
-    body: SkipAddBodySchema, response: OkReplySchema,
+    body: SkipAddBodySchema, response: MessagesSkipAddReplySchema,
     summary: 'Skip a chat: a 1:1 skips that person everywhere (their chats, calls and lines in groups), a group the group.',
   }),
   messagesSkipRemove: route({

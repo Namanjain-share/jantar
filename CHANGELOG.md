@@ -80,8 +80,10 @@ gui/$(id -u)/com.jantar.messages-reader` and remove
   The reader enforces it, below everything else. What the morning already
   made from a skipped chat goes too (its drafts, its open todos and
   call-backs, a summary that read it), and a run going that read that
-  chat stops. A phone can add a skip but never remove one: that is
-  `jantar messages skip remove` at the Mac.
+  chat stops. If Life isn't open at the time, the skip says so, and those
+  todos leave Life once it opens, with Messages on. A phone can add a
+  skip but never remove one: that is `jantar messages skip remove` at the
+  Mac.
   A person WhatsApp never linked to a number can still show in groups.
   It fails closed: a skip list file the reader would refuse is never
   written over, a missing contact file stops reads while anything is

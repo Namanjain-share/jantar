@@ -154,6 +154,13 @@ command line or the morning run.
   call from that person): it makes nothing, and you run it again. A todo
   made from a skipped person's line in a group came from the group, so it
   stays: remove it in Life.
+- **If Life isn't open when you skip** (every Life module off, or Life
+  needs attention), the chat is still skipped at once, and the phone and
+  `jantar messages skip add` say its todos leave later. Messages keeps
+  that in messages.db and tries again until they are gone: when Life
+  opens (turning a Life module on removes them before any can ring), when
+  Messages starts or is turned on, and at every skip, status, Today and
+  morning run. With Messages off they wait in Life until it is on again.
 - Status updates, channels and broadcast lists are never read, skipped or
   not.
 
@@ -303,11 +310,15 @@ so, rather than reporting nothing new, and `jantar messages morning
   lunch, a morning time after the call-back time, a message from
   yesterday), it rings at the next quarter hour instead. One per person:
   while a call-back for someone is still open, a new missed call from
-  them makes no second one.
+  them makes no second one. A person is their WhatsApp 1:1; a caller you
+  have no 1:1 with is their number, however it was dialled (with +91, a 0
+  or neither), or the name shown. A call-back made from a line in a group
+  is the group's, so a missed call from that person still makes one.
 - **Reply drafts**, under Waiting on you: who, what they asked, and a
   short reply in the chat's own language and tone. One per chat: a newer
   draft replaces the older one, and a draft goes at the next run once you
-  have written to that chat in WhatsApp.
+  have written to that chat in WhatsApp. A run makes no draft for a
+  message you already answered in that chat.
 - **One push**: "Morning: 6 todos, 3 replies waiting, 2 call-backs".
   Counts only, because it shows on the lock screen. A run that made
   nothing sends none. While you have Jantar's notifications muted, the

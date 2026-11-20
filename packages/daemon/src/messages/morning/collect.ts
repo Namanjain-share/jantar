@@ -158,6 +158,25 @@ export function missedCalls(calls: readonly Call[], wrote: Readonly<Record<strin
     });
 }
 
+/** What a dialled number may hold (the reader's NUMBER_CHARS). */
+const NUMBER = /^[+0-9 \-().]+$/;
+/** A number's last digits, which name it however it was dialled, with +91, a 0 or neither (the reader's NUMBER_SUFFIX_DIGITS). */
+const NUMBER_SUFFIX_DIGITS = 10;
+
+/**
+ * A caller with no 1:1 (a `who` with no chatKey), as one person, the way
+ * the reader matches a number to a person: a number by its digits, its last
+ * NUMBER_SUFFIX_DIGITS once it has that many ("+91 99900 00009",
+ * "09990000009" and "+919990000009" are one); a name or an address by its
+ * letters, case and spacing aside. Never a chat key.
+ */
+export function callerKey(who: string): string {
+  const t = who.trim();
+  const digits = t.replace(/[^0-9]/g, '');
+  if (digits && NUMBER.test(t)) return `tel:${digits.slice(-NUMBER_SUFFIX_DIGITS)}`;
+  return `who:${t.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase()}`;
+}
+
 /** One calls store's calls since `since`; `read: false` when it is left out (CALLS_LEFT_OUT; never a reader of another build). */
 export async function callsFrom(reader: ReaderClient, op: 'waCalls' | 'phoneCalls', since: string): Promise<{ calls: Call[]; read: boolean }> {
   try {

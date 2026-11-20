@@ -69,6 +69,9 @@ export const MESSAGES_SAYS = {
   imageJob: cantRead("the image couldn't be made ready to show on this Mac"),
   notInSpool: cantRead('the reader handed over a file from outside its spool, so it was left alone'),
   notAChat: 'No chat with that id (it may be skipped already, or gone).',
+  // A skip done while life.db was closed (the skip's own answer, MessagesSkipAddReply `note`).
+  skipTodosLater:
+    "Life isn't open right now (Todos off, or Life needs attention), so the open todos and call-backs the morning made from this chat leave Life as soon as it opens again.",
   notSkipped: "That chat isn't on the skip list.",
   // Calls to return: a call list left out (as the morning run's report says).
   waCallsUnread: "WhatsApp's calls weren't read, so missed WhatsApp calls aren't listed.",

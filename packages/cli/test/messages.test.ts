@@ -383,6 +383,19 @@ describe('jantar messages', () => {
       expect(io.stderr).toContain('skip list');
     });
 
+    it("skip add says when the chat's todos leave Life later (Life isn't open), as the daemon says it, cleaned", async () => {
+      const note = "Life isn't open right now\u001b[31m: its todos leave later.";
+      const ctl = fakeCtl({
+        'GET /v1/messages/chats': chatsRoute([chat(ASHA, 'Asha Test')]),
+        'POST /v1/messages/skip': () => ok({ ok: true, note }),
+      });
+      const { ctx, io } = contextFor(home, { ctl, paths });
+      expect(await messages.run(['skip', 'add', 'Asha Test'], ctx), io.stderr).toBe(EXIT.ok);
+      const lines = io.stdout.split('\n');
+      expect(lines.findIndex((l) => l.startsWith('Skipped "Asha Test"'))).toBe(lines.length - 3);
+      expect(lines.at(-2)).toBe("Life isn't open right now: its todos leave later.");
+    });
+
     it('skip reset waits for the reader to start again, says which chats it skipped again and which are left', async () => {
       const answers: MessagesSkipReset[] = [
         // The old keys gone; the reader starting with its new salt.
@@ -650,6 +663,7 @@ describe('jantar messages', () => {
           { kind: 'callback', ref: 'k1', why: 'life_refused' },
           { kind: 'callback', ref: 'k2', why: 'time_passed' },
           { kind: 'todo', ref: 'm4', why: 'time_passed' },
+          { kind: 'reply', ref: 'm5', why: 'answered' },
         ],
       },
     };
@@ -676,6 +690,7 @@ describe('jantar messages', () => {
       // A time that had passed by the run: a call-back rings soon, a todo keeps its day.
       expect(lines).toContain('  late       callback k2: its time had passed, so it rings at the next quarter hour');
       expect(lines).toContain('  late       todo m4: its time had passed, so it keeps its day only');
+      expect(lines).toContain('  left out   reply m5: you wrote in that chat after its message');
       expect(io.stdout).toContain('Dry run: nothing was written.');
     });
 

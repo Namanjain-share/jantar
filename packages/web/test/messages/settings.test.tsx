@@ -1,7 +1,8 @@
 /**
  * 0.15 Messages' Settings (`/messages?view=settings`): the data note on
  * first open, the morning and call-back times, the skip list (search a chat,
- * Skip it after a confirm; no remove on the phone, only the Mac's command),
+ * Skip it after a confirm, and the Mac's note when its todos leave Life
+ * later; no remove on the phone, only the Mac's command),
  * the last run's report with what was left out per chat, and the read log
  * (when, who read, from which folder, which chat, how many). Every name,
  * folder and number is made up.
@@ -65,6 +66,24 @@ describe('Messages: Settings', () => {
     await waitFor(() => expect(requested(api, 'POST', '/v1/messages/skip')).toEqual([expect.objectContaining({ body: { chatKey: IDS.asha } })]));
     const list = await within(skip).findByRole('list', { name: 'Skipped chats' });
     await waitFor(() => expect(within(list).getByText('Asha Test')).toBeTruthy());
+    // Life's todos answered: nothing more is said.
+    expect(within(skip).queryByRole('status')).toBeNull();
+  });
+
+  it("a skip while Life isn't open says, as the Mac says it, that the chat's todos leave Life later", async () => {
+    const note = "Life isn't open right now (Todos off, or Life needs attention), so the open todos and call-backs the morning made from this chat leave Life as soon as it opens again.";
+    const api = messagesApi({
+      'GET /v1/messages/chats': () => ({ chats: [{ chatKey: IDS.asha, name: 'Asha Test', kind: 'dm', lastAt: '2026-01-15T07:00:00.000Z', unread: 0, lastFromMe: false, archived: false }], total: 1 }),
+      'POST /v1/messages/skip': () => ({ ok: true, note }),
+    });
+    open(api);
+    const skip = await section('Skip list');
+    fireEvent.change(within(skip).getByRole('searchbox', { name: 'Find a chat to skip' }), { target: { value: 'Asha' } });
+    const found = await within(skip).findByRole('list', { name: 'Chats found' });
+    fireEvent.click(within(found).getByRole('button', { name: 'Skip Asha Test' }));
+    fireEvent.click(within(skip).getByRole('button', { name: 'Yes, skip' }));
+    const said = await within(skip).findByRole('status');
+    expect(said.textContent).toBe(note);
   });
 
   it('sets the morning and call-back times, and turns each off', async () => {

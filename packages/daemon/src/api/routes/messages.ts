@@ -25,7 +25,8 @@
  *   for a device, takes its bytes from s.rawBytesBudget (shared with Files
  *   and Meetings), refusing a spent budget before the reader is asked;
  *   anything else is 415 not_an_image, by name and size;
- * - writes reply `{ ok: true }` (Run now: the run's report) and audit their
+ * - writes reply `{ ok: true }` (Run now: the run's report; a skip whose
+ *   todos wait for Life: its `note` too) and audit their
  *   target id only (a chat key, a draft or run id), never a name or text;
  *   GETs are not audited.
  */
@@ -191,9 +192,8 @@ export const MESSAGES_ROUTE_IMPLS: RouteTable = {
 
   messagesSkipAdd: {
     handle: async (c: Call<NoParams, unknown, SkipAddBody>, s) => {
-      // The reader names the chat for the list; a chat it doesn't show is the part's not_found.
-      lifeValue(await reading(() => s.deps.messages.skip.add(c.body.chatKey, needActor(c.auth))));
-      return OK;
+      // The reader names the chat for the list; a chat it doesn't show is the part's not_found. `note`: its todos leave Life later.
+      return { ...OK, ...lifeValue(await reading(() => s.deps.messages.skip.add(c.body.chatKey, needActor(c.auth)))) };
     },
     audit: (c: Call<NoParams, unknown, SkipAddBody | undefined>) => (c.body?.chatKey ? { target: c.body.chatKey } : {}),
   },

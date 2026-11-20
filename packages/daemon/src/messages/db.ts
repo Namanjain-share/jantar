@@ -16,12 +16,14 @@
  * morning run reports, what each run made and from which chat (so a re-run
  * makes nothing twice, and a skip takes it from view), the chats each run
  * sent to Claude, the read log (ids and counts only) and Messages' own
- * settings (the morning and call-back times, the "ran this morning" mark). No
+ * settings (the morning and call-back times, the "ran this morning" mark,
+ * the skipped chats whose todos are still to leave Life). No
  * message text but a draft's quote of what they asked, never a WhatsApp id.
  */
 import { basename } from 'node:path';
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import {
+  ChatKeySchema,
   DEFAULT_MESSAGES_PREFS,
   MessagesPrefsSchema,
   MorningRunSchema,
@@ -53,6 +55,13 @@ export const CURSOR_KEY = 'morning.cursor';
 export const LAST_MORNING_KEY = 'morning.last_at';
 /** meta: when the morning a new morning time left as done (set after it had passed) was due (ISO): the timer reads it with LAST_MORNING_KEY, so a restart honours it. */
 export const PASSED_MORNING_KEY = 'morning.passed_at';
+/**
+ * meta: the skipped chats whose open morning todos and call-backs are still
+ * to leave Life (JSON chat keys): each goes in with its skip, in the skip's
+ * own transaction, and out once Life's todos took them (service.ts
+ * settleOwed), so a Life that refuses at the skip can't lose them.
+ */
+export const SKIP_OWED_KEY = 'skip.owed';
 
 export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
   {
@@ -216,6 +225,24 @@ export function readCursor(db: MessagesDb): ReaderCursor | null {
 
 export function writeCursor(db: MessagesDb, cursor: ReaderCursor): void {
   db.setMeta(CURSOR_KEY, JSON.stringify(cursor));
+}
+
+/** The skipped chats whose todos are still owed to Life (SKIP_OWED_KEY); none when there is no mark or it doesn't read. */
+export function readOwed(db: MessagesDb): string[] {
+  const raw = db.meta(SKIP_OWED_KEY);
+  if (!raw) return [];
+  try {
+    const keys: unknown = JSON.parse(raw);
+    return Array.isArray(keys) ? keys.filter((k): k is string => ChatKeySchema.safeParse(k).success) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The skipped chats still owed, each once; none clears the mark. */
+export function writeOwed(db: MessagesDb, keys: readonly string[]): void {
+  if (keys.length === 0) db.deleteMeta(SKIP_OWED_KEY);
+  else db.setMeta(SKIP_OWED_KEY, JSON.stringify([...new Set(keys)]));
 }
 
 /** A run's report, written or replaced by its id (a preview is never kept). */

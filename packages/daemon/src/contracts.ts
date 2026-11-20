@@ -2246,6 +2246,12 @@ export interface LifeService extends Service {
    * client links); called once, when Meetings is built.
    */
   useMeetings(source: () => readonly WorkMeetingRef[] | null): void;
+  /**
+   * 0.15 Messages: `fn` runs each time life.db opens (the daemon's start, the first switch turned on, a restore),
+   * with the modules built and before the scheduler's first sweep, so a skipped chat's todos owed to Life leave
+   * before they could ring late. A throw is logged, never Life's failure.
+   */
+  onOpen(fn: () => void): void;
   /** VACUUM INTO <backupsDir>/life-YYYY-MM-DD.db (0600). Refused while broken or closed: there is nothing open to copy. */
   backup(): Promise<LifeResult<{ file: string; at: string }>>;
   /** Put a backup (a `life-*.db` name inside backupsDir) back; the current file is kept beside it. Allowed while broken. */
@@ -2595,8 +2601,12 @@ export interface MessagesService extends Service {
   callsToReturn(by: ReadBy): Promise<CallsToReturnResponse>;
   readonly skip: {
     list(): SkipEntry[];
-    /** Name and kind from the reader; already skipped is ok; a chat the reader doesn't show is not_found. */
-    add(chatKey: string, actor: Actor): Promise<LifeResult>;
+    /**
+     * Name and kind from the reader; already skipped is ok; a chat the reader doesn't show is not_found. `note`
+     * (MESSAGES_SAYS.skipTodosLater): Life's todos refused, so the chat's open morning todos and call-backs leave
+     * Life once they answer (messages.db keeps them owed till then).
+     */
+    add(chatKey: string, actor: Actor): Promise<LifeResult<{ note?: string }>>;
     /** The Mac's CLI only (`forbidden` for anyone else: a phone never widens what Jantar reads). */
     remove(chatKey: string, actor: Actor): LifeResult;
     /**

@@ -316,14 +316,14 @@ describe('the skip list', () => {
     expect(mirrored()).toEqual({ version: 1, chatKeys: [] });
     expect(statSync(t.paths.messagesDir).mode & 0o777).toBe(0o700);
 
-    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: {} });
     expect(mirrored()).toEqual({ version: 1, chatKeys: [ASHA] });
     expect(statSync(mirror).mode & 0o777).toBe(0o600);
     expect(t.svc.skip.list()).toEqual([{ chatKey: ASHA, name: 'Asha Test', kind: 'dm', addedAt: NOW }]);
     expect((await t.svc.status()).skipped).toBe(1);
     // Again: nothing new, and the reader isn't asked (a skipped chat is not_found there).
     const asked = t.reader!.calls.length;
-    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: {} });
     expect(t.reader!.calls).toHaveLength(asked);
     expect(t.svc.skip.list()).toHaveLength(1);
     // A chat the reader doesn't show can't be added.
@@ -346,7 +346,7 @@ describe('the skip list', () => {
 
   it('a reset messages.db keeps skip.json keys', async () => {
     const t = await setup({ dbFile: join(dir, 'messages.db'), handlers: anyChat });
-    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: {} });
     await t.svc.stop();
     // The owner moved messages.db aside (its broken sentence says to) and a new, empty one opens.
     writeFileSync(join(t.paths.messagesDir, 'skip.json'), JSON.stringify({ version: 1, chatKeys: [ASHA] }));
@@ -414,7 +414,7 @@ describe('the skip list', () => {
       },
     });
     mirror = join(t.paths.messagesDir, 'skip.json');
-    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: {} });
     rmSync(mirror);
     await t.svc.chats({ limit: 30 }, { via: 'cli' });
     writeFileSync(mirror, JSON.stringify({ version: 1, chatKeys: [] }));
@@ -433,7 +433,7 @@ describe('the skip list', () => {
 
   it('a skip change whose commit fails leaves skip.json as messages.db is', async () => {
     const t = await setup({ handlers: anyChat });
-    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: {} });
     const raw = (t.svc as unknown as { db: { raw: { exec(sql: string): void } } }).db.raw;
     const exec = raw.exec.bind(raw);
     raw.exec = (sql: string) => {
@@ -544,7 +544,7 @@ describe('the skip list', () => {
         },
       },
     });
-    for (const k of [ASHA, GROUP, MOM, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: true });
+    for (const k of [ASHA, GROUP, MOM, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: {} });
     const salt = join(t.paths.messagesDir, 'salt');
     writeFileSync(salt, Buffer.alloc(32, 7), { mode: 0o600 });
     // The salt there: nothing to reset, and only the Mac's CLI may.
@@ -626,7 +626,7 @@ describe('the skip list', () => {
         },
       },
     });
-    for (const k of [ASHA, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: true });
+    for (const k of [ASHA, RAVI]) expect(await t.svc.skip.add(k, CLI)).toEqual({ ok: true, value: {} });
     const salt = join(t.paths.messagesDir, 'salt');
     writeFileSync(salt, Buffer.alloc(32, 7), { mode: 0o600 });
     rmSync(salt);
@@ -959,7 +959,7 @@ describe.skipIf(!bin)('with the real reader', () => {
 
     expect((await t.svc.status()).reader).toEqual({ state: 'ok' });
     expect(await names()).toContain('Asha Test');
-    expect(await t.svc.skip.add(asha, PHONE)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(asha, PHONE)).toEqual({ ok: true, value: {} });
     expect(await names()).not.toContain('Asha Test');
     await expect(t.svc.read(asha, { limit: 50 }, { via: 'cli' })).rejects.toMatchObject({ code: 'not_found' });
     expect((await t.svc.status()).skipped).toBe(1);

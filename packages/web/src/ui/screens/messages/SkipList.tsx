@@ -3,7 +3,8 @@
  * not in a Claude session, on this phone or in the morning run. Skipping a
  * 1:1 skips that person everywhere (their calls, their lines in groups);
  * skipping a group skips the group. What the morning made from the chat
- * (its drafts, open todos and call-backs) goes with it.
+ * (its drafts, open todos and call-backs) goes with it; when Life isn't
+ * open, the skip's answer says its todos leave later, and that shows.
  *
  *   [ Find a chat to skip ]       the chats by name, 300 ms after typing stops
  *   Asha Test   1:1     [Skip]    asks first: only the Mac can read it again
@@ -42,6 +43,8 @@ export function SkipList({ skip, error, card, offline, tz, onSkipped }: SkipList
   const [found, setFound] = useState<{ q: string; reply: MessagesChatsResponse } | null>(null);
   const [findError, setFindError] = useState<unknown>(null);
   const [asking, setAsking] = useState<ChatOwner | null>(null);
+  /** The last skip's note (the Mac's sentence: its todos leave Life later), until the next skip. */
+  const [note, setNote] = useState<string | null>(null);
   const write = useWrite();
 
   // Asked 300 ms after typing stops; a blank box asks nothing and clears the answer.
@@ -72,8 +75,10 @@ export function SkipList({ skip, error, card, offline, tz, onSkipped }: SkipList
   }, [text, m]);
 
   const skipIt = async (chat: ChatOwner) => {
+    setNote(null);
     const r = await write.run(`skip:${chat.chatKey}`, (k) => m.skip(chat.chatKey, k));
     if (!r.ok) return;
+    setNote(r.value.note ?? null);
     setAsking(null);
     setFound((f) => (f ? { ...f, reply: { ...f.reply, chats: f.reply.chats.filter((c) => c.chatKey !== chat.chatKey) } } : f));
     onSkipped();
@@ -146,6 +151,11 @@ export function SkipList({ skip, error, card, offline, tz, onSkipped }: SkipList
             </Button>
           </div>
         </div>
+      ) : null}
+      {note ? (
+        <p role="status" className="break-words px-16 pt-8 type-small text-ink-2">
+          {note}
+        </p>
       ) : null}
       {write.error ? (
         <div className="px-16">

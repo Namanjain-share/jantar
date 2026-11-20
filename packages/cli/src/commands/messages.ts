@@ -65,6 +65,7 @@ import {
   type MessagesReadByNameResponse,
   type MessagesReadResponse,
   type MessagesSearchResponse,
+  type MessagesSkipAddReply,
   type MessagesSkipList,
   type MessagesSkipReset,
   type MessagesStatus,
@@ -653,12 +654,17 @@ async function skip(ctx: CliContext, rest: readonly string[], flags: Flags): Pro
       if (args.length > 1) throw new UsageError('give one chat (quote a name with spaces)');
       const picked = await chatToSkip(ctx, nameArg(args[0], 'skip add'));
       if (!picked.ok) return picked.code;
-      await callDaemon(ctx.ctl, 'POST', MESSAGES_ROUTES.messagesSkipAdd.path, { chatKey: picked.chatKey }, { idempotencyKey: ctx.deps.randomId(), timeoutMs: READ_TIMEOUT_MS });
+      const added = await callDaemon<MessagesSkipAddReply>(ctx.ctl, 'POST', MESSAGES_ROUTES.messagesSkipAdd.path, { chatKey: picked.chatKey }, {
+        idempotencyKey: ctx.deps.randomId(),
+        timeoutMs: READ_TIMEOUT_MS,
+      });
       const name = picked.name ?? (await list().catch(() => null))?.skip.find((e) => e.chatKey === picked.chatKey)?.name ?? picked.chatKey;
       ctx.io.out(WHATSAPP_NOTE);
       ctx.io.out(
         `Skipped "${clip(name, 60)}": Messages never reads it again. A 1:1 skips that person everywhere (their calls, and their lines in groups show as [skipped]).\n`,
       );
+      // The daemon's own sentence: Life wasn't open, so the chat's todos leave it later.
+      if (added.note) ctx.io.out(`${clean(added.note)}\n`);
       return EXIT.ok;
     }
     case 'remove': {
@@ -734,6 +740,7 @@ const LEFT_OUT: Record<MorningPreview['dropped'][number]['why'], string> = {
   life_refused: "Life wouldn't take it (are Life's Todos on?)",
   time_not_stated: 'its message states no time',
   time_passed: 'its time had passed',
+  answered: 'you wrote in that chat after its message',
 };
 /** What a run does with an item whose time had passed (time_passed). */
 const LATE: Record<MorningPreview['dropped'][number]['kind'], string> = {

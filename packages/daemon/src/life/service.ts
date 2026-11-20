@@ -31,6 +31,10 @@
  *   scheduler restarts and life.changed goes out. Allowed while broken; a
  *   Life that still cannot start on the restored file answers so.
  *
+ * 0.15: each time life.db opens, the parts' onOpen hooks run once the
+ * modules are built and before the scheduler starts (Messages: a skipped
+ * chat's todos still owed leave before the catch-up sweep could ring them).
+ *
  * v0.10: before life.db moves to a newer schema the open copies it into
  * backups/life-pre-<version>.db (db.ts preMigrateCopy; a restore's check
  * of a staged copy never does), and status names that copy and the schema.
@@ -201,6 +205,8 @@ class LifeServiceImpl implements LifeService {
   };
   /** v0.13 Work: every meeting with a project (Meetings registers it once built). */
   private meetingSource: (() => readonly WorkMeetingRef[] | null) | null = null;
+  /** 0.15: what runs each time life.db opens, before the first sweep (onOpen; Messages' owed removals). */
+  private readonly openHooks: (() => void)[] = [];
 
   constructor(
     private readonly ctx: DaemonContext,
@@ -543,6 +549,14 @@ class LifeServiceImpl implements LifeService {
         return false;
       }
     }
+    // 0.15: what a part owes life.db (a skipped chat's todos, Messages) goes before the first sweep could ring it.
+    for (const fn of this.openHooks) {
+      try {
+        fn();
+      } catch (e) {
+        this.log.warn('life: an open hook failed', { error: errorKind(e) });
+      }
+    }
     // v0.11: People's rings need the scheduler too, with every Life module off.
     if (wantsLifeDb(this.ctx.settings.get())) {
       if (opts.resyncFirst) {
@@ -557,6 +571,10 @@ class LifeServiceImpl implements LifeService {
 
   useMeetings(source: () => readonly WorkMeetingRef[] | null): void {
     this.meetingSource = source;
+  }
+
+  onOpen(fn: () => void): void {
+    this.openHooks.push(fn);
   }
 
   private buildModules(): Modules {

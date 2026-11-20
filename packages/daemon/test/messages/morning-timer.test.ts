@@ -14,7 +14,10 @@
  *   Life refusing the todos is in the report; Today, drafts, Undo and the times;
  *   a morning time after the call-back time still rings each call-back; a
  *   skip takes what the morning made from that chat off Today, out of the
- *   reports and out of Life, and stops a run going that read it (only);
+ *   reports and out of Life, and stops a run going that read it (only); a
+ *   skip while Life's todos refuse holds at once, says its todos leave
+ *   later, and they leave once Life answers (life.db opening, Today),
+ *   across a restart too;
  *   each run of the day that made something keeps its summary, todos and
  *   Undo on Today (a later Run now, an empty timer run or a failed one
  *   never hides or takes the morning's); a reader of another build fails a
@@ -40,6 +43,7 @@ import { FakeClock } from '../../src/core/clock.js';
 import { createFakeExec, createPushSpy, createTestContext, createTestLifeCore, type ExecCall, type ExecHandler, type PushSpy, type TestContext, type TestLifeCore } from '../../src/core/testing.js';
 import { BACKUP_CHECK_MS } from '../../src/life/backup.js';
 import { buildTodosModule } from '../../src/life/todos/module.js';
+import { SKIP_OWED_KEY } from '../../src/messages/db.js';
 import { buildMessagesService } from '../../src/messages/index.js';
 import { MorningTimer, READY_POLL_MS, type WhatsAppReady } from '../../src/messages/morning/timer.js';
 import { READER_VERSION, type ReaderStatus } from '../../src/messages/reader-protocol.js';
@@ -655,6 +659,10 @@ interface Morning {
   paths: Paths;
   /** Life's core (its scheduler: when each todo rings). */
   core: TestLifeCore;
+  /** Life's todos: the real module, or (lifeClosed) a stand-in that refuses every call, as Life's while life.db is closed. */
+  lifeClosed(closed: boolean): void;
+  /** life.db opens again: what each part gave LifeService.onOpen runs. */
+  lifeOpened(): void;
 }
 
 /** The part on Messages on, messages.db in memory, Life's todos in memory, a fake reader and a fake claude answering `claude`. */
@@ -669,8 +677,14 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   const core = createTestLifeCore({ clock, tz: TZ, settings: lifeOn });
   const f = makeFakes(ctx);
   const todos = buildTodosModule(core, { ctx, sessions: f.sessions, usage: f.usage, ccwLegacy: f.ccwLegacy });
-  // Life's zone: its setting once set (as Life takes it), else TZ.
-  const life = { todos, status: () => ({ timezone: ctx.settings.get().life.timezone || TZ }) } as unknown as LifeService;
+  // Life's zone: its setting once set (as Life takes it), else TZ. Closed, its todos answer as Life's closed module does.
+  const closed = new Proxy({}, { get: (_t, prop) => (prop === 'then' || typeof prop === 'symbol' ? undefined : () => ({ ok: false, code: 'unavailable', reason: 'Life is not open right now.' })) });
+  const onOpen: (() => void)[] = [];
+  const life = { todos, status: () => ({ timezone: ctx.settings.get().life.timezone || TZ }), onOpen: (fn: () => void) => onOpen.push(fn) } as unknown as LifeService;
+  const lifeClosed = (c: boolean) => Object.assign(life, { todos: c ? closed : todos });
+  const lifeOpened = () => {
+    for (const fn of onOpen) fn();
+  };
   const reader = await startFakeReader(paths.messagesReaderSock, o.handlers);
   const push = createPushSpy();
   const svc = buildMessagesService(ctx, { life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile: o.dbFile ?? ':memory:', send: push.send, readOnly: o.readOnly === true });
@@ -678,7 +692,7 @@ async function morningSetup(o: { handlers: FakeHandlers; claude: ExecHandler; re
   cleanups.push(() => reader.close());
   cleanups.push(() => svc.stop());
   cleanups.push(() => core.close());
-  return { ctx, svc, clock, reader, push, life, exec, paths, core };
+  return { ctx, svc, clock, reader, push, life, exec, paths, core, lifeClosed, lifeOpened };
 }
 
 const claudeSays = (answer: (input: string) => MorningAnswer | string): ExecHandler => (c) => {
@@ -978,7 +992,7 @@ describe('the morning run', () => {
     expect(t.life.todos.setDone(deckTodo, true, CLI).ok).toBe(true);
 
     // Skipped from the phone: Asha, then Ravi.
-    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: {} });
     let today = t.svc.morning.today();
     // Asha's draft is off Today, and the summary that read her chat is gone from every report.
     expect(today.drafts).toEqual([]);
@@ -987,7 +1001,7 @@ describe('the morning run', () => {
     expect(t.svc.morning.last()).not.toHaveProperty('summary');
     expect(today.callbacks.map((c) => c.who)).toEqual(['Ravi Test']);
 
-    expect(await t.svc.skip.add(RAVI, PHONE)).toEqual({ ok: true, value: true });
+    expect(await t.svc.skip.add(RAVI, PHONE)).toEqual({ ok: true, value: {} });
     today = t.svc.morning.today();
     expect(today.callbacks).toEqual([]);
     expect(today.run?.dropped).toEqual([]);
@@ -1001,6 +1015,53 @@ describe('the morning run', () => {
     expect(stored).not.toContain('Asha');
     expect(stored).not.toContain('Ravi');
     expect(db.prepare("SELECT state FROM drafts").all()).toEqual([{ state: 'dismissed' }]);
+  });
+
+  it("a skip while Life's todos refuse: skipped at once, the answer says its todos leave later, and they leave once Life answers, across a restart too", async () => {
+    const dbFile = join(dir, 'owed.db');
+    const handlers: FakeHandlers = { ...readerOf({ pk: () => 42 }), read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }) };
+    const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer), dbFile });
+    expect(await t.svc.morning.run({ trigger: 'now' })).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+    const real = t.life.todos;
+    const titles = () => {
+      const r = real.listTodos({ done: false });
+      return r.ok ? r.value.todos.map((x) => x.title).sort() : r;
+    };
+    expect(titles()).toEqual(['Call back Ravi Test', 'Check the venue booking', 'Send Asha the deck']);
+    const LATER = { ok: true, value: { note: MESSAGES_SAYS.skipTodosLater } };
+
+    // Life closes (every Life module off, or Life broken). Asha is skipped on the phone: at once, and it says her todos wait.
+    t.lifeClosed(true);
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual(LATER);
+    expect(t.svc.skip.list().map((e) => e.chatKey)).toEqual([ASHA]);
+    expect(t.svc.morning.today().drafts).toEqual([]);
+    await t.svc.status();
+    // Asked again, it still says so; nothing has left Life yet.
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual(LATER);
+    expect(titles()).toEqual(['Call back Ravi Test', 'Check the venue booking', 'Send Asha the deck']);
+    // life.db opens again: her todo leaves before anything else runs, and a skip of her says nothing more.
+    t.lifeClosed(false);
+    t.lifeOpened();
+    expect(titles()).toEqual(['Call back Ravi Test', 'Check the venue booking']);
+    expect(await t.svc.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: {} });
+
+    // Closed again, Ravi is skipped: owed across a daemon restart (messages.db on disk) that comes while Life is still closed.
+    t.lifeClosed(true);
+    expect(await t.svc.skip.add(RAVI, CLI)).toEqual(LATER);
+    await t.svc.stop();
+    const again = buildMessagesService(t.ctx, { life: t.life, usage: new FakeUsage(), ccwLegacy: new FakeCcwLegacy() }, { dbFile, send: t.push.send });
+    await again.start();
+    cleanups.push(() => again.stop());
+    expect(await again.skip.add(RAVI, CLI)).toEqual(LATER);
+    expect(titles()).toEqual(['Call back Ravi Test', 'Check the venue booking']);
+    // Life answers again: the next read of Today takes them, and they never show there.
+    t.lifeClosed(false);
+    expect(again.morning.today().callbacks).toEqual([]);
+    expect(titles()).toEqual([]);
+    expect(await again.skip.add(RAVI, CLI)).toEqual({ ok: true, value: {} });
+    // Nothing is owed any more.
+    const db = (again as unknown as { db: { meta(k: string): string | undefined } }).db;
+    expect(db.meta(SKIP_OWED_KEY)).toBeUndefined();
   });
 
   it('a skip while a run is going stops it: nothing is made, and the next run reads without that chat', async () => {
@@ -1020,7 +1081,7 @@ describe('the morning run', () => {
       // The owner skips Asha on the phone while Claude is answering the first run.
       if (skips === 0) {
         skips += 1;
-        expect(await svc!.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: true });
+        expect(await svc!.skip.add(ASHA, PHONE)).toEqual({ ok: true, value: {} });
         skipped.add(ASHA);
         return { stdout: `${INIT}\n${RESULT(fullAnswer(text))}\n` };
       }
@@ -1198,7 +1259,7 @@ describe('the morning run', () => {
     const claude: ExecHandler = async (c) => {
       if (!c.file.endsWith('claude')) return undefined;
       // The owner skips Neel on the phone while Claude is answering: Neel isn't in this run.
-      expect(await svc!.skip.add(NEEL, PHONE)).toEqual({ ok: true, value: true });
+      expect(await svc!.skip.add(NEEL, PHONE)).toEqual({ ok: true, value: {} });
       return { stdout: `${INIT}\n${RESULT(fullAnswer(inputOf(c)))}\n` };
     };
     const t = await morningSetup({ handlers, claude });

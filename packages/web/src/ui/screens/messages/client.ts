@@ -19,6 +19,7 @@ import type {
   MessagesPrefs,
   MessagesPrefsPatch,
   MessagesReadsResponse,
+  MessagesSkipAddReply,
   MessagesSkipList,
   MessagesStatus,
   MessagesTodayResponse,
@@ -57,8 +58,8 @@ export interface MessagesClient {
   /** Chats by name, newest first (a read: the Mac logs it). A blank `q` is left out. */
   chats(q: string, limit: number): Promise<MessagesChatsResponse>;
   skipList(): Promise<MessagesSkipList>;
-  /** Skip a chat (a 1:1 skips that person everywhere). */
-  skip(chatKey: string, idempotencyKey?: string): Promise<OkReply>;
+  /** Skip a chat (a 1:1 skips that person everywhere); `note`: the Mac's sentence when its todos leave Life later. */
+  skip(chatKey: string, idempotencyKey?: string): Promise<MessagesSkipAddReply>;
   /** The read log, newest first. */
   reads(limit: number): Promise<MessagesReadsResponse>;
 }

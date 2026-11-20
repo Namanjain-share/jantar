@@ -8,11 +8,13 @@
  *   one already past when the answer is applied dropped;
  * - call-backs are todos due today (or the day the line states), at the
  *   time it states, else at the call-back time, and one whose time has
- *   passed rings at the next quarter hour; one open per person;
+ *   passed rings at the next quarter hour; one open per person (a caller
+ *   with no 1:1: by their number however it was dialled, or their name);
  * - `made` keeps the chat each item came from (a file from before gets it);
  * - replies are drafts (a 1:1's number, none for a group), one per chat: a
  *   newer one replaces the open one, and one the owner answered in
- *   WhatsApp is dismissed;
+ *   WhatsApp is dismissed; none is made for a line he answered in the
+ *   same batch (`answered`);
  * - with Life's Todos off only drafts are made;
  * - every ref must be the batch's, `made` keeps a re-run from making
  *   anything twice (a person still waiting gets one draft, however little
@@ -409,6 +411,79 @@ describe('applyMorning', () => {
     // Once he was called back (done), a new call makes a new one.
     expect(r.todos.setDone(first.callbacks[0]!.id!, true, CLI).ok).toBe(true);
     expect(applyMorning(answer, next.refs, next.kept, r.deps({ runId: RUN_C })).callbacks).toEqual([expect.objectContaining({ who: 'Ravi Test' })]);
+  });
+
+  it('a caller with no 1:1 gets one open call-back too: by their number however it is written, or by their name, in a run and across runs', () => {
+    const r = build();
+    const missed = (n: number, who: string, at: string, via: BatchCall['via'] = 'phone'): BatchCall => ({
+      callKey: callKey(n),
+      at,
+      who,
+      via,
+      incoming: true,
+      missed: true,
+      video: false,
+      durationS: 0,
+      returned: false,
+    });
+    // An iPhone number with no WhatsApp chat (dialled once with its country code, once with a 0), another number, and a
+    // WhatsApp caller the owner never chatted with, twice.
+    const first = missed(20, '+91 99900 00009', '2026-11-13T09:00:00.000Z');
+    const zero = missed(21, '09990000009', '2026-11-13T09:30:00.000Z');
+    const other = missed(22, '+91 99900 00008', '2026-11-13T10:00:00.000Z');
+    const neel = missed(23, 'Neel Test', '2026-11-13T10:30:00.000Z', 'whatsapp');
+    const neelAgain = missed(24, 'neel  test', '2026-11-13T11:00:00.000Z', 'whatsapp');
+    const day1 = prepared(batchOf([], [first, zero, other, neel, neelAgain]));
+    const [k1, k2, k3, k4, k5] = [first, zero, other, neel, neelAgain].map((c) => idFor(day1.refs, c.callKey));
+    const out = applyMorning({ ...EMPTY, callbacks: [k1, k2, k3, k4, k5].map((ref) => ({ ref: ref!, who: 'Them', why: 'Missed call' })) }, day1.refs, day1.kept, r.deps());
+    expect(out.callbacks.map((c) => c.who)).toEqual(['+91 99900 00009', '+91 99900 00008', 'Neel Test']);
+    expect(out.dropped).toEqual([
+      { kind: 'callback', ref: k2, why: 'duplicate' },
+      { kind: 'callback', ref: k5, why: 'duplicate' },
+    ]);
+
+    // The next morning the first number called again, its call-back still open: no second one.
+    const again = missed(25, '+919990000009', '2026-11-14T02:00:00.000Z');
+    const next = prepared(batchOf([], [again]));
+    const k = idFor(next.refs, again.callKey);
+    const answer: MorningAnswer = { ...EMPTY, callbacks: [{ ref: k, who: 'Them', why: 'Called again' }] };
+    const second = applyMorning(answer, next.refs, next.kept, r.deps({ runId: RUN_B }));
+    expect(second.callbacks).toEqual([]);
+    expect(second.dropped).toEqual([{ kind: 'callback', ref: k, why: 'duplicate' }]);
+    expect(r.open().filter((t) => t.title === 'Call back +91 99900 00009')).toHaveLength(1);
+    // Once it was called back (done), a new call makes a new one.
+    expect(r.todos.setDone(out.callbacks[0]!.id!, true, CLI).ok).toBe(true);
+    expect(applyMorning(answer, next.refs, next.kept, r.deps({ runId: RUN_C })).callbacks).toEqual([expect.objectContaining({ who: '+919990000009' })]);
+  });
+
+  it('a reply to a line the owner answered later in the same batch is left out (answered); one to a line still unanswered is drafted', () => {
+    const r = build();
+    const s = sample();
+    // Ravi's mention in the group, then the owner's own answer to it in this batch.
+    const checked = line(s.group, '2026-11-13T19:50:00.000Z', { fromMe: true, text: 'Checked, all good' });
+    const batch = { ...batchOf([bc(s.group, [s.l.mention, checked]), bc(s.asha, [s.l.deck], { waiting: true })]), wroteAt: { [s.group.chatKey]: checked.at } };
+    const { kept, refs } = prepared(batch);
+    const mention = idFor(refs, s.l.mention.msgKey);
+    const deck = idFor(refs, s.l.deck.msgKey);
+    const answer: MorningAnswer = {
+      ...EMPTY,
+      replies: [
+        { chat: idFor(refs, s.group.chatKey), ref: mention, they_asked: 'A check', draft: 'Checking.' },
+        { chat: idFor(refs, s.asha.chatKey), ref: deck, they_asked: 'The deck', draft: 'On it.' },
+      ],
+    };
+    // A dry run says the same.
+    expect(applyMorning(answer, refs, kept, r.deps({ dryRun: true })).dropped).toEqual([{ kind: 'reply', ref: mention, why: 'answered' }]);
+    const out = applyMorning(answer, refs, kept, r.deps());
+    expect(out.replies.map((d) => d.chatName)).toEqual(['Asha Test']);
+    expect(out.dropped).toEqual([{ kind: 'reply', ref: mention, why: 'answered' }]);
+    expect(r.rows('drafts').map((d) => [d.chat_name, d.state])).toEqual([['Asha Test', 'open']]);
+    expect(r.rows('made').map((m) => m.src_key)).toEqual([`reply:${s.l.deck.msgKey}`]);
+    // A line written at the very time he last wrote there counts as answered, as dismissAnswered has it.
+    const same = { ...batch, wroteAt: { [s.group.chatKey]: s.l.mention.at } };
+    const p = prepared(same);
+    const only: MorningAnswer = { ...EMPTY, replies: [{ chat: idFor(p.refs, s.group.chatKey), ref: idFor(p.refs, s.l.mention.msgKey), they_asked: 'A check', draft: 'Checking.' }] };
+    expect(applyMorning(only, p.refs, p.kept, r.deps({ runId: RUN_B })).dropped).toEqual([{ kind: 'reply', ref: idFor(p.refs, s.l.mention.msgKey), why: 'answered' }]);
   });
 
   it("a newer draft for a chat replaces its open one; a second for one chat in one answer is a duplicate", () => {
