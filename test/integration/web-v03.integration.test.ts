@@ -20,6 +20,10 @@
  *   stays unset;
  * - the lazy chunks: /files, /new, the session Files tab and the Board
  *   row's menu;
+ * - 0.14.1 at 390 px: Share on a PDF not opened yet (fetched, then the
+ *   second tap opens the share sheet, still inside a live tap) and on an
+ *   image on screen (one tap, its own bytes), Download through ··· (a
+ *   real download), and the name search in Browse;
  * - in grayscale, the board's six states and the two ghost rows (a launch
  *   at its trust dialog, one still opening) stay apart: by glyph shape and
  *   rail word, and for the ghosts, which share the Starting rail, by the
@@ -38,6 +42,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Browser, Page } from 'playwright-core';
 import { perfBudgetMs } from '@jantar/fixtures';
 import { DESK, DIST, PHONE, browserReady, launchBrowser, clean, grayscale, grayscaleKey, onTouch, overflow, pageOpener, type Viewport, type Watch } from './browser.js';
+import { under44 } from '../../packages/web/test/layout-metric.js';
+import { probeLayout, type Probe } from './layout-probe.js';
 import { PATHS, webFixtureV03, type WebFixtureV03 } from './web-fixture-v03.js';
 import { serveWebApp, type WebServer } from './web-server.js';
 
@@ -302,6 +308,122 @@ describe.skipIf(!ready)('the v0.3 screens in Chromium', () => {
         await expect.poll(() => img.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
         expect(await page.locator('b', { hasText: 'bold' }).count()).toBe(0);
         await check(page, watch);
+      });
+    });
+  });
+
+  // 0.14.1: Share and Download for a PDF or an image, and the name search in Browse, on a 390 px phone.
+  describe('Share, Download and the name search at 390 px', () => {
+    type Shared = { name: string; type: string; size: number; active: boolean };
+    /** A share sheet that takes files and notes each one, and whether the tap that opened it was still live. */
+    const stubShare = (page: Page) =>
+      page.evaluate(() => {
+        const w = window as unknown as { __shared: Shared[] };
+        w.__shared = [];
+        Object.defineProperty(navigator, 'canShare', { configurable: true, value: (d: ShareData) => (d.files?.length ?? 0) > 0 });
+        Object.defineProperty(navigator, 'share', {
+          configurable: true,
+          value: async (d: ShareData) => {
+            const active = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive ?? false;
+            for (const f of d.files ?? []) w.__shared.push({ name: f.name, type: f.type, size: f.size, active });
+          },
+        });
+      });
+    const shared = (page: Page) => page.evaluate(() => (window as unknown as { __shared: Shared[] }).__shared);
+    /**
+     * The phone gates (as web-v013-phone): nothing sideways, 44 x 44 under a finger, no label past its button, no
+     * header too full, no text under 11 px. Browse's breadcrumb is left out of the 44 check: its segments are as
+     * wide as their names (a short one is under 44 wide), as they were before 0.14.1, and no phone suite measures it.
+     */
+    async function gates(page: Page, at: string) {
+      const p: Probe = await page.evaluate(probeLayout);
+      const nav = page.getByRole('navigation', { name: 'Folder path' });
+      const crumbs = (await nav.count()) ? await nav.boundingBox() : null;
+      const inCrumbs = (t: { x: number; y: number }) => crumbs !== null && t.y >= crumbs.y - 1 && t.y <= crumbs.y + crumbs.height && t.x >= crumbs.x - 1 && t.x <= crumbs.x + crumbs.width;
+      const problems = [
+        ...p.sideways.map((x) => `sideways: ${x}`),
+        ...under44(p.whole.filter((t) => !inCrumbs(t))).map((t) => `under 44 x 44: ${t.name} (${t.w}x${t.h})`),
+        ...p.spill.map((x) => `spill: ${x}`),
+        ...p.crowded.map((x) => `crowded: ${x}`),
+        ...(p.type.under11 > 0 ? [`text under 11 px: ${p.type.smallest}`] : []),
+      ];
+      expect(problems, at).toEqual([]);
+    }
+
+    it('a PDF not opened yet: Share fetches it, then the second tap opens the share sheet; Download is in ···', async () => {
+      const size = fixture.v03.files.get(PATHS.pdf)!.stat.size;
+      await onTouch('Share on a PDF', () => open(filesPath(PATHS.pdf), DARK_PHONE), async ({ page, watch }) => {
+        await page.getByRole('button', { name: 'Open', exact: true }).waitFor();
+        await stubShare(page);
+        const share = page.getByRole('button', { name: 'Share', exact: true });
+        await check(page, watch);
+        await share.click();
+        const ready = page.getByRole('region', { name: 'Ready to share' });
+        await ready.waitFor();
+        expect(await shared(page)).toEqual([]);
+        await check(page, watch);
+        await gates(page, 'a PDF, ready to share');
+        await ready.getByRole('button', { name: 'Share now' }).click();
+        await expect.poll(() => shared(page)).toEqual([{ name: 'spec.pdf', type: 'application/pdf', size, active: true }]);
+        expect(await ready.count()).toBe(0);
+
+        await page.getByRole('button', { name: 'More for this file' }).click();
+        const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: 'Download' }).click()]);
+        expect(download.suggestedFilename()).toBe('spec.pdf');
+        await check(page, watch);
+      });
+    });
+
+    it('an image on screen: one tap shares the bytes it shows', async () => {
+      const size = fixture.v03.files.get(PATHS.png)!.stat.size;
+      await onTouch('Share on an image', () => open(filesPath(PATHS.png), PHONE), async ({ page, watch }) => {
+        const img = page.locator('img[src^="blob:"]').first();
+        await img.waitFor();
+        await stubShare(page);
+        const raws = () => server.requests.filter((r) => r.startsWith('GET /v1/files/raw')).length;
+        const before = raws();
+        await page.getByRole('button', { name: 'Share', exact: true }).click();
+        await expect.poll(() => shared(page)).toEqual([{ name: 'shot.png', type: 'image/png', size, active: true }]);
+        expect(raws()).toBe(before);
+        expect(await page.getByRole('region', { name: 'Ready to share' }).count()).toBe(0);
+        await check(page, watch);
+        await gates(page, 'an image with Share');
+      });
+    });
+
+    it('Browse: names below the folder in the list\'s place; a file opens, back finds them again, a folder is browsed into', async () => {
+      await onTouch('the name search on a phone', () => open(`/files?root=r.work&path=${encodeURIComponent('jantar/')}`, PHONE), async ({ page, watch }) => {
+        const box = page.getByRole('textbox', { name: 'Search names in jantar' });
+        await box.waitFor();
+        expect(await page.getByRole('search').count()).toBe(1);
+        await check(page, watch);
+        await box.fill('no');
+        const results = page.getByRole('list', { name: /^Names with “no”/ });
+        await results.waitFor();
+        expect(await results.locator('[data-row]').evaluateAll((els) => els.map((e) => e.getAttribute('data-row')))).toEqual(['jantar/notebooks', 'jantar/docs/notes.md']);
+        expect(await results.locator('[data-row="jantar/docs/notes.md"]').textContent()).toContain('docs/');
+        expect(await page.getByRole('status').filter({ hasText: 'names found' }).textContent()).toBe('2 names found.');
+        await check(page, watch);
+        await gates(page, 'names found in Browse');
+
+        await results.locator('[data-row="jantar/docs/notes.md"]').click();
+        await page.getByRole('heading', { name: 'notes.md' }).waitFor();
+        await page.goBack();
+        await expect.poll(() => box.inputValue()).toBe('no');
+        await results.waitFor();
+
+        await box.press('Escape');
+        expect(await box.inputValue()).toBe('');
+        await page.getByRole('button', { name: /^docs/ }).waitFor();
+        await box.fill('noteb');
+        await page.getByRole('list', { name: /^Names with “noteb”/ }).waitFor();
+        await page.locator('[data-row="jantar/notebooks"]').click();
+        await page.waitForURL(/path=jantar%2Fnotebooks%2F/);
+        await page.getByRole('textbox', { name: 'Search names in notebooks' }).waitFor();
+        expect(await page.getByRole('textbox', { name: 'Search names in notebooks' }).inputValue()).toBe('');
+        await page.getByRole('button', { name: /weekly\.ipynb/ }).waitFor();
+        await check(page, watch);
+        expect(v03Misses()).toEqual([]);
       });
     });
   });

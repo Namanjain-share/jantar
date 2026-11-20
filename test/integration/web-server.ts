@@ -8,9 +8,10 @@
  * Nothing here talks to a real daemon, a terminal or the user's files. The
  * event stream is refused, so the app falls back to polling /v1/state.
  *
- * With a v0.3 fixture (web-fixture-v03.ts) it also answers the Files, New
- * session, Rewrite and Controls routes from it. File bytes go out with the
- * daemon's own raw headers (files/raw.ts), and writes are kept in `writes`.
+ * With a v0.3 fixture (web-fixture-v03.ts) it also answers the Files (0.14.1:
+ * the name search too), New session, Rewrite and Controls routes from it.
+ * File bytes go out with the daemon's own raw headers (files/raw.ts), and
+ * writes are kept in `writes`.
  */
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -18,7 +19,7 @@ import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, sep } from 'node:path';
 import { securityHeaders } from '@jantar/daemon/api/security';
 import { rawHeaders } from '@jantar/daemon/files/raw';
-import { SCREENSHOT_AT_HEADER, SCREENSHOT_DISTURBED_HEADER, SCREENSHOT_SIZE_HEADER, type LaunchFlags, type SendJob } from '@jantar/protocol';
+import { FILES_FIND_LIMIT, SCREENSHOT_AT_HEADER, SCREENSHOT_DISTURBED_HEADER, SCREENSHOT_SIZE_HEADER, type FileFindEntry, type LaunchFlags, type SendJob } from '@jantar/protocol';
 import { transcriptFixture, type WebFixture } from './web-fixture.js';
 import type { V03Fixture } from './web-fixture-v03.js';
 
@@ -63,6 +64,27 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
+/** GET /v1/files/find over a v0.3 fixture: names below `rel` that contain `text`, best first (as the daemon orders them). */
+function findNames(v: V03Fixture, rel: string, text: string): { entries: FileFindEntry[]; truncated: boolean } {
+  const key = (s: string) => s.normalize('NFC').toLowerCase();
+  const needle = key(text);
+  const under = (p: string) => p !== rel && (rel === '' || p.startsWith(`${rel}/`));
+  const name = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+  const depth = (p: string) => p.split('/').length - (rel ? rel.split('/').length : 0);
+  const all: FileFindEntry[] = [];
+  for (const [p, f] of v.files) if (under(p)) all.push({ path: p, name: name(p), kind: 'file', size: f.stat.size, mtime: f.stat.mtime });
+  for (const d of v.dirs.keys()) {
+    if (!d || !under(d)) continue;
+    // A folder's time: its newest file's.
+    const times = [...v.files].filter(([p]) => p.startsWith(`${d}/`)).map(([, f]) => f.stat.mtime);
+    all.push({ path: d, name: name(d), kind: 'dir', mtime: times.sort().at(-1) ?? new Date(0).toISOString() });
+  }
+  const hits = all
+    .filter((e) => key(e.name).includes(needle))
+    .sort((a, b) => Number(key(b.name).startsWith(needle)) - Number(key(a.name).startsWith(needle)) || depth(a.path) - depth(b.path) || a.name.localeCompare(b.name));
+  return { entries: hits.slice(0, FILES_FIND_LIMIT), truncated: hits.length > FILES_FIND_LIMIT };
+}
+
 export async function serveWebApp(dist: string, fixture: () => WebFixture & { v03?: V03Fixture }): Promise<WebServer> {
   const requests: string[] = [];
   const writes: WebServer['writes'] = [];
@@ -92,6 +114,8 @@ export async function serveWebApp(dist: string, fixture: () => WebFixture & { v0
       const listing = v.dirs.get(rel);
       return listing ? { body: { ...listing, root: q.get('root') } } : missing('no such folder');
     }
+    // 0.14.1: names below the folder, over the fixture's tree (the daemon's own walk is files/find.ts).
+    if (get && path === '/v1/files/find') return { body: findNames(v, rel, q.get('q') ?? '') };
     if (get && (path === '/v1/files/stat' || path === '/v1/files/text' || path === '/v1/files/raw')) {
       const file = v.files.get(rel);
       if (!file) return missing('no such file');

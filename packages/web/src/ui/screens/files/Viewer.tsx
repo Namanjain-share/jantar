@@ -13,23 +13,31 @@
  * session's folder, Ask about this, which puts "@src/x.ts:12-20 " in that
  * session's composer and never sends.
  *
+ * 0.14.1: a PDF or an image has Share in the header (icon and word) and
+ * Share and Download in ···, with the bytes the viewer already fetched to
+ * show it when there are any (HandOver.tsx). Other kinds have neither: the
+ * daemon serves raw bytes for those two kinds only.
+ *
  * When Claude writes the open file again (the list's change for it moves
  * on), the stat and the text are read again, so the File tab stays current.
  */
 import { Menu } from '@base-ui/react/menu';
-import { CaretLeftIcon, DotsThreeIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon, DotsThreeIcon, ExportIcon, SidebarSimpleIcon } from '@phosphor-icons/react';
 import clsx from 'clsx';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { FileChange, FileStat } from '@jantar/protocol';
 import { clock } from '../../../lib/format.js';
 import { languageFor, languageLabel, extOf } from '../../../lib/highlight/languages.js';
 import { showHidden } from '../../../lib/highlight/tokens.js';
 import type { FilesLocation } from '../../../lib/router.js';
 import { useDeps, useNow, useToast } from '../../context.js';
+import { Button } from '../../kit/Button.js';
 import { IconButton } from '../../kit/IconButton.js';
+import { Spinner } from '../../kit/Spinner.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { CodeView, MoreText, TextRun, Warnings } from './CodeView.js';
 import { EditsList } from './EditsList.js';
+import { ReadyToShare, useHandOver, type HandOverKind } from './HandOver.js';
 import { useLoad, useOffline } from './data.js';
 import { ImageView } from './ImageView.js';
 import { MarkdownDoc } from './MarkdownDoc.js';
@@ -129,6 +137,24 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
   const openRel = useCallback((to: string) => onLocationRef.current(to.endsWith('/') ? dirLocation(root, to) : { root, path: to }), [root]);
   const layer = useLayer();
 
+  // 0.14.1 Share and Download: the bytes the image or PDF view fetched to show the file, kept for this file only.
+  const fileKey = `${root}\u0000${path}`;
+  const shownBytes = useRef<{ key: string; blob: Blob } | null>(null);
+  const keepBytes = useCallback((blob: Blob) => {
+    shownBytes.current = { key: fileKey, blob };
+  }, [fileKey]);
+  const handKind: HandOverKind | null = stat.data?.type === 'file' && (stat.data.kind === 'image' || stat.data.kind === 'pdf') ? stat.data.kind : null;
+  const hand = useHandOver({
+    root,
+    path,
+    name,
+    kind: handKind ?? 'image',
+    size: stat.data?.size ?? 0,
+    shown: () => (shownBytes.current?.key === fileKey ? shownBytes.current.blob : null),
+  });
+  const reasonId = useId();
+  const handOff = hand.refusal !== null || hand.busy !== null;
+
   const s = stat.data;
   const lang = s && s.type === 'file' ? languageFor(name, s.language ?? t.first?.language) : null;
   const meta = s
@@ -151,9 +177,9 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
   } else if (tab === 'edits' && change) {
     body = <EditsList change={change} />;
   } else if (s.kind === 'image') {
-    body = <ImageView root={root} path={path} name={name} size={s.size} />;
+    body = <ImageView root={root} path={path} name={name} size={s.size} onBytes={keepBytes} />;
   } else if (s.kind === 'pdf') {
-    body = <PdfView root={root} path={path} size={s.size} />;
+    body = <PdfView root={root} path={path} size={s.size} onBytes={keepBytes} />;
   } else if (s.kind === 'svg') {
     body = <SvgView t={t} name={name} mode={svgMode} onMode={setSvgMode} sel={sel} onLine={onLine} />;
   } else if (s.kind === 'notebook') {
@@ -235,6 +261,19 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
         <h2 className={clsx('min-w-0 flex-1 truncate type-title text-ink', phone && !onBack && 'pl-12')}>
           <TextRun text={name} />
         </h2>
+        {handKind ? (
+          <Button
+            size="sm"
+            className="flex-none"
+            onClick={hand.share}
+            disabled={handOff}
+            aria-busy={hand.busy !== null || undefined}
+            aria-describedby={hand.refusal ? reasonId : undefined}
+          >
+            <ExportIcon size={16} aria-hidden="true" />
+            Share
+          </Button>
+        ) : null}
         <Menu.Root>
           <Menu.Trigger render={<IconButton aria-label="More for this file" className="coarse:size-44" />}>
             <DotsThreeIcon size={20} weight="bold" />
@@ -255,6 +294,16 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
                     Ask about this
                   </Menu.Item>
                 ) : null}
+                {handKind ? (
+                  <>
+                    <Menu.Item className={clsx(ITEM, 'data-disabled:cursor-default data-disabled:text-ink-3')} disabled={handOff} onClick={hand.share} aria-describedby={hand.refusal ? reasonId : undefined}>
+                      Share
+                    </Menu.Item>
+                    <Menu.Item className={clsx(ITEM, 'data-disabled:cursor-default data-disabled:text-ink-3')} disabled={handOff} onClick={hand.download} aria-describedby={hand.refusal ? reasonId : undefined}>
+                      Download
+                    </Menu.Item>
+                  </>
+                ) : null}
               </Menu.Popup>
             </Menu.Positioner>
           </Menu.Portal>
@@ -263,6 +312,20 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
       <p className={clsx('flex-none truncate pb-8 type-mono text-ink-3', phone ? 'px-16' : 'px-24')}>
         <TextRun text={meta} />
       </p>
+      {handKind && hand.refusal ? (
+        <p id={reasonId} className={clsx('flex-none pb-8 type-small text-ink-2', phone ? 'px-16' : 'px-24')}>
+          {hand.refusal}
+        </p>
+      ) : null}
+      {handKind && hand.busy ? (
+        <div className={clsx('flex flex-none items-center gap-8 border-t border-line bg-surface py-8', phone ? 'px-16' : 'px-24')}>
+          <p role="status" className="min-w-0 truncate type-small text-ink-2">
+            Getting <TextRun text={name} /> from the Mac…
+          </p>
+          <Spinner label={hand.busy === 'share' ? 'Getting the file to share' : 'Getting the file to download'} />
+        </div>
+      ) : null}
+      {handKind && hand.ready ? <ReadyToShare name={name} phone={phone} onShare={hand.share} onDismiss={hand.dismiss} /> : null}
       {tabs}
       <div className="flex min-h-0 flex-1 flex-col border-t border-line">{body}</div>
     </section>

@@ -159,7 +159,7 @@ function Page({ doc, n, ratio, alive }: { doc: PDFDocumentProxy; n: number; rati
   );
 }
 
-export function PdfView({ root, path, size }: { root: string; path: string; size: number }) {
+export function PdfView({ root, path, size, onBytes }: { root: string; path: string; size: number; onBytes?: (blob: Blob) => void }) {
   const { api } = useDeps();
   const offline = useOffline();
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
@@ -187,6 +187,8 @@ export function PdfView({ root, path, size }: { root: string; path: string; size
     setPhase({ name: 'loading' });
     try {
       const blob = await api.filesRaw({ root, path }, { signal: abort.signal });
+      // 0.14.1: Share and Download reuse these bytes instead of asking the Mac again.
+      if (job.current === mine) onBytes?.(blob);
       const data = new Uint8Array(await blob.arrayBuffer());
       const lib = await loadPdfjs();
       if (job.current !== mine) return;

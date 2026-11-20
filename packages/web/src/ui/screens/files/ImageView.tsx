@@ -4,8 +4,9 @@
  * daemon serves only allowlisted images whose magic bytes match (anything
  * else is a 415, shown as its sentence). Native pinch zoom on the phone.
  * Leaving the viewer, or opening another file, aborts the download.
+ * The bytes go to `onBytes` too, for Share and Download (HandOver.tsx).
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { FILES_RAW_IMAGE_MAX } from '@jantar/protocol';
 import { useDeps } from '../../context.js';
 import { useObjectUrl } from './blob.js';
@@ -13,7 +14,7 @@ import { useLoad, useOffline } from './data.js';
 import { sizeText } from './model.js';
 import { LoadError, Loading, StateLine } from './states.js';
 
-export function ImageView({ root, path, name, size }: { root: string; path: string; name: string; size: number }) {
+export function ImageView({ root, path, name, size, onBytes }: { root: string; path: string; name: string; size: number; onBytes?: (blob: Blob) => void }) {
   const { api } = useDeps();
   const offline = useOffline();
   const tooBig = size > FILES_RAW_IMAGE_MAX;
@@ -21,6 +22,10 @@ export function ImageView({ root, path, name, size }: { root: string; path: stri
   // Bytes are never cached between views: each open asks again.
   const raw = useLoad(tooBig ? null : `raw:${root}\u0000${path}`, load, { cache: false });
   const url = useObjectUrl(raw.data);
+  // 0.14.1: Share and Download reuse these bytes instead of asking the Mac again.
+  useEffect(() => {
+    if (raw.data) onBytes?.(raw.data);
+  }, [raw.data, onBytes]);
 
   if (tooBig) {
     return (

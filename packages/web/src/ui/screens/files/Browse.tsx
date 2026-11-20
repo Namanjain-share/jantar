@@ -24,10 +24,15 @@
  * was there already shows the same primary under the folder's name, never
  * "is ready" or the new-folder trust line. The breadcrumb scrolls to its
  * end, so the folder shown stays in sight when the buttons narrow the bar.
+ *
+ * 0.14.1: a folder has "Search names in <folder>" above its list
+ * (FindNames.tsx): names below it, through GET /v1/files/find, in the
+ * listing's place while a search is on. Here and in the session's Files
+ * tab and the attach picker alike, since they all browse with this.
  */
 import { Menu } from '@base-ui/react/menu';
 import { DotsThreeIcon, FolderIcon, FolderPlusIcon, PlayIcon, PlusIcon } from '@phosphor-icons/react';
-import { FILES_LIST_LIMIT, type FileEntry, type FileListing, type FileRoot, type Session } from '@jantar/protocol';
+import { FILES_LIST_LIMIT, type FileEntry, type FileFindEntry, type FileListing, type FileRoot, type Session } from '@jantar/protocol';
 import clsx from 'clsx';
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { accountId, agoLong } from '../../../lib/format.js';
@@ -41,6 +46,7 @@ import { useFeatures } from '../../shell/data.js';
 import { ROW_ICON } from './ChangedList.js';
 import { TextRun } from './CodeView.js';
 import { useLoad, useOffline, type Loaded } from './data.js';
+import { FindResults, SearchField, useNameSearch } from './FindNames.js';
 import { apiPath, crumbs, dirLocation, iconFor, sizeText } from './model.js';
 import { Footnote, LoadError, Loading, StateLine, fileErrorText } from './states.js';
 import { VirtualList } from './VirtualList.js';
@@ -252,6 +258,18 @@ function Folder({
     onLocation(e.type === 'dir' ? dirLocation(root, at) : { root, path: at });
   };
 
+  // 0.14.1 name search: its results take the listing's place while it is on.
+  const search = useNameSearch(`${root}\u0000${rel}`);
+  const openFound = (e: FileFindEntry) => {
+    if (e.kind === 'dir') {
+      // Into the folder: the search is done.
+      search.clear();
+      onLocation(dirLocation(root, e.path));
+    } else {
+      onLocation({ root, path: e.path });
+    }
+  };
+
   // New folder (0.10.1): the sheet mounts at its first opening and stays for its close animation.
   const [sheet, setSheet] = useState({ open: false, n: 0 });
   const newButton = useRef<HTMLButtonElement>(null);
@@ -341,6 +359,8 @@ function Folder({
       </Menu.Root>
     </div>
   );
+  // A folder that can't be read has no names to search.
+  const searchBox = first.error && !first.data ? null : <SearchField search={search} folder={trail[trail.length - 1]?.label ?? label} />;
   // A phone has no room beside the breadcrumb: the buttons take the header's second row.
   const header =
     phone && startHere ? (
@@ -350,10 +370,15 @@ function Folder({
           {startHere}
           {newFolder}
         </div>
+        {searchBox}
       </>
     ) : (
-      bar
+      <>
+        {bar}
+        {searchBox}
+      </>
     );
+  const found = search.query !== null && searchBox ? <FindResults root={root} path={rel} query={search.query} now={now} onOpen={openFound} /> : null;
   const ready =
     created !== null && created.at === rel ? (
       <JustMade name={rel.slice(rel.lastIndexOf('/') + 1)} display={displayAt(label, rel)} made={created.made} phone={phone} onStart={() => startIn(rel)} />
@@ -385,7 +410,7 @@ function Folder({
       <div className="flex min-h-0 flex-1 flex-col">
         {header}
         {ready}
-        {first.error ? <LoadError error={first.error} offline={offline} what="folder" onRetry={first.reload} /> : <Loading count={5} caption="Reading the folder…" />}
+        {found ?? (first.error ? <LoadError error={first.error} offline={offline} what="folder" onRetry={first.reload} /> : <Loading count={5} caption="Reading the folder…" />)}
         {sheetEl}
       </div>
     );
@@ -413,14 +438,16 @@ function Folder({
     <div className="flex min-h-0 flex-1 flex-col">
       {header}
       {ready}
-      <VirtualList
-        items={entries}
-        label={`${trail[trail.length - 1]?.label ?? label}, ${entries.length} entries`}
-        getKey={(e) => `${e.type}:${e.name}`}
-        estimate={(e) => (e.type === 'dir' ? 44 : 52)}
-        render={(e) => <EntryRow e={e} now={now} onOpen={open} />}
-        footer={footer}
-      />
+      {found ?? (
+        <VirtualList
+          items={entries}
+          label={`${trail[trail.length - 1]?.label ?? label}, ${entries.length} entries`}
+          getKey={(e) => `${e.type}:${e.name}`}
+          estimate={(e) => (e.type === 'dir' ? 44 : 52)}
+          render={(e) => <EntryRow e={e} now={now} onOpen={open} />}
+          footer={footer}
+        />
+      )}
       {sheetEl}
     </div>
   );

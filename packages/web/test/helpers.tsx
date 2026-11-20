@@ -245,6 +245,7 @@ export function fakeApi(over: Partial<Api> = {}) {
     rewriteCancel: notBuilt(),
     filesRoots: notBuilt(),
     filesList: notBuilt(),
+    filesFind: notBuilt(),
     filesStat: notBuilt(),
     filesText: notBuilt(),
     filesRawUrl: vi.fn((q: { root: string; path: string }) => `http://127.0.0.1:7420/v1/files/raw?root=${encodeURIComponent(q.root)}&path=${encodeURIComponent(q.path)}`),
