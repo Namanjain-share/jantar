@@ -298,6 +298,18 @@ while off.
   120 folder reads and start sheet previews a minute.
 - Changed files are read from the transcripts; there is no git and no diff.
   A protected file shows its name, tool and counts only.
+- 0.14.1's name search (`GET /v1/files/find`) reads names only, never a
+  file's content, and only through the listing's own reads: the folder it
+  starts in is refused (and audited, and counted toward the alarm) exactly
+  as a listing of it would be; protected entries are never in it; dot
+  entries only for a text that starts with `.`; no symlink is followed,
+  and `node_modules` and `.git` are never entered. It stops at 12 levels,
+  20,000 entries, 1.5 seconds or 100 names. A search is audited as
+  `files.find` once per device and folder per 10 minutes, with the folder
+  and a count; the text searched for is never logged or audited.
+- Share and Download (0.14.1) hand the phone the same bytes as
+  `GET /v1/files/raw`, under its caps; Jantar keeps no copy after the
+  viewer closes.
 - The Files routes are not served on the control socket.
 - The Files routes only read; New folder (v0.10.1) is the launch route below
   ([v0.10.1: New folder in Files](#v0101-new-folder-in-files)).

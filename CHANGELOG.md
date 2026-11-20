@@ -3,6 +3,26 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
+## 0.14.1 (unreleased)
+
+- **Share a PDF or a picture from the phone.** In Files, a PDF or an image
+  has **Share** beside its name, and Share and **Download** in its ···
+  menu. On an iPhone, Share opens the share sheet (Save to Files, Mail,
+  AirDrop and the rest) with the file itself. When the file wasn't loaded
+  yet (a PDF you haven't opened), the first tap fetches it from the Mac and
+  the viewer says **Ready to share**: tap **Share now** to open the sheet,
+  since an iPhone opens it only straight from a tap. A browser that can't
+  share files saves it instead. Images up to 20 MB and PDFs up to 50 MB,
+  as the viewer shows them; a bigger file says so and both are off.
+- **Search names in Files.** Every folder you browse has a search field at
+  the top, "Search names in" the folder, that finds the files and folders
+  below it whose names contain what you type (2 characters or more, any
+  letter case). Names only, never what is inside a file, and only what
+  Browse would show: no protected file, dot files only when what you type
+  starts with a dot, and never inside `node_modules`, `.git` or a symlink.
+  At most 100 names, those that start with what you typed first; a file
+  opens, a folder is browsed into.
+
 ## 0.14.0 (5 November 2026)
 
 - **Change ccw's switching rules from the phone.** While the legacy ccw

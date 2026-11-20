@@ -287,6 +287,32 @@ opens a hidden home folder such as `~/.config/nvim` (never `~/.ssh`,
 (with `add <path>` and `remove <id>`) is the same list, and `jantar files
 status` says whether Files is on and shows New folder.
 
+**Search names**: every folder you browse has "Search names in" the
+folder at the top. It finds the files and folders below it whose names
+contain what you type (2 characters or more, any letter case, 250 ms
+after you stop typing), and shows them in the list's place with the
+folder each is in. Names only: no file is opened for what is in it. It
+sees what Browse sees, so never a protected file, dot files only when
+what you type starts with a `.`, and nothing inside `node_modules`,
+`.git` or a symlink (a link is listed by its own name when it leads to
+something inside the shared folder). It looks at most 12 folders deep,
+at 20,000 entries and for 1.5 seconds, and shows at most 100 names,
+those that start with what you typed first, then the nearer ones; when
+it stops early it says "Type more to narrow it". Tap a file to open it,
+a folder to browse into it. The clear button or Escape empties the
+field.
+
+**Share and Download**: a PDF or an image in the viewer has **Share**
+beside its name, and Share and **Download** in its ··· menu. Share hands
+the file to the phone's share sheet (on an iPhone: Save to Files, Mail,
+AirDrop, Messages). It uses the copy the viewer already loaded; when
+there is none yet (a PDF you haven't opened), the first tap fetches it
+and the viewer says **Ready to share**, and **Share now** opens the sheet,
+since an iPhone opens it only straight from a tap. A browser that can't
+share files downloads instead. Download saves the file under its own
+name. Both stop at the viewer's limits: images up to 20 MB, PDFs up to
+50 MB. Jantar itself keeps no copy once you leave the file.
+
 **New folder**: in any folder you browse, New folder makes one empty
 folder there (A–Z letters, digits, spaces, `.`, `_` and `-`; starting
 with a letter or digit; at most 60) and opens it with **Start a session
