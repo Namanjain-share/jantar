@@ -10,18 +10,24 @@ What changed for people who use Jantar, newest first. Versions before
   menu. On an iPhone, Share opens the share sheet (Save to Files, Mail,
   AirDrop and the rest) with the file itself. When the file wasn't loaded
   yet (a PDF you haven't opened), the first tap fetches it from the Mac and
-  the viewer says **Ready to share**: tap **Share now** to open the sheet,
-  since an iPhone opens it only straight from a tap. A browser that can't
-  share files saves it instead. Images up to 20 MB and PDFs up to 50 MB,
-  as the viewer shows them; a bigger file says so and both are off.
+  the viewer says **Ready to share** (or **Ready to save** for Download):
+  tap **Share now** or **Save now**, since an iPhone does either only
+  straight from a tap. A browser that can't share files saves it instead.
+  When Claude writes the file again, the next Share fetches the new
+  version. Images up to 20 MB and PDFs up to 50 MB, as the viewer shows
+  them; a bigger file says so and both are off.
 - **Search names in Files.** Every folder you browse has a search field at
   the top, "Search names in" the folder, that finds the files and folders
   below it whose names contain what you type (2 characters or more, any
   letter case). Names only, never what is inside a file, and only what
-  Browse would show: no protected file, dot files only when what you type
-  starts with a dot, and never inside `node_modules`, `.git` or a symlink.
-  At most 100 names, those that start with what you typed first; a file
-  opens, a folder is browsed into.
+  Browse would show: no protected file, and never inside `node_modules`,
+  `.git` or a symlink. Hidden files and folders (names that start with a
+  dot) are searched only while the folder's ··· has **Show hidden files**
+  on; a search that starts with a dot is an ordinary search, so `.pdf`
+  finds your PDFs. At most 100 names, those that start with what you
+  typed first; a file opens, a folder is browsed into. A very big folder
+  can stop the search early, and it says so: search a folder further
+  down.
 
 ## 0.14.0 (5 November 2026)
 
