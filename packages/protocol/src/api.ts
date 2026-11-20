@@ -712,14 +712,16 @@ export const FilesPathQuerySchema = z.object({ root: RootParamSchema, path: RelP
 export type FilesPathQuery = z.infer<typeof FilesPathQuerySchema>;
 /**
  * 0.14.1: names under a folder (`path`, '' = the root) that contain `q`,
- * by the same rules as a listing: protected entries never, dot entries only
- * for a `q` that starts with '.', and no symlink followed.
+ * by the same rules as a listing: protected entries never, dot entries
+ * (and what is in dot folders) only with `hidden=1` (Browse's "Show hidden
+ * files", or folders.showHidden), and no symlink followed.
  */
 export const FilesFindQuerySchema = z.object({
   root: RootParamSchema,
   path: RelPathSchema.default(''),
   q: z.string().min(FILES_FIND_QUERY_MIN).max(FILES_FIND_QUERY_MAX),
   limit: limit(FILES_FIND_LIMIT, FILES_FIND_LIMIT),
+  hidden: flag01.default(false),
 });
 export type FilesFindQuery = z.infer<typeof FilesFindQuerySchema>;
 /** One name that matched: `path` is relative to the root (what the viewer and the listing take). */
@@ -736,6 +738,13 @@ export const FilesFindResponseSchema = z.object({
   entries: z.array(FileFindEntrySchema),
   /** A cap was reached (results, depth, entries looked at, or time): there may be more. */
   truncated: z.boolean(),
+  /**
+   * Why there may be more: `limit`, more names matched than the reply holds
+   * (a longer text narrows them); `scan`, the walk stopped at the depth,
+   * entries or time cap before it saw the whole folder (a folder further
+   * down is the way to search it). Null when nothing was cut.
+   */
+  stopped: z.enum(['limit', 'scan']).nullable(),
 });
 export const FilesTextQuerySchema = z.object({
   root: RootParamSchema,

@@ -1,8 +1,9 @@
 /**
  * 0.14.1 Files: a name search in Browse (GET /v1/files/find). Defined like
  * GET /v1/files/list: control scope, behind the Files switch, never on
- * ctl.sock; a query with the folder being browsed and the text to find, and
- * a reply of names (relative paths, kinds, sizes, times) with `truncated`.
+ * ctl.sock; a query with the folder being browsed, the text to find and the
+ * listing's hidden flag, and a reply of names (relative paths, kinds,
+ * sizes, times) with `truncated` and why (`stopped`).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -43,8 +44,16 @@ describe('GET /v1/files/find', () => {
   });
 
   it('takes a root, the folder (default the root), a text of 2 to 255 characters and a limit up to 100', () => {
-    expect(FilesFindQuerySchema.parse({ root: 'r.work', q: 'ab' })).toEqual({ root: 'r.work', path: '', q: 'ab', limit: 100 });
-    expect(FilesFindQuerySchema.parse({ root: 'r.work', path: 'src/auth', q: 'session', limit: '20' })).toEqual({ root: 'r.work', path: 'src/auth', q: 'session', limit: 20 });
+    expect(FilesFindQuerySchema.parse({ root: 'r.work', q: 'ab' })).toEqual({ root: 'r.work', path: '', q: 'ab', limit: 100, hidden: false });
+    expect(FilesFindQuerySchema.parse({ root: 'r.work', path: 'src/auth', q: 'session', limit: '20', hidden: '1' })).toEqual({
+      root: 'r.work',
+      path: 'src/auth',
+      q: 'session',
+      limit: 20,
+      hidden: true,
+    });
+    // A text that starts with a dot is a text like any other: hidden entries take the flag, as a listing does.
+    expect(FilesFindQuerySchema.parse({ root: 'r.work', q: '.pdf' }).hidden).toBe(false);
     const bad = [
       { q: 'ab' },
       { root: '', q: 'ab' },
@@ -54,24 +63,29 @@ describe('GET /v1/files/find', () => {
       { root: 'r.work', q: 'ab', limit: '101' },
       { root: 'r.work', q: 'ab', limit: '0' },
       { root: 'r.work', q: 'ab', path: 'x'.repeat(1025) },
+      { root: 'r.work', q: 'ab', hidden: 'yes' },
     ];
     for (const b of bad) expect(FilesFindQuerySchema.safeParse(b).success, JSON.stringify(b).slice(0, 80)).toBe(false);
     expect(FilesFindQuerySchema.safeParse({ root: 'r.work', q: 'x'.repeat(255) }).success).toBe(true);
   });
 
-  it('answers names with their kind, size and time, and whether a cap was reached', () => {
+  it('answers names with their kind, size and time, and whether a cap was reached and which', () => {
     const reply = {
       entries: [
         { path: 'docs/report.pdf', name: 'report.pdf', kind: 'file', size: 81_920, mtime: '2026-11-20T09:00:00.000Z' },
         { path: 'reports', name: 'reports', kind: 'dir', mtime: '2026-11-19T09:00:00.000Z' },
       ],
       truncated: false,
+      stopped: null,
     };
     expect(FilesFindResponseSchema.parse(reply)).toEqual(reply);
-    expect(FilesFindResponseSchema.safeParse({ entries: [], truncated: true }).success).toBe(true);
+    expect(FilesFindResponseSchema.safeParse({ entries: [], truncated: true, stopped: 'scan' }).success).toBe(true);
+    expect(FilesFindResponseSchema.safeParse({ entries: [], truncated: true, stopped: 'limit' }).success).toBe(true);
+    expect(FilesFindResponseSchema.safeParse({ entries: [], truncated: true, stopped: 'time' }).success).toBe(false);
+    expect(FilesFindResponseSchema.safeParse({ entries: [], truncated: true }).success).toBe(false);
     // A link, a socket or anything else is not a kind it answers with.
-    expect(FilesFindResponseSchema.safeParse({ entries: [{ ...reply.entries[0], kind: 'link' }], truncated: false }).success).toBe(false);
-    expect(FilesFindResponseSchema.safeParse({ entries: [{ path: 'a', name: 'a', kind: 'file' }], truncated: false }).success).toBe(false);
+    expect(FilesFindResponseSchema.safeParse({ entries: [{ ...reply.entries[0], kind: 'link' }], truncated: false, stopped: null }).success).toBe(false);
+    expect(FilesFindResponseSchema.safeParse({ entries: [{ path: 'a', name: 'a', kind: 'file' }], truncated: false, stopped: null }).success).toBe(false);
     expect(FilesFindResponseSchema.safeParse({ entries: [] }).success).toBe(false);
   });
 });
