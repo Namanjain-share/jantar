@@ -269,8 +269,8 @@ export interface Api {
   // --- v0.3 Files
   filesRoots(): Promise<FilesRootsResponse>;
   filesList(q: { root: string; path?: string; after?: string; limit?: number; hidden?: boolean }): Promise<FileListing>;
-  /** 0.14.1: names under a folder that contain `q` (2 characters or more), best first. */
-  filesFind(q: { root: string; path?: string; q: string; limit?: number }, opts?: { signal?: AbortSignal }): Promise<FilesFindResponse>;
+  /** 0.14.1: names under a folder that contain `q` (2 characters or more), best first; dot entries only with `hidden`. */
+  filesFind(q: { root: string; path?: string; q: string; limit?: number; hidden?: boolean }, opts?: { signal?: AbortSignal }): Promise<FilesFindResponse>;
   filesStat(q: FileRef): Promise<FileStat>;
   filesText(q: FileRef & { offset?: number; max?: number }): Promise<FileText>;
   /** Same-origin URL of a raster image for `<img src>` (the cookie rides along; reads need no device secret). */
@@ -670,7 +670,8 @@ export function createApi(opts: ApiOptions = {}): Api {
 
     filesRoots: () => call(ROUTES.filesRoots),
     filesList: (q) => call(ROUTES.filesList, { query: { root: q.root, path: q.path, after: q.after, limit: q.limit, hidden: flag(q.hidden) } }),
-    filesFind: (q, o = {}) => call(ROUTES.filesFind, { query: { root: q.root, path: q.path, q: q.q, limit: q.limit }, ...(o.signal ? { signal: o.signal } : {}) }),
+    filesFind: (q, o = {}) =>
+      call(ROUTES.filesFind, { query: { root: q.root, path: q.path, q: q.q, limit: q.limit, hidden: flag(q.hidden) }, ...(o.signal ? { signal: o.signal } : {}) }),
     filesStat: (q) => call(ROUTES.filesStat, { query: { root: q.root, path: q.path } }),
     filesText: (q) => call(ROUTES.filesText, { query: { root: q.root, path: q.path, offset: q.offset, max: q.max } }),
     filesRawUrl: (q) => new URL(pathWithQuery(ROUTES.filesRaw, undefined, { root: q.root, path: q.path }), base).toString(),

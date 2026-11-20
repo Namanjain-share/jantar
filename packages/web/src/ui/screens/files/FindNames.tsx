@@ -4,10 +4,15 @@
  * GET /v1/files/find. Names only, never what is inside a file.
  *
  * A search starts 250 ms after the last keystroke and needs 2 characters;
- * the clear button and Escape empty it. While one is active its results
- * take the listing's place: icon, name, the folder it is in (relative to
- * this one) and size and age, as Browse rows have them. A file opens the
- * viewer as Browse does; a folder is browsed into, and the search ends.
+ * the clear button and Escape empty it. Dot entries and dot folders are
+ * searched only while Browse shows hidden files (a text that starts with a
+ * dot is just a text: ".pdf" finds PDFs). While a search is on, its
+ * results take the listing's place: icon, name, the folder it is in
+ * (relative to this one) and size and age, as Browse rows have them. A
+ * file opens the viewer as Browse does; a folder is browsed into, and the
+ * search ends. A reply cut short says why: more names than it holds
+ * ("Type more to narrow it") or a walk that hit its depth, entries or time
+ * cap ("Search a folder further down").
  *
  * What was typed is kept in memory per folder (never in storage), so the
  * phone's back from a result's viewer finds the results still there.
@@ -15,15 +20,16 @@
 import { FolderIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react';
 import { FILES_FIND_QUERY_MAX, FILES_FIND_QUERY_MIN, type FileFindEntry } from '@jantar/protocol';
 import clsx from 'clsx';
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { agoLong } from '../../../lib/format.js';
 import { useDeps } from '../../context.js';
 import { IconButton } from '../../kit/IconButton.js';
+import { SkeletonRow } from '../../kit/Skeleton.js';
 import { ROW_ICON } from './ChangedList.js';
 import { TextRun } from './CodeView.js';
 import { useLoad, useOffline } from './data.js';
 import { iconFor, sizeText } from './model.js';
-import { Footnote, LoadError, Loading, StateLine } from './states.js';
+import { Footnote, LoadError, OFFLINE, StateLine, fileErrorText } from './states.js';
 import { VirtualList } from './VirtualList.js';
 
 /** Typing settles this long before a search goes out. */
@@ -187,11 +193,15 @@ function FoundRow({ e, from, now, onOpen }: { e: FileFindEntry; from: string; no
   );
 }
 
-/** What the search found, in the listing's place. */
+/** The footnote when a cap on the walk (depth, entries, time) ended it before the whole folder was seen. */
+export const STOPPED_EARLY = 'Stopped early: this folder is big. Search a folder further down.';
+
+/** What the search found, in the listing's place. One live region, mounted throughout, says each state. */
 export function FindResults({
   root,
   path,
   query,
+  hidden,
   now,
   onOpen,
 }: {
@@ -199,36 +209,65 @@ export function FindResults({
   /** The folder searched ('' = the root). */
   path: string;
   query: string;
+  /** Browse's "Show hidden files": dot entries and dot folders are searched too. */
+  hidden: boolean;
   now: number;
   onOpen: (e: FileFindEntry) => void;
 }) {
   const { api } = useDeps();
   const offline = useOffline();
-  const load = useCallback((signal: AbortSignal) => api.filesFind({ root, path, q: query }, { signal }), [api, root, path, query]);
-  const found = useLoad(`find:${root}\u0000${path}\u0000${query}`, load);
+  const load = useCallback((signal: AbortSignal) => api.filesFind({ root, path, q: query, hidden }, { signal }), [api, root, path, query, hidden]);
+  // Kept out of the files cache: a run of searches would push the folders' listings out of it.
+  const found = useLoad(`find:${root}\u0000${path}\u0000${hidden ? 1 : 0}\u0000${query}`, load, { cache: false });
+  let said: string;
+  let body: ReactNode;
   if (!found.data) {
-    if (found.error) return <LoadError error={found.error} offline={offline} what="folder" onRetry={found.reload} />;
-    return <Loading count={3} caption="Searching…" />;
+    if (found.error) {
+      said = offline ? OFFLINE : fileErrorText(found.error, 'folder');
+      body = <LoadError error={found.error} offline={offline} what="folder" onRetry={found.reload} />;
+    } else {
+      said = 'Searching…';
+      body = (
+        <div aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <SkeletonRow key={i} />
+          ))}
+          <p className="px-16 py-12 type-mono text-ink-3">Searching…</p>
+        </div>
+      );
+    }
+  } else {
+    const { entries, stopped } = found.data;
+    const n = entries.length;
+    said =
+      n === 0
+        ? `No names match${stopped === 'scan' ? ', but the search stopped early' : ''}.`
+        : `${n === 1 ? '1 name' : `${n} names`} found${stopped === 'scan' ? '; the search stopped early' : stopped === 'limit' ? ', there may be more' : ''}.`;
+    const note =
+      stopped === 'scan' ? <Footnote>{STOPPED_EARLY}</Footnote> : stopped === 'limit' ? <Footnote>Showing the first {n}. Type more to narrow it.</Footnote> : null;
+    body =
+      n === 0 ? (
+        <>
+          <StateLine>No names match “{query}”.</StateLine>
+          {note}
+        </>
+      ) : (
+        <VirtualList
+          items={entries}
+          label={`Names with “${query}”, ${n} found`}
+          getKey={(e) => e.path}
+          estimate={() => 52}
+          render={(e) => <FoundRow e={e} from={path} now={now} onOpen={onOpen} />}
+          footer={note}
+        />
+      );
   }
-  const { entries, truncated } = found.data;
-  const said = entries.length === 0 ? 'No names match.' : `${entries.length === 1 ? '1 name' : `${entries.length} names`} found${truncated ? ', there may be more' : ''}.`;
   return (
     <>
       <p role="status" className="sr-only">
         {said}
       </p>
-      {entries.length === 0 ? (
-        <StateLine>No names match “{query}”.</StateLine>
-      ) : (
-        <VirtualList
-          items={entries}
-          label={`Names with “${query}”, ${entries.length} found`}
-          getKey={(e) => e.path}
-          estimate={() => 52}
-          render={(e) => <FoundRow e={e} from={path} now={now} onOpen={onOpen} />}
-          footer={truncated ? <Footnote>Showing the first {entries.length}. Type more to narrow it.</Footnote> : null}
-        />
-      )}
+      {body}
     </>
   );
 }

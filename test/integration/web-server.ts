@@ -64,11 +64,12 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-/** GET /v1/files/find over a v0.3 fixture: names below `rel` that contain `text`, best first (as the daemon orders them). */
-function findNames(v: V03Fixture, rel: string, text: string): { entries: FileFindEntry[]; truncated: boolean } {
+/** GET /v1/files/find over a v0.3 fixture: names below `rel` that contain `text`, best first (as the daemon orders them); dot entries only with `hidden`. */
+function findNames(v: V03Fixture, rel: string, text: string, hidden: boolean): { entries: FileFindEntry[]; truncated: boolean; stopped: 'limit' | null } {
   const key = (s: string) => s.normalize('NFC').toLowerCase();
   const needle = key(text);
-  const under = (p: string) => p !== rel && (rel === '' || p.startsWith(`${rel}/`));
+  const below = (p: string) => (rel ? p.slice(rel.length + 1) : p);
+  const under = (p: string) => p !== rel && (rel === '' || p.startsWith(`${rel}/`)) && (hidden || !below(p).split('/').some((s) => s.startsWith('.')));
   const name = (p: string) => p.slice(p.lastIndexOf('/') + 1);
   const depth = (p: string) => p.split('/').length - (rel ? rel.split('/').length : 0);
   const all: FileFindEntry[] = [];
@@ -82,7 +83,8 @@ function findNames(v: V03Fixture, rel: string, text: string): { entries: FileFin
   const hits = all
     .filter((e) => key(e.name).includes(needle))
     .sort((a, b) => Number(key(b.name).startsWith(needle)) - Number(key(a.name).startsWith(needle)) || depth(a.path) - depth(b.path) || a.name.localeCompare(b.name));
-  return { entries: hits.slice(0, FILES_FIND_LIMIT), truncated: hits.length > FILES_FIND_LIMIT };
+  const cut = hits.length > FILES_FIND_LIMIT;
+  return { entries: hits.slice(0, FILES_FIND_LIMIT), truncated: cut, stopped: cut ? 'limit' : null };
 }
 
 export async function serveWebApp(dist: string, fixture: () => WebFixture & { v03?: V03Fixture }): Promise<WebServer> {
@@ -115,7 +117,7 @@ export async function serveWebApp(dist: string, fixture: () => WebFixture & { v0
       return listing ? { body: { ...listing, root: q.get('root') } } : missing('no such folder');
     }
     // 0.14.1: names below the folder, over the fixture's tree (the daemon's own walk is files/find.ts).
-    if (get && path === '/v1/files/find') return { body: findNames(v, rel, q.get('q') ?? '') };
+    if (get && path === '/v1/files/find') return { body: findNames(v, rel, q.get('q') ?? '', q.get('hidden') === '1') };
     if (get && (path === '/v1/files/stat' || path === '/v1/files/text' || path === '/v1/files/raw')) {
       const file = v.files.get(rel);
       if (!file) return missing('no such file');

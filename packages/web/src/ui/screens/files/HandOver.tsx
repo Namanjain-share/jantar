@@ -1,20 +1,21 @@
 /**
  * Share and Download for a PDF or an image in the viewer (0.14.1). The
- * bytes are the ones GET /v1/files/raw serves the viewer: those already
- * fetched to show the file when there are any, else fetched on the tap.
- * Nothing is kept past the viewer, as with the bytes it shows (blob.ts).
+ * bytes are the ones GET /v1/files/raw serves the viewer: the newest ones
+ * it has for this version of the file (its root, path, mtime and size),
+ * whether the image or PDF view fetched them to show it or a tap here did,
+ * else fetched on the tap. When Claude writes the file again, the bytes
+ * held for the old version are dropped. Nothing is kept past the viewer,
+ * as with the bytes it shows (blob.ts).
  *
- * Share hands a File to the share sheet (navigator.share), which needs a
- * fresh tap on an iPhone. With the bytes at hand the tap shares at once;
- * when they had to be fetched first, that tap is spent, so the viewer says
- * "Ready to share" with a button of its own (and Share in the header works
- * again too), and the share starts from that second tap. A browser that
- * can't share this file (navigator.canShare false, or no Web Share) gets
- * the download instead. Closing the share sheet is no error; any other
- * failure is one plain toast.
- *
- * Download clicks an <a download> on an object URL, revoked a moment
- * later (lib/share-file.ts). Over the raw caps (20 MB for an image, 50 MB
+ * Share hands a File to the share sheet (navigator.share), and Download
+ * clicks an <a download> on an object URL, revoked a moment later
+ * (lib/share-file.ts). An iPhone allows either only straight from a tap.
+ * With the bytes at hand the tap hands them over at once; when they had to
+ * be fetched first, that tap is spent, so the viewer says "Ready to share"
+ * (Share now) or "Ready to save" (Save now), and the second tap does it. A
+ * browser that can't share this file (navigator.canShare false, or no Web
+ * Share) saves it instead. Closing the share sheet is no error; any other
+ * failure is one plain toast. Over the raw caps (20 MB for an image, 50 MB
  * for a PDF) both are off, with the reason on screen.
  */
 import { XIcon } from '@phosphor-icons/react';
@@ -70,35 +71,39 @@ export function sharesFile(file: File, env: ExportEnv): boolean {
 }
 
 type Action = 'share' | 'download';
-type Phase = { name: 'idle' } | { name: 'fetching'; action: Action } | { name: 'ready' };
+type Phase = { name: 'idle' } | { name: 'fetching'; action: Action } | { name: 'ready'; mode: 'share' | 'save' };
 
 export interface HandOver {
   /** Over the cap: Share and Download are off, and this says why. */
   refusal: string | null;
   /** Bytes are on their way for this action. */
   busy: Action | null;
-  /** Bytes fetched after a Share tap: the next tap shares. */
-  ready: boolean;
+  /** Bytes fetched after the tap: the next tap shares (`share`) or saves (`save`). */
+  ready: 'share' | 'save' | null;
   share(): void;
   download(): void;
   dismiss(): void;
+  /** The bytes the image or PDF view fetched to show the file (its `onBytes`). Stable across renders. */
+  keep(blob: Blob): void;
 }
 
 /**
- * Share and Download for one file. `shown` gives the bytes the viewer
- * already fetched to show it (or null). The share sheet and the download
- * are the browser's own (browserExportEnv), read at each tap.
+ * Share and Download for one version of one file. The share sheet and the
+ * download are the browser's own (browserExportEnv), read at each tap.
  */
-export function useHandOver(opts: { root: string; path: string; name: string; kind: HandOverKind; size: number; shown: () => Blob | null }): HandOver {
+export function useHandOver(opts: { root: string; path: string; name: string; kind: HandOverKind; size: number; mtime: string }): HandOver {
   const { api } = useDeps();
   const toast = useToast();
-  const { root, path, name, kind, size, shown } = opts;
+  const { root, path, name, kind, size, mtime } = opts;
   const refusal = handOverRefusal(kind, size);
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
-  // Bytes fetched here for this file; dropped with the viewer.
-  const fetched = useRef<{ key: string; blob: Blob } | null>(null);
+  // The newest bytes for this version of the file, whoever fetched them; dropped with the viewer.
+  const bytes = useRef<{ key: string; blob: Blob } | null>(null);
   const job = useRef<AbortController | null>(null);
-  const key = `${root}\u0000${path}`;
+  const key = `${root}\u0000${path}\u0000${mtime}\u0000${size}`;
+  // Read by `keep`, which the views call from their own effects (they run before this hook's).
+  const keyRef = useRef(key);
+  keyRef.current = key;
   useEffect(
     () => () => {
       job.current?.abort();
@@ -106,19 +111,23 @@ export function useHandOver(opts: { root: string; path: string; name: string; ki
     },
     [],
   );
-  // Another file in the same viewer: nothing of the last one carries over.
+  // Another file, or this one written again: nothing of the old version carries over.
   useEffect(() => {
+    if (bytes.current && bytes.current.key !== key) bytes.current = null;
     job.current?.abort();
     job.current = null;
     setPhase({ name: 'idle' });
   }, [key]);
 
-  const known = (): Blob | null => (fetched.current?.key === key ? fetched.current.blob : shown());
+  const keep = useCallback((blob: Blob) => {
+    bytes.current = { key: keyRef.current, blob };
+  }, []);
+  const known = (): Blob | null => (bytes.current?.key === key ? bytes.current.blob : null);
 
   // One plain sentence: the browser's own error text is not written for people.
   const failed = useCallback(() => toast("Couldn't share this file. Try again, or use Download.", 'error'), [toast]);
 
-  /** Hand the bytes over now, inside the tap that asked (navigator.share needs it). */
+  /** Hand the bytes over now, inside the tap that asked (an iPhone allows it only there). */
   const handOver = (blob: Blob, action: Action) => {
     const env = browserExportEnv();
     const file = handOverFile(blob, name, kind);
@@ -146,20 +155,16 @@ export function useHandOver(opts: { root: string; path: string; name: string; ki
     job.current?.abort();
     const abort = new AbortController();
     job.current = abort;
+    const at = key;
     setPhase({ name: 'fetching', action });
     api.filesRaw({ root, path }, { signal: abort.signal }).then(
       (blob) => {
         if (job.current !== abort) return;
         job.current = null;
-        fetched.current = { key, blob };
-        const env = browserExportEnv();
-        // The tap that asked was spent waiting: a share starts from the next one.
-        if (action === 'share' && sharesFile(handOverFile(blob, name, kind), env)) {
-          setPhase({ name: 'ready' });
-          return;
-        }
-        setPhase({ name: 'idle' });
-        env.download(handOverFile(blob, name, kind));
+        bytes.current = { key: at, blob };
+        // The tap that asked was spent waiting: the share sheet or the save starts from the next one.
+        const shares = action === 'share' && sharesFile(handOverFile(blob, name, kind), browserExportEnv());
+        setPhase({ name: 'ready', mode: shares ? 'share' : 'save' });
       },
       (e: unknown) => {
         if (job.current !== abort) return;
@@ -184,24 +189,31 @@ export function useHandOver(opts: { root: string; path: string; name: string; ki
   return {
     refusal,
     busy: phase.name === 'fetching' ? phase.action : null,
-    ready: phase.name === 'ready',
+    ready: phase.name === 'ready' ? phase.mode : null,
     share: () => start('share'),
     download: () => start('download'),
     dismiss: () => setPhase({ name: 'idle' }),
+    keep,
   };
 }
 
-/** The second tap target: the bytes came after the first tap, and this one opens the share sheet. */
-export function ReadyToShare({ name, onShare, onDismiss, phone }: { name: string; onShare: () => void; onDismiss: () => void; phone: boolean }) {
+const READY = {
+  share: { label: 'Ready to share', button: 'Share now' },
+  save: { label: 'Ready to save', button: 'Save now' },
+} as const;
+
+/** The second tap target: the bytes came after the first tap, and this one opens the share sheet or saves the file. */
+export function ReadyBar({ mode, name, onGo, onDismiss, phone }: { mode: 'share' | 'save'; name: string; onGo: () => void; onDismiss: () => void; phone: boolean }) {
   const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => button.current?.focus({ preventScroll: true }), []);
+  useEffect(() => button.current?.focus({ preventScroll: true }), [mode]);
+  const words = READY[mode];
   return (
-    <section aria-label="Ready to share" className={phone ? 'flex flex-none items-center gap-8 border-t border-line bg-surface py-8 pl-16 pr-8' : 'flex flex-none items-center gap-8 border-t border-line bg-surface py-8 pl-24 pr-16'}>
+    <section aria-label={words.label} className={phone ? 'flex flex-none items-center gap-8 border-t border-line bg-surface py-8 pl-16 pr-8' : 'flex flex-none items-center gap-8 border-t border-line bg-surface py-8 pl-24 pr-16'}>
       <p role="status" className="min-w-0 flex-1 truncate type-small text-ink-2">
-        Ready to share <TextRun text={name} />
+        {words.label} <TextRun text={name} />
       </p>
-      <Button ref={button} variant="primary" size="sm" className="flex-none" onClick={onShare}>
-        Share now
+      <Button ref={button} variant="primary" size="sm" className="flex-none" onClick={onGo}>
+        {words.button}
       </Button>
       <IconButton aria-label="Not now" onClick={onDismiss}>
         <XIcon size={16} aria-hidden="true" />

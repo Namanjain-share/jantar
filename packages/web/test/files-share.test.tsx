@@ -5,15 +5,20 @@
  * second one ("Ready to share"); a browser that can't share the file gets
  * the download; closing the sheet is silent and any other failure is a
  * plain toast; over the raw caps both are off, with the reason on screen.
+ * A save that had to wait for the bytes waits for a second tap too ("Ready
+ * to save"), and a file Claude wrote again is fetched anew, never handed
+ * over as it was.
  */
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FILES_RAW_IMAGE_MAX, FILES_RAW_PDF_MAX } from '@jantar/protocol';
+import { FILES_RAW_IMAGE_MAX, FILES_RAW_PDF_MAX, type FileChange } from '@jantar/protocol';
 import { ApiError } from '../src/lib/api.js';
 import { clearFilesCache } from '../src/ui/screens/files/data.js';
 import { handOverFile, handOverRefusal, sharesFile } from '../src/ui/screens/files/HandOver.js';
-import { objectUrls, pendingForever, renderViewer as viewer, stat, text } from './files-helpers.js';
-import { fakeApi } from './helpers.js';
+import { Viewer } from '../src/ui/screens/files/Viewer.js';
+import { change, objectUrls, pendingForever, renderViewer as viewer, renderWith, stat, text } from './files-helpers.js';
+import { fakeApi, iso } from './helpers.js';
 
 // pdf.js needs a real canvas: a stand-in with the same calls (as files-viewer.test.tsx).
 vi.mock('../src/ui/screens/files/pdf.js', () => ({
@@ -151,17 +156,50 @@ describe('Share', () => {
     expect(filesRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('a browser that cannot share the file gets the download instead', async () => {
+  it('a browser that cannot share the fetched file saves it instead, from a second tap ("Ready to save")', async () => {
     const urls = objectUrls();
     const clicks = downloads();
     const sheet = shareSheet({ can: false });
     viewer(fakeApi({ filesStat: vi.fn(async () => pdfStat()), filesRaw: vi.fn(async () => PDF()) }), { path: 'docs/spec.pdf' });
     fireEvent.click(await screen.findByRole('button', { name: 'Share' }));
-    await waitFor(() => expect(clicks).toEqual([{ name: 'spec.pdf', href: urls.made[0] }]));
+    const ready = await screen.findByRole('region', { name: 'Ready to save' });
+    // Nothing saved after the wait: an iPhone allows it only from a tap.
+    expect(clicks).toEqual([]);
+    expect(within(ready).getByRole('status').textContent).toBe('Ready to save spec.pdf');
+    fireEvent.click(within(ready).getByRole('button', { name: 'Save now' }));
+    expect(clicks).toEqual([{ name: 'spec.pdf', href: urls.made[0] }]);
     expect(sheet.share).not.toHaveBeenCalled();
-    expect(screen.queryByRole('region', { name: 'Ready to share' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Ready to save' })).toBeNull();
     // Revoked a moment after the click.
     await waitFor(() => expect(urls.revoke).toHaveBeenCalledWith(urls.made[0]), { timeout: 2_000 });
+  });
+
+  it('after Claude writes the file again, Share fetches the new bytes instead of handing over the old ones', async () => {
+    objectUrls();
+    const sheet = shareSheet();
+    const v1 = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], { type: 'image/png' });
+    const v2 = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0])], { type: 'image/png' });
+    // The stat read again after the write: a new time and size.
+    const filesStat = vi.fn(async () => (filesStat.mock.calls.length > 1 ? { ...imageStat(6), mtime: iso(60_000) } : imageStat(4)));
+    const filesRaw = vi.fn(async () => (filesRaw.mock.calls.length > 1 ? v2 : v1));
+    let wrote: (c: FileChange) => void = () => undefined;
+    function Written() {
+      const [c, setC] = useState(change({ rootId: 'r.work', rel: 'img/logo.png', lastAt: iso(0) }));
+      wrote = setC;
+      return <Viewer root="r.work" path="img/logo.png" tab="file" phone change={c} onLocation={() => undefined} />;
+    }
+    renderWith(<Written />, { api: fakeApi({ filesStat, filesRaw }) });
+    await screen.findByRole('img', { name: 'logo.png' });
+    // The bytes on screen are this version's: one tap shares them.
+    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    expect(sheet.shared.map((f) => f.size)).toEqual([4]);
+    act(() => wrote(change({ rootId: 'r.work', rel: 'img/logo.png', lastAt: iso(60_000) })));
+    await waitFor(() => expect(filesStat).toHaveBeenCalledTimes(2));
+    await screen.findByText(/6 B/);
+    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Share now' }));
+    expect(filesRaw).toHaveBeenCalledTimes(2);
+    expect(sheet.shared.map((f) => f.size)).toEqual([4, 6]);
   });
 
   it('no Web Share at all: Share downloads too', async () => {
@@ -217,7 +255,7 @@ describe('Share', () => {
 });
 
 describe('Download (in ···)', () => {
-  it('saves the bytes on screen through <a download>, and fetches them first when there are none (no second tap)', async () => {
+  it('saves the bytes on screen through <a download>; with none yet, fetches them and saves from the second tap', async () => {
     const urls = objectUrls();
     const clicks = downloads();
     shareSheet();
@@ -236,7 +274,10 @@ describe('Download (in ···)', () => {
     viewer(fakeApi({ filesStat: vi.fn(async () => pdfStat()), filesRaw: pdfRaw }), { path: 'spec.pdf' });
     fireEvent.click(await screen.findByRole('button', { name: 'More for this file' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Download' }));
-    await waitFor(() => expect(clicks.map((c) => c.name)).toEqual(['logo.png', 'spec.pdf']));
+    const ready = await screen.findByRole('region', { name: 'Ready to save' });
+    expect(clicks.map((c) => c.name)).toEqual(['logo.png']);
+    fireEvent.click(within(ready).getByRole('button', { name: 'Save now' }));
+    expect(clicks.map((c) => c.name)).toEqual(['logo.png', 'spec.pdf']);
     expect(pdfRaw).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('region', { name: 'Ready to share' })).toBeNull();
   });

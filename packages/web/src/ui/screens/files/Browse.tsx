@@ -378,7 +378,7 @@ function Folder({
         {searchBox}
       </>
     );
-  const found = search.query !== null && searchBox ? <FindResults root={root} path={rel} query={search.query} now={now} onOpen={openFound} /> : null;
+  const found = search.query !== null && searchBox ? <FindResults root={root} path={rel} query={search.query} hidden={hidden} now={now} onOpen={openFound} /> : null;
   const ready =
     created !== null && created.at === rel ? (
       <JustMade name={rel.slice(rel.lastIndexOf('/') + 1)} display={displayAt(label, rel)} made={created.made} phone={phone} onStart={() => startIn(rel)} />

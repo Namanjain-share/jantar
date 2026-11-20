@@ -23,7 +23,8 @@
  * - 0.14.1 at 390 px: Share on a PDF not opened yet (fetched, then the
  *   second tap opens the share sheet, still inside a live tap) and on an
  *   image on screen (one tap, its own bytes), Download through ··· (a
- *   real download), and the name search in Browse;
+ *   real download, from a second tap when the bytes had to be fetched
+ *   first), and the name search in Browse;
  * - in grayscale, the board's six states and the two ghost rows (a launch
  *   at its trust dialog, one still opening) stay apart: by glyph shape and
  *   rail word, and for the ghosts, which share the Starting rail, by the
@@ -370,6 +371,26 @@ describe.skipIf(!ready)('the v0.3 screens in Chromium', () => {
         await page.getByRole('button', { name: 'More for this file' }).click();
         const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: 'Download' }).click()]);
         expect(download.suggestedFilename()).toBe('spec.pdf');
+        await check(page, watch);
+      });
+    });
+
+    it('Download before the PDF was opened: fetched, then "Ready to save" and Save now saves it', async () => {
+      await onTouch('Download on a PDF', () => open(filesPath(PATHS.pdf), PHONE), async ({ page, watch }) => {
+        await page.getByRole('button', { name: 'Open', exact: true }).waitFor();
+        const saves: string[] = [];
+        page.on('download', (d) => saves.push(d.suggestedFilename()));
+        await page.getByRole('button', { name: 'More for this file' }).click();
+        await page.getByRole('menuitem', { name: 'Download' }).click();
+        const ready = page.getByRole('region', { name: 'Ready to save' });
+        await ready.waitFor();
+        // Nothing saved after the wait: the save comes from the next tap.
+        expect(saves).toEqual([]);
+        await check(page, watch);
+        await gates(page, 'a PDF, ready to save');
+        const [download] = await Promise.all([page.waitForEvent('download'), ready.getByRole('button', { name: 'Save now' }).click()]);
+        expect(download.suggestedFilename()).toBe('spec.pdf');
+        expect(await ready.count()).toBe(0);
         await check(page, watch);
       });
     });

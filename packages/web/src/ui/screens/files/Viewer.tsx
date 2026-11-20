@@ -15,8 +15,8 @@
  *
  * 0.14.1: a PDF or an image has Share in the header (icon and word) and
  * Share and Download in ···, with the bytes the viewer already fetched to
- * show it when there are any (HandOver.tsx). Other kinds have neither: the
- * daemon serves raw bytes for those two kinds only.
+ * show it when there are any, for this version of the file (HandOver.tsx).
+ * Other kinds have neither: the daemon serves raw bytes for those two only.
  *
  * When Claude writes the open file again (the list's change for it moves
  * on), the stat and the text are read again, so the File tab stays current.
@@ -37,7 +37,7 @@ import { Spinner } from '../../kit/Spinner.js';
 import { Segmented } from '../accounts/Segmented.js';
 import { CodeView, MoreText, TextRun, Warnings } from './CodeView.js';
 import { EditsList } from './EditsList.js';
-import { ReadyToShare, useHandOver, type HandOverKind } from './HandOver.js';
+import { ReadyBar, useHandOver, type HandOverKind } from './HandOver.js';
 import { useLoad, useOffline } from './data.js';
 import { ImageView } from './ImageView.js';
 import { MarkdownDoc } from './MarkdownDoc.js';
@@ -137,21 +137,9 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
   const openRel = useCallback((to: string) => onLocationRef.current(to.endsWith('/') ? dirLocation(root, to) : { root, path: to }), [root]);
   const layer = useLayer();
 
-  // 0.14.1 Share and Download: the bytes the image or PDF view fetched to show the file, kept for this file only.
-  const fileKey = `${root}\u0000${path}`;
-  const shownBytes = useRef<{ key: string; blob: Blob } | null>(null);
-  const keepBytes = useCallback((blob: Blob) => {
-    shownBytes.current = { key: fileKey, blob };
-  }, [fileKey]);
+  // 0.14.1 Share and Download, for this version of the file (a write by Claude makes a new one).
   const handKind: HandOverKind | null = stat.data?.type === 'file' && (stat.data.kind === 'image' || stat.data.kind === 'pdf') ? stat.data.kind : null;
-  const hand = useHandOver({
-    root,
-    path,
-    name,
-    kind: handKind ?? 'image',
-    size: stat.data?.size ?? 0,
-    shown: () => (shownBytes.current?.key === fileKey ? shownBytes.current.blob : null),
-  });
+  const hand = useHandOver({ root, path, name, kind: handKind ?? 'image', size: stat.data?.size ?? 0, mtime: stat.data?.mtime ?? '' });
   const reasonId = useId();
   const handOff = hand.refusal !== null || hand.busy !== null;
 
@@ -177,9 +165,9 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
   } else if (tab === 'edits' && change) {
     body = <EditsList change={change} />;
   } else if (s.kind === 'image') {
-    body = <ImageView root={root} path={path} name={name} size={s.size} onBytes={keepBytes} />;
+    body = <ImageView root={root} path={path} name={name} size={s.size} onBytes={hand.keep} />;
   } else if (s.kind === 'pdf') {
-    body = <PdfView root={root} path={path} size={s.size} onBytes={keepBytes} />;
+    body = <PdfView root={root} path={path} size={s.size} onBytes={hand.keep} />;
   } else if (s.kind === 'svg') {
     body = <SvgView t={t} name={name} mode={svgMode} onMode={setSvgMode} sel={sel} onLine={onLine} />;
   } else if (s.kind === 'notebook') {
@@ -325,7 +313,9 @@ export function Viewer({ root, path, tab: asked, phone, change, onBack, onLocati
           <Spinner label={hand.busy === 'share' ? 'Getting the file to share' : 'Getting the file to download'} />
         </div>
       ) : null}
-      {handKind && hand.ready ? <ReadyToShare name={name} phone={phone} onShare={hand.share} onDismiss={hand.dismiss} /> : null}
+      {handKind && hand.ready ? (
+        <ReadyBar mode={hand.ready} name={name} phone={phone} onGo={hand.ready === 'share' ? hand.share : hand.download} onDismiss={hand.dismiss} />
+      ) : null}
       {tabs}
       <div className="flex min-h-0 flex-1 flex-col border-t border-line">{body}</div>
     </section>

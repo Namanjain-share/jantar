@@ -53,7 +53,7 @@ describe('the pieces', () => {
   });
 
   it('the client asks GET /v1/files/find with the folder and the text', async () => {
-    const f = vi.fn(async (_u: string | URL | Request, _i?: RequestInit) => new Response(JSON.stringify({ entries: [], truncated: false }), { headers: { 'content-type': 'application/json' } }));
+    const f = vi.fn(async (_u: string | URL | Request, _i?: RequestInit) => new Response(JSON.stringify({ entries: [], truncated: false, stopped: null }), { headers: { 'content-type': 'application/json' } }));
     const api = createApi({ fetch: f as unknown as typeof fetch, base: 'http://127.0.0.1:7420' });
     await api.filesFind({ root: 'r.work', path: 'src/a b', q: 'log in' });
     expect(f.mock.calls[0]![0]).toBe('http://127.0.0.1:7420/v1/files/find?root=r.work&path=src%2Fa+b&q=log+in');
@@ -74,34 +74,51 @@ describe('the field', () => {
   });
 
   it(`asks ${FIND_DEBOUNCE_MS} ms after the last keystroke, and only from 2 characters`, async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/login.ts')], truncated: false }));
+    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/login.ts')], truncated: false, stopped: null }));
     const api = fakeApi({ filesList: vi.fn(async () => listing([{ name: 'app.ts', type: 'file', size: 1 }], { path: 'src' })), filesFind });
     browse(api);
     await screen.findByRole('button', { name: /app\.ts/ });
+    // Time moves only when the test says so from here.
+    vi.useFakeTimers();
     fireEvent.change(field(), { target: { value: 'l' } });
     await flush(FIND_DEBOUNCE_MS * 2);
     expect(filesFind).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /app\.ts/ })).toBeTruthy();
     fireEvent.change(field(), { target: { value: 'lo' } });
-    await flush(FIND_DEBOUNCE_MS - 50);
+    await flush(FIND_DEBOUNCE_MS - 1);
     fireEvent.change(field(), { target: { value: 'log' } });
-    await flush(FIND_DEBOUNCE_MS - 50);
+    await flush(FIND_DEBOUNCE_MS - 1);
     expect(filesFind).not.toHaveBeenCalled();
-    await flush(100);
+    await flush(1);
     expect(filesFind).toHaveBeenCalledTimes(1);
-    expect(filesFind).toHaveBeenCalledWith({ root: 'r.work', path: 'src', q: 'log' }, { signal: expect.any(AbortSignal) });
-    expect(await screen.findByRole('button', { name: /login\.ts/ })).toBeTruthy();
+    expect(filesFind).toHaveBeenCalledWith({ root: 'r.work', path: 'src', q: 'log', hidden: false }, { signal: expect.any(AbortSignal) });
+    await flush(0);
+    expect(screen.getByRole('button', { name: /login\.ts/ })).toBeTruthy();
     // Back under 2 characters: the listing at once, with no ask.
     fireEvent.change(field(), { target: { value: 'l' } });
-    expect(await screen.findByRole('button', { name: /app\.ts/ })).toBeTruthy();
+    await flush(0);
+    expect(screen.getByRole('button', { name: /app\.ts/ })).toBeTruthy();
     await flush(FIND_DEBOUNCE_MS * 2);
     expect(filesFind).toHaveBeenCalledTimes(1);
   });
 
+  it('searches dot entries only while Browse shows hidden files, whatever the text starts with', async () => {
+    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/q3.pdf')], truncated: false, stopped: null }));
+    browse(fakeApi({ filesList: vi.fn(async () => listing([{ name: 'app.ts', type: 'file', size: 1 }], { path: 'src' })), filesFind }));
+    await screen.findByRole('button', { name: /app\.ts/ });
+    vi.useFakeTimers();
+    fireEvent.change(field(), { target: { value: '.pdf' } });
+    await flush(FIND_DEBOUNCE_MS);
+    expect(filesFind).toHaveBeenLastCalledWith({ root: 'r.work', path: 'src', q: '.pdf', hidden: false }, { signal: expect.any(AbortSignal) });
+    vi.useRealTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Folder options' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Show hidden files' }));
+    await waitFor(() => expect(filesFind).toHaveBeenLastCalledWith({ root: 'r.work', path: 'src', q: '.pdf', hidden: true }, { signal: expect.any(AbortSignal) }));
+  });
+
   it('the clear button and Escape empty it and bring the listing back', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/login.ts')], truncated: false }));
+    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/login.ts')], truncated: false, stopped: null }));
     browse(fakeApi({ filesList: vi.fn(async () => listing([{ name: 'app.ts', type: 'file', size: 1 }], { path: 'src' })), filesFind }));
     await screen.findByRole('button', { name: /app\.ts/ });
     expect(screen.queryByRole('button', { name: 'Clear the search' })).toBeNull();
@@ -134,6 +151,7 @@ describe('the results', () => {
     const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({
       entries: [hit('src/auth', { kind: 'dir', size: undefined }), hit('src/auth/session.ts'), hit('src/session-old.ts', { size: 812 })],
       truncated: false,
+      stopped: null,
     }));
     await search(fakeApi({ filesList: vi.fn(async () => listing([{ name: 'app.ts', type: 'file', size: 1 }], { path: 'src' })), filesFind }), 'sess');
     const list = await screen.findByRole('list', { name: 'Names with “sess”, 3 found' });
@@ -144,7 +162,7 @@ describe('the results', () => {
   });
 
   it('a file opens the viewer as Browse does; a folder is browsed into and the search ends', async () => {
-    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/auth', { kind: 'dir' }), hit('src/auth/session.ts')], truncated: false }));
+    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/auth', { kind: 'dir' }), hit('src/auth/session.ts')], truncated: false, stopped: null }));
     const { onLocation } = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'auth');
     fireEvent.click(await screen.findByRole('button', { name: /session\.ts/ }));
     expect(onLocation).toHaveBeenLastCalledWith({ root: 'r.work', path: 'src/auth/session.ts' });
@@ -156,7 +174,7 @@ describe('the results', () => {
   });
 
   it('come back with the text after a result was opened and the folder shown again', async () => {
-    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/auth/session.ts')], truncated: false }));
+    const filesFind = vi.fn(async (): Promise<FilesFindResponse> => ({ entries: [hit('src/auth/session.ts')], truncated: false, stopped: null }));
     const api = fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind });
     const a = await search(api, 'session');
     fireEvent.click(await screen.findByRole('button', { name: /session\.ts/ }));
@@ -170,12 +188,14 @@ describe('the results', () => {
     const filesFind = vi.fn((): Promise<FilesFindResponse> => pendingForever());
     const a = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'zz');
     await flush(200);
-    expect(screen.getByText('Searching…')).toBeTruthy();
+    // On screen, and said once by the live region.
+    expect(screen.getAllByText('Searching…')).toHaveLength(2);
+    expect(screen.getByRole('status').textContent).toBe('Searching…');
     a.unmount();
 
     clearFilesCache();
     clearKeptSearches();
-    const b = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: vi.fn(async () => ({ entries: [], truncated: false })) }), 'zz');
+    const b = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: vi.fn(async () => ({ entries: [], truncated: false, stopped: null })) }), 'zz');
     expect(await screen.findByText('No names match “zz”.')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe('No names match.');
     b.unmount();
@@ -183,16 +203,48 @@ describe('the results', () => {
     clearFilesCache();
     clearKeptSearches();
     const many = Array.from({ length: 100 }, (_, i) => hit(`src/item-${String(i).padStart(3, '0')}.txt`));
-    await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: vi.fn(async () => ({ entries: many, truncated: true })) }), 'item');
+    await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: vi.fn(async (): Promise<FilesFindResponse> => ({ entries: many, truncated: true, stopped: 'limit' })) }), 'item');
     expect(await screen.findByText('Showing the first 100. Type more to narrow it.')).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe('100 names found, there may be more.');
+  });
+
+  it('a walk stopped by its caps says so and where to search instead; one live region says each state', async () => {
+    let answer: (r: FilesFindResponse) => void = () => undefined;
+    const filesFind = vi.fn(() => new Promise<FilesFindResponse>((r) => (answer = r)));
+    await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'cfg');
+    const live = screen.getByRole('status');
+    expect(live.textContent).toBe('Searching…');
+    await act(async () => answer({ entries: [hit('src/a/cfg.ts')], truncated: true, stopped: 'scan' }));
+    expect(screen.getByText('Stopped early: this folder is big. Search a folder further down.')).toBeTruthy();
+    expect(screen.queryByText(/Type more to narrow it/)).toBeNull();
+    // The same element, its text changed: a screen reader hears the results.
+    expect(screen.getByRole('status')).toBe(live);
+    expect(live.textContent).toBe('1 name found; the search stopped early.');
+  });
+
+  it('a slow reply for an older text never replaces the newer one, and its request is stopped', async () => {
+    const asked: Array<{ q: string; signal: AbortSignal; answer: (r: FilesFindResponse) => void }> = [];
+    const filesFind = vi.fn(
+      (q: { q: string }, o?: { signal?: AbortSignal }) =>
+        new Promise<FilesFindResponse>((answer) => asked.push({ q: q.q, signal: o!.signal!, answer })),
+    );
+    await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'lo');
+    fireEvent.change(field(), { target: { value: 'log' } });
+    await flush(FIND_DEBOUNCE_MS + 10);
+    expect(asked.map((a) => a.q)).toEqual(['lo', 'log']);
+    expect(asked[0]!.signal.aborted).toBe(true);
+    await act(async () => asked[1]!.answer({ entries: [hit('src/login.ts')], truncated: false, stopped: null }));
+    await act(async () => asked[0]!.answer({ entries: [hit('src/lo-old.txt')], truncated: false, stopped: null }));
+    expect(screen.getByRole('button', { name: /login\.ts/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /lo-old\.txt/ })).toBeNull();
   });
 
   it("the route's refusals and an offline Mac read as Browse's do", async () => {
     const filesFind = vi.fn(async () => Promise.reject(new ApiError('forbidden', 'That path leads outside the shared folder.', 403)));
     const a = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'zz');
-    expect(await screen.findByText('That path leads outside the shared folder.')).toBeTruthy();
-    expect(screen.getByLabelText('Protected')).toBeTruthy();
+    expect(await screen.findByLabelText('Protected')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('That path leads outside the shared folder.');
+    expect(screen.getAllByText('That path leads outside the shared folder.')).toHaveLength(2);
     a.unmount();
 
     clearFilesCache();
