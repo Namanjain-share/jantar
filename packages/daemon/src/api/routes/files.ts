@@ -4,7 +4,10 @@
  * filesFind walks with the service's own policy (files/find.ts), reports a
  * refusal of the folder through `files.denied`, as a listing's is, and
  * writes `files.find` once per device and folder per 10 min, as
- * `files.list` (folder and count, never the text searched for).
+ * `files.list` (folder and count, never the text searched for). One walk
+ * per device at a time: a newer search from the same device stops the one
+ * before it, and a search whose request goes away stops too (409 for a
+ * stopped one, which nobody is waiting for).
  *
  * The pipeline has already checked the device, the control scope and
  * `files.enabled`, and parsed the query. Here:
@@ -22,7 +25,7 @@ import type { FilesFindQuery, FilesListQuery, FilesPathQuery, FilesTextQuery } f
 import type { Actor, FileRefusal } from '../../contracts.js';
 import { actorId } from '../../core/actor.js';
 import { AUDIT_DEDUPE_MS, auditPath } from '../../files/audit.js';
-import { findNames } from '../../files/find.js';
+import { findNames, isFindAborted } from '../../files/find.js';
 import { isRefusal } from '../../files/policy.js';
 import { rawHeaders, settleRawRow } from '../../files/raw.js';
 import { ApiError } from '../errors.js';
@@ -94,6 +97,12 @@ function auditFind(s: ApiServices, actor: Actor, root: string, rel: string, coun
   s.auditor.write({ actor: who, action: 'files.find', target: root, params: { root, rel: auditPath(rel), count }, result: 'ok' });
 }
 
+/** The search each device has walking, per API: a newer one from the same device stops it. */
+const findsRunning = new WeakMap<ApiServices, Map<string, AbortController>>();
+
+/** The sentence of a search that was stopped (the phone went away, or asked again). */
+export const FIND_STOPPED = 'This search stopped: a newer one from this device took its place.';
+
 export const FILES_ROUTE_IMPLS: RouteTable = {
   filesRoots: {
     selfAudit: true,
@@ -118,10 +127,32 @@ export const FILES_ROUTE_IMPLS: RouteTable = {
     handle: async (c: Call<Record<string, string>, FilesFindQuery>, s) => {
       const actor = needActor(c.auth);
       countRequest(c, s);
-      const found = await findNames(s.deps.files.policy, c.query, { clock: s.ctx.clock });
-      if (isRefusal(found)) s.deps.files.denied(actor, c.query.root, c.query.path, found.refused);
-      else auditFind(s, actor, c.query.root, c.query.path, found.entries.length);
-      return valueOr(found);
+      const who = actorName(c.auth);
+      let running = findsRunning.get(s);
+      if (!running) {
+        running = new Map();
+        findsRunning.set(s, running);
+      }
+      running.get(who)?.abort();
+      const mine = new AbortController();
+      running.set(who, mine);
+      // The phone gave up on it (a new keystroke aborts the fetch): the connection closes before the reply.
+      const res = c.reply.raw;
+      const gone = () => {
+        if (!res.writableFinished) mine.abort();
+      };
+      res.once('close', gone);
+      try {
+        const hidden = c.query.hidden || s.ctx.settings.get().folders.showHidden;
+        const found = await findNames(s.deps.files.policy, { ...c.query, hidden }, { clock: s.ctx.clock, signal: mine.signal });
+        if (isFindAborted(found)) throw new ApiError('conflict', FIND_STOPPED);
+        if (isRefusal(found)) s.deps.files.denied(actor, c.query.root, c.query.path, found.refused);
+        else auditFind(s, actor, c.query.root, c.query.path, found.entries.length);
+        return valueOr(found);
+      } finally {
+        res.off('close', gone);
+        if (running.get(who) === mine) running.delete(who);
+      }
     },
   },
 
