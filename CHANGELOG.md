@@ -3,7 +3,7 @@
 What changed for people who use Jantar, newest first. Versions before
 0.4.0 kept the package version 0.1.0; their names here are the milestones.
 
-## 0.15.0 (unreleased)
+## 0.15.0 (20 November 2026)
 
 **Messages** (off until you turn it on with `jantar messages on`, on a Mac
 only): your WhatsApp, read only. Any Claude Code session can read a chat
