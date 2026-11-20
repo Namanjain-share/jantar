@@ -145,15 +145,27 @@ describe('Share', () => {
     expect(sheet.share).toHaveBeenCalledTimes(1);
   });
 
-  it('a PDF opened in the viewer: Share uses the bytes it opened with', async () => {
+  it('a PDF opened in the viewer: Share uses the bytes it opened with, if they are this version\'s', async () => {
     const sheet = shareSheet();
     const filesRaw = vi.fn(async () => PDF());
-    viewer(fakeApi({ filesStat: vi.fn(async () => pdfStat()), filesRaw }), { path: 'spec.pdf' });
+    const a = viewer(fakeApi({ filesStat: vi.fn(async () => pdfStat(PDF().size)), filesRaw }), { path: 'spec.pdf' });
     fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
     await screen.findByText(/1 page$/);
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     expect(sheet.share).toHaveBeenCalledTimes(1);
     expect(filesRaw).toHaveBeenCalledTimes(1);
+    a.unmount();
+
+    // Bytes of another size than the file's are another version's: Share asks the Mac for this one.
+    clearFilesCache();
+    const again = vi.fn(async () => PDF());
+    viewer(fakeApi({ filesStat: vi.fn(async () => pdfStat(PDF().size + 10)), filesRaw: again }), { path: 'spec.pdf' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
+    await screen.findByText(/1 page$/);
+    fireEvent.click(screen.getByRole('button', { name: 'Share' }));
+    expect(await screen.findByRole('region', { name: 'Ready to share' })).toBeTruthy();
+    expect(again).toHaveBeenCalledTimes(2);
+    expect(sheet.share).toHaveBeenCalledTimes(1);
   });
 
   it('a browser that cannot share the fetched file saves it instead, from a second tap ("Ready to save")', async () => {

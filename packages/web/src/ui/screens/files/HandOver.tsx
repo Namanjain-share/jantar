@@ -104,6 +104,8 @@ export function useHandOver(opts: { root: string; path: string; name: string; ki
   // Read by `keep`, which the views call from their own effects (they run before this hook's).
   const keyRef = useRef(key);
   keyRef.current = key;
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
   useEffect(
     () => () => {
       job.current?.abort();
@@ -120,6 +122,8 @@ export function useHandOver(opts: { root: string; path: string; name: string; ki
   }, [key]);
 
   const keep = useCallback((blob: Blob) => {
+    // Bytes of another size are of another version (fetched before Claude wrote the file again): not this one's.
+    if (blob.size !== sizeRef.current) return;
     bytes.current = { key: keyRef.current, blob };
   }, []);
   const known = (): Blob | null => (bytes.current?.key === key ? bytes.current.blob : null);
