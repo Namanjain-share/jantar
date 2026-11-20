@@ -1,6 +1,8 @@
 /**
  * Files routes (WP-FP owns this file): filesRoots, filesList, filesStat,
- * filesText, filesRaw. Each calls `s.deps.files` (FilesService).
+ * filesText, filesRaw. Each calls `s.deps.files` (FilesService). 0.14.1's
+ * filesFind walks with the service's own policy (files/find.ts) and reports
+ * a refusal of the folder through `files.denied`, as a listing's is.
  *
  * The pipeline has already checked the device, the control scope and
  * `files.enabled`, and parsed the query. Here:
@@ -14,8 +16,9 @@
  *   the files.raw row only once the bytes budget has taken the size.
  * Files routes are never served on ctl.sock (`ctl: false`).
  */
-import type { FilesListQuery, FilesPathQuery, FilesTextQuery } from '@jantar/protocol';
+import type { FilesFindQuery, FilesListQuery, FilesPathQuery, FilesTextQuery } from '@jantar/protocol';
 import type { FileRefusal } from '../../contracts.js';
+import { findNames } from '../../files/find.js';
 import { isRefusal } from '../../files/policy.js';
 import { rawHeaders, settleRawRow } from '../../files/raw.js';
 import { ApiError } from '../errors.js';
@@ -77,6 +80,17 @@ export const FILES_ROUTE_IMPLS: RouteTable = {
       const actor = needActor(c.auth);
       countRequest(c, s);
       return valueOr(await s.deps.files.list(c.query, actor));
+    },
+  },
+
+  filesFind: {
+    selfAudit: true,
+    handle: async (c: Call<Record<string, string>, FilesFindQuery>, s) => {
+      const actor = needActor(c.auth);
+      countRequest(c, s);
+      const found = await findNames(s.deps.files.policy, c.query, { clock: s.ctx.clock });
+      if (isRefusal(found)) s.deps.files.denied(actor, c.query.root, c.query.path, found.refused);
+      return valueOr(found);
     },
   },
 
