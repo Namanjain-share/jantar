@@ -1,8 +1,10 @@
 /**
  * Files routes (WP-FP owns this file): filesRoots, filesList, filesStat,
  * filesText, filesRaw. Each calls `s.deps.files` (FilesService). 0.14.1's
- * filesFind walks with the service's own policy (files/find.ts) and reports
- * a refusal of the folder through `files.denied`, as a listing's is.
+ * filesFind walks with the service's own policy (files/find.ts), reports a
+ * refusal of the folder through `files.denied`, as a listing's is, and
+ * writes `files.find` once per device and folder per 10 min, as
+ * `files.list` (folder and count, never the text searched for).
  *
  * The pipeline has already checked the device, the control scope and
  * `files.enabled`, and parsed the query. Here:
@@ -17,7 +19,9 @@
  * Files routes are never served on ctl.sock (`ctl: false`).
  */
 import type { FilesFindQuery, FilesListQuery, FilesPathQuery, FilesTextQuery } from '@jantar/protocol';
-import type { FileRefusal } from '../../contracts.js';
+import type { Actor, FileRefusal } from '../../contracts.js';
+import { actorId } from '../../core/actor.js';
+import { AUDIT_DEDUPE_MS, auditPath } from '../../files/audit.js';
 import { findNames } from '../../files/find.js';
 import { isRefusal } from '../../files/policy.js';
 import { rawHeaders, settleRawRow } from '../../files/raw.js';
@@ -64,6 +68,32 @@ function valueOr<T>(v: T | FileRefusal): T {
   return v;
 }
 
+/** When each device last had a files.find row for a folder, per API (FilesService's audit is not reachable here: contracts.ts). */
+const findRows = new WeakMap<ApiServices, Map<string, number>>();
+const FIND_ROW_KEYS_MAX = 5_000;
+
+/** A name search's audit row: once per device and folder per AUDIT_DEDUPE_MS, with the count found. */
+function auditFind(s: ApiServices, actor: Actor, root: string, rel: string, count: number): void {
+  const who = actorId(actor);
+  const key = `${who}|${root}|${rel}`;
+  const now = s.ctx.clock.now();
+  let seen = findRows.get(s);
+  if (!seen) {
+    seen = new Map();
+    findRows.set(s, seen);
+  }
+  const last = seen.get(key);
+  if (last !== undefined && now - last < AUDIT_DEDUPE_MS) return;
+  seen.delete(key);
+  seen.set(key, now);
+  while (seen.size > FIND_ROW_KEYS_MAX) {
+    const first = seen.keys().next().value;
+    if (first === undefined) break;
+    seen.delete(first);
+  }
+  s.auditor.write({ actor: who, action: 'files.find', target: root, params: { root, rel: auditPath(rel), count }, result: 'ok' });
+}
+
 export const FILES_ROUTE_IMPLS: RouteTable = {
   filesRoots: {
     selfAudit: true,
@@ -90,6 +120,7 @@ export const FILES_ROUTE_IMPLS: RouteTable = {
       countRequest(c, s);
       const found = await findNames(s.deps.files.policy, c.query, { clock: s.ctx.clock });
       if (isRefusal(found)) s.deps.files.denied(actor, c.query.root, c.query.path, found.refused);
+      else auditFind(s, actor, c.query.root, c.query.path, found.entries.length);
       return valueOr(found);
     },
   },

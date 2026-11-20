@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FILES_FIND_BUDGET_MS, FILES_FIND_MAX_DEPTH, FilesFindResponseSchema, type FilesFindQuery, type FilesFindResponse } from '@jantar/protocol';
 import type { FileRefusal } from '../../src/contracts.js';
+import { AUDIT_DEDUPE_MS } from '../../src/files/audit.js';
 import { findKey, findNames, type FindCaps } from '../../src/files/find.js';
 import { isRefusal } from '../../src/files/policy.js';
 import { buildFilesService } from '../../src/files/service.js';
@@ -286,11 +287,24 @@ describe('GET /v1/files/find', () => {
     expect(await status('root=r.proj&q=a')).toEqual([400, 'invalid_request']);
     expect(await status('root=r.proj')).toEqual([400, 'invalid_request']);
     expect(await status('root=r.proj&q=ab&limit=101')).toEqual([400, 'invalid_request']);
+    // A search is audited as a listing is: once per device and folder per 10 min, folder and count only.
+    expect((await get('root=r.proj&q=auth')).statusCode).toBe(200);
+    const finds = api!.ctx.db.audit.list({ limit: 100 }).filter((r) => r.action === 'files.find');
+    expect(finds.map((r) => [r.actor, r.target, r.params, r.result])).toEqual([[`device:${deviceId}`, 'r.proj', { root: 'r.proj', rel: '', count: 1 }, 'ok']]);
+    api!.ctx.clock.advance(AUDIT_DEDUPE_MS);
+    expect((await get('root=r.proj&path=src&q=auth')).statusCode).toBe(200);
+    expect((await get('root=r.proj&q=auth')).statusCode).toBe(200);
+    expect(api!.ctx.db.audit.list({ limit: 100 }).filter((r) => r.action === 'files.find').map((r) => r.params)).toEqual(
+      expect.arrayContaining([{ root: 'r.proj', rel: 'src', count: 1 }, { root: 'r.proj', rel: '', count: 1 }]),
+    );
+    expect(api!.ctx.db.audit.list({ limit: 100 }).filter((r) => r.action === 'files.find')).toHaveLength(3);
     const denied = api!.ctx.db.audit.list({ limit: 100 }).filter((r) => r.action === 'files.denied');
     expect(denied.map((r) => (r.params as { reason: string }).reason).sort()).toEqual(['bad_path', 'no_root', 'not_dir', 'protected']);
     expect(denied.every((r) => r.actor === `device:${deviceId}`)).toBe(true);
     // The text searched for is in no audit row.
-    expect(JSON.stringify(api!.ctx.db.audit.list({ limit: 100 }))).not.toContain('sess');
+    const rows = JSON.stringify(api!.ctx.db.audit.list({ limit: 100 }));
+    expect(rows).not.toContain('sess');
+    expect(rows).not.toContain('auth"');
   });
 
   it('is behind the Files switch, and never on ctl.sock', async () => {
