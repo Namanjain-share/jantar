@@ -239,6 +239,29 @@ describe('the results', () => {
     expect(screen.queryByRole('button', { name: /lo-old\.txt/ })).toBeNull();
   });
 
+  it('a search the Mac stopped for a newer one from this phone is asked once more, quietly; twice, and it says so', async () => {
+    const stopped = () => new ApiError('conflict', 'This search stopped: a newer one from this device took its place.', 409);
+    const once = vi.fn(async (): Promise<FilesFindResponse> => {
+      if (once.mock.calls.length === 1) throw stopped();
+      return { entries: [hit('src/login.ts')], truncated: false, stopped: null };
+    });
+    const a = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: once }), 'login');
+    expect(await screen.findByRole('button', { name: /login\.ts/ })).toBeTruthy();
+    expect(once).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+    a.unmount();
+
+    clearFilesCache();
+    clearKeptSearches();
+    const always = vi.fn(async (): Promise<FilesFindResponse> => {
+      throw stopped();
+    });
+    await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind: always }), 'login');
+    expect((await screen.findByRole('alert')).textContent).toContain('This search stopped');
+    expect(always).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
   it("the route's refusals and an offline Mac read as Browse's do", async () => {
     const filesFind = vi.fn(async () => Promise.reject(new ApiError('forbidden', 'That path leads outside the shared folder.', 403)));
     const a = await search(fakeApi({ filesList: vi.fn(async () => listing([], { path: 'src' })), filesFind }), 'zz');

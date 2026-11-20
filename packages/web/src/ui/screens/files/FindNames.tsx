@@ -21,6 +21,7 @@ import { FolderIcon, MagnifyingGlassIcon, XIcon } from '@phosphor-icons/react';
 import { FILES_FIND_QUERY_MAX, FILES_FIND_QUERY_MIN, type FileFindEntry } from '@jantar/protocol';
 import clsx from 'clsx';
 import { useCallback, useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { isApiError } from '../../../lib/api.js';
 import { agoLong } from '../../../lib/format.js';
 import { useDeps } from '../../context.js';
 import { IconButton } from '../../kit/IconButton.js';
@@ -216,7 +217,20 @@ export function FindResults({
 }) {
   const { api } = useDeps();
   const offline = useOffline();
-  const load = useCallback((signal: AbortSignal) => api.filesFind({ root, path, q: query, hidden }, { signal }), [api, root, path, query, hidden]);
+  const load = useCallback(
+    async (signal: AbortSignal) => {
+      const ask = () => api.filesFind({ root, path, q: query, hidden }, { signal });
+      try {
+        return await ask();
+      } catch (e) {
+        // The Mac stopped it for a newer search from this phone: another Browse (the Files tab and the attach
+        // picker) searched meanwhile. Still the text on screen: ask once more, quietly, before saying so.
+        if (isApiError(e, 'conflict') && !signal.aborted) return ask();
+        throw e;
+      }
+    },
+    [api, root, path, query, hidden],
+  );
   // Kept out of the files cache: a run of searches would push the folders' listings out of it.
   const found = useLoad(`find:${root}\u0000${path}\u0000${hidden ? 1 : 0}\u0000${query}`, load, { cache: false });
   let said: string;
