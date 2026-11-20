@@ -254,8 +254,8 @@ export const MessagesSkipListSchema = z.object({ skip: z.array(SkipEntrySchema) 
 export type MessagesSkipList = z.infer<typeof MessagesSkipListSchema>;
 /**
  * A skip, done at once. `note`: a fixed sentence the phone and the CLI show
- * as it is, when part of it waits: Life wasn't open, so the open todos and
- * call-backs the morning made from that chat leave Life once it opens again.
+ * as it is, when part of it waits: Life wasn't open, so any open todos and
+ * call-backs the morning made from that chat leave Life once it opens.
  */
 export const MessagesSkipAddReplySchema = z.object({ ok: z.literal(true), note: z.string().optional() });
 export type MessagesSkipAddReply = z.infer<typeof MessagesSkipAddReplySchema>;

@@ -39,14 +39,18 @@
  * - A skip takes from view what the morning made from that chat: its open
  *   drafts are dismissed and a run that read it loses its summary (in the
  *   skip's transaction), then its open todos and call-backs leave Life, as
- *   Undo takes them. Today leaves out a skipped chat's drafts and
- *   call-backs whatever happened before. The chat is owed to Life
- *   (SKIP_OWED_KEY, written in the skip's transaction) until its todos
- *   went: while life.db is closed (every Life module off, or Life broken)
- *   the skip still answers at once, with MESSAGES_SAYS.skipTodosLater, and
- *   they are tried again as life.db opens (LifeService.onOpen, before its
- *   first sweep), as messages.db opens, at every skip, status() and Today,
- *   and before a morning run (settleOwed).
+ *   Undo takes them (as whoever skipped it). Today leaves out a skipped
+ *   chat's drafts and call-backs whatever happened before. The chat is
+ *   owed to Life (SKIP_OWED_KEY, written in the skip's transaction) until
+ *   its todos went: while life.db is closed (never opened since the daemon
+ *   started, every Life module and People off; or Life broken) the skip
+ *   still answers at once, with MESSAGES_SAYS.skipTodosLater, and they are
+ *   tried again (as the system, but at a skip of that chat) as life.db
+ *   opens (LifeService.onOpen, before its first sweep), as messages.db
+ *   opens, at every skip, status() and Today, and before a morning run that
+ *   isn't dry (settleOwed). As life.db and messages.db open, every skipped
+ *   chat's open todos and call-backs go too, so a restored Life backup
+ *   made before a skip can't bring them back (clearSkipped).
  * - The morning timer (morning/timer.ts) runs while messages.db is open
  *   (never under --read-only), at the morning time in the Life zone; a time
  *   or zone change rearms it, a run refused (another going) is asked for
@@ -141,7 +145,7 @@ import {
   type MessagesDb,
 } from './db.js';
 import { clearJobs, mediaAnswer, type ImageShrinker } from './media.js';
-import { CALLBACK_TITLE, applyMorning, dismissAnswered, removeChatTodos, undoMorning, type ApplyResult } from './morning/apply.js';
+import { CALLBACK_TITLE, applyMorning, dismissAnswered, removeChatTodos, removeSkippedTodos, undoMorning, type ApplyResult } from './morning/apply.js';
 import { budget, droppedReport } from './morning/budget.js';
 import { callsFrom, collect, missedCalls, type Batch } from './morning/collect.js';
 import { OWNER_NAME, morningInput } from './morning/input.js';
@@ -329,10 +333,11 @@ class MessagesShell implements MessagesService {
       ready: () => this.whatsAppReady(),
       run: (stale, morning) => this.timerRun(stale, morning),
     });
-    // A skipped chat's todos owed to Life leave as soon as life.db opens again, before its first sweep could ring one.
+    // As life.db opens (a start, a switch, a restore), before its first sweep could ring one: a skipped chat's todos go,
+    // those still owed and those a restored backup brought back.
     try {
       deps.life.onOpen(() => {
-        if (this.db) this.settleOwed(this.db);
+        if (this.db) this.clearSkipped(this.db);
       });
     } catch {
       // A stand-in Life (a node's parts, a test's) never opens.
@@ -539,7 +544,7 @@ class MessagesShell implements MessagesService {
   private async skipAdd(chatKey: string, actor: Actor): Promise<LifeResult<{ note?: string }>> {
     if (!ChatKeySchema.safeParse(chatKey).success) return { ok: false, code: 'invalid_request', reason: MESSAGES_SAYS.notAChat };
     const was = this.need();
-    if (was.skip.list().some((e) => e.chatKey === chatKey)) return { ok: true, value: this.skipNote(this.settleOwed(was.db, actor), chatKey) };
+    if (was.skip.list().some((e) => e.chatKey === chatKey)) return { ok: true, value: this.skipNote(this.settleOwed(was.db, { chatKey, actor }), chatKey) };
     if (!this.keepSkipFile()) return { ok: false, code: 'unavailable', reason: MESSAGES_SAYS.skipWrite };
     let chat: Chat;
     try {
@@ -573,7 +578,7 @@ class MessagesShell implements MessagesService {
       this.going.skips.add(chatKey);
       hit(this.going);
     }
-    const owed = this.settleOwed(db, actor, chatKey);
+    const owed = this.settleOwed(db, { chatKey, actor });
     const later = owed.left.includes(chatKey);
     // removed -1: Life refused, its todos owed till it answers.
     this.log.info('messages: a chat is skipped', { chatKey, by: actor.kind, dismissed, removed: later ? -1 : (owed.removed ?? 0) });
@@ -590,11 +595,12 @@ class MessagesShell implements MessagesService {
    * call-backs the morning made from it leave Life (removeChatTodos, as Undo
    * takes them), and it is owed no more once they went. Life refusing (life.db
    * closed, or broken) leaves it owed, quietly: this runs on every status()
-   * poll. `just`: the chat a skip just added, its count in `removed` for the
-   * skip's own log line; another chat that went is logged here. `left`: the
-   * chats still owed. Never throws.
+   * poll. `just`: the chat a skip is for, removed as whoever skipped it, its
+   * count in `removed` for the skip's own log line; every other chat goes as
+   * the system (nobody asked for it now), logged here. `left`: the chats
+   * still owed. Never throws.
    */
-  private settleOwed(db: MessagesDb, actor: Actor = SYSTEM_ACTOR, just?: string): { left: string[]; removed?: number } {
+  private settleOwed(db: MessagesDb, just?: { chatKey: string; actor: Actor }): { left: string[]; removed?: number } {
     let owed: string[];
     try {
       owed = readOwed(db);
@@ -607,12 +613,12 @@ class MessagesShell implements MessagesService {
     const left = owed.filter((chatKey) => {
       let r: LifeResult<number>;
       try {
-        r = removeChatTodos({ life: this.deps.life, db }, chatKey, actor);
+        r = removeChatTodos({ life: this.deps.life, db }, chatKey, chatKey === just?.chatKey ? just.actor : SYSTEM_ACTOR);
       } catch {
         return true;
       }
       if (!r.ok) return true;
-      if (chatKey === just) removed = r.value;
+      if (chatKey === just?.chatKey) removed = r.value;
       else this.log.info("messages: a skipped chat's todos left Life", { chatKey, removed: r.value });
       return false;
     });
@@ -625,6 +631,25 @@ class MessagesShell implements MessagesService {
       }
     }
     return { left, ...(removed !== undefined ? { removed } : {}) };
+  }
+
+  /**
+   * As life.db or messages.db opens: what a skip still owes Life goes
+   * (settleOwed), and so does every skipped chat's open todo and call-back a
+   * restored Life backup made before its skip brought back (removeSkippedTodos,
+   * as the system). Only a skipped chat the morning made something from costs
+   * a look at Life. Life refusing is quiet. Never throws.
+   */
+  private clearSkipped(db: MessagesDb): void {
+    this.settleOwed(db);
+    let r: LifeResult<number>;
+    try {
+      r = removeSkippedTodos({ life: this.deps.life, db }, SYSTEM_ACTOR);
+    } catch (e) {
+      this.log.warn("messages: the skipped chats' todos were not looked for", { error: errorKind(e) });
+      return;
+    }
+    if (r.ok && r.value > 0) this.log.info("messages: skipped chats' todos left Life again", { removed: r.value });
   }
 
   private skipRemove(chatKey: string, actor: Actor): LifeResult {
@@ -1090,8 +1115,8 @@ class MessagesShell implements MessagesService {
     } catch (e) {
       this.log.error('messages: the morning runs were not read', { error: errorKind(e) });
     }
-    // What a skip still owes Life (it was closed then, or Messages went off first).
-    this.settleOwed(r.db);
+    // What a skip still owes Life (it was closed then, or Messages went off first), and what a restore brought back.
+    this.clearSkipped(r.db);
     // The morning run spends quota: never on its own under --read-only.
     if (!this.readOnly) this.timer.start();
   }

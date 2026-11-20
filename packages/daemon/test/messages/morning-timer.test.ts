@@ -17,7 +17,10 @@
  *   reports and out of Life, and stops a run going that read it (only); a
  *   skip while Life's todos refuse holds at once, says its todos leave
  *   later, and they leave once Life answers (life.db opening, Today),
- *   across a restart too;
+ *   across a restart too; a skip removes its own chat's todos as whoever
+ *   skipped it, another owed chat's as the system; a restored Life backup
+ *   made before a skip doesn't bring that chat's todos back (life.db or
+ *   messages.db opening takes them again, until the chat is unskipped);
  *   each run of the day that made something keeps its summary, todos and
  *   Undo on Today (a later Run now, an empty timer run or a failed one
  *   never hides or takes the morning's); a reader of another build fails a
@@ -32,6 +35,7 @@
 import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { SQLInputValue } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { instantAt } from '@jantar/life-core';
 import { MESSAGES_LIMITS, SettingsSchema, type Settings } from '@jantar/protocol';
@@ -1062,6 +1066,104 @@ describe('the morning run', () => {
     // Nothing is owed any more.
     const db = (again as unknown as { db: { meta(k: string): string | undefined } }).db;
     expect(db.meta(SKIP_OWED_KEY)).toBeUndefined();
+  });
+
+  it("a restored Life backup from before a skip doesn't bring the chat's todos back: they leave as life.db opens, or as Messages opens after", async () => {
+    const dbFile = join(dir, 'restored.db');
+    const handlers: FakeHandlers = { ...readerOf({ pk: () => 42 }), read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }) };
+    const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer), dbFile });
+    expect(await t.svc.morning.run({ trigger: 'now' })).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+    const titles = () => {
+      const r = t.life.todos.listTodos({ done: false });
+      return r.ok ? r.value.todos.map((x) => x.title).sort() : r;
+    };
+    const ALL = ['Call back Ravi Test', 'Check the venue booking', 'Send Asha the deck'];
+    expect(titles()).toEqual(ALL);
+    // A Life backup made before the skip: putting it back brings its todos rows back, as they were.
+    const backup = t.core.db.prepare('SELECT * FROM todos').all() as Record<string, SQLInputValue>[];
+    const restore = () => {
+      t.core.db.prepare('DELETE FROM todos').run();
+      for (const row of backup) {
+        const cols = Object.keys(row);
+        t.core.db.prepare(`INSERT INTO todos (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`).run(...cols.map((c) => row[c]!));
+      }
+    };
+    expect(await t.svc.skip.add(RAVI, PHONE)).toEqual({ ok: true, value: {} });
+    expect(titles()).toEqual(['Send Asha the deck']);
+
+    // Restored: Ravi's todo and call-back are back until life.db opens on the restored file (before its first sweep).
+    restore();
+    expect(titles()).toEqual(ALL);
+    t.lifeOpened();
+    expect(titles()).toEqual(['Send Asha the deck']);
+
+    // Restored again while Messages is off: they leave once Messages is on again.
+    await t.ctx.settings.patch({ messages: { enabled: false } });
+    restore();
+    t.lifeOpened();
+    expect(titles()).toEqual(ALL);
+    await t.ctx.settings.patch({ messages: { enabled: true } });
+    expect(titles()).toEqual(['Send Asha the deck']);
+    // A chat no longer skipped is left alone: its todos are the owner's again.
+    expect(t.svc.skip.remove(RAVI, CLI)).toEqual({ ok: true, value: true });
+    restore();
+    t.lifeOpened();
+    expect(titles()).toEqual(ALL);
+  });
+
+  it("a skip removes its own chat's todos as whoever skipped it, and other chats' still owed to Life as the system", async () => {
+    const handlers: FakeHandlers = { ...readerOf({ pk: () => 42 }), read: (args) => ({ chat: args.chatKey === ASHA ? asha : ravi, messages: [], more: false }) };
+    const LATER = { ok: true, value: { note: MESSAGES_SAYS.skipTodosLater } };
+    /** A run made Asha's todo and Ravi's todo and call-back; `removedBy`: who Life is told removed each, by title, once `watch()`ed. */
+    const setup = async () => {
+      const t = await morningSetup({ handlers, claude: claudeSays(fullAnswer) });
+      expect(await t.svc.morning.run({ trigger: 'now' })).toMatchObject({ state: 'ok', counts: { todos: 2, replies: 1, callbacks: 1 } });
+      const real = t.life.todos;
+      const listed = real.listTodos({ done: false });
+      if (!listed.ok) throw new Error(listed.reason);
+      const titleOf = new Map(listed.value.todos.map((x) => [x.id, x.title]));
+      const removedBy: [string, Actor['kind']][] = [];
+      const watched = new Proxy(real, {
+        get(target, key) {
+          if (key === 'removeTodo') {
+            return (id: string, actor: Actor) => {
+              removedBy.push([titleOf.get(id) ?? id, actor.kind]);
+              return target.removeTodo(id, actor);
+            };
+          }
+          const v = Reflect.get(target, key, target) as unknown;
+          return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+        },
+      });
+      // Life answers again (no open of life.db: nothing has settled what is owed yet).
+      const watch = () => Object.assign(t.life, { todos: watched });
+      return { t, removedBy, watch };
+    };
+
+    // Asha skipped from the phone while Life is closed: owed. Then Ravi skipped at the Mac: his as the CLI, Asha's as the system.
+    const a = await setup();
+    a.t.lifeClosed(true);
+    expect(await a.t.svc.skip.add(ASHA, PHONE)).toEqual(LATER);
+    a.watch();
+    expect(await a.t.svc.skip.add(RAVI, CLI)).toEqual({ ok: true, value: {} });
+    expect(a.removedBy.sort()).toEqual([
+      ['Call back Ravi Test', 'cli'],
+      ['Check the venue booking', 'cli'],
+      ['Send Asha the deck', 'system'],
+    ]);
+
+    // Both owed; Asha skipped again (already on the list) at the Mac: hers as the CLI, Ravi's (the phone's skip) as the system.
+    const b = await setup();
+    b.t.lifeClosed(true);
+    expect(await b.t.svc.skip.add(ASHA, PHONE)).toEqual(LATER);
+    expect(await b.t.svc.skip.add(RAVI, PHONE)).toEqual(LATER);
+    b.watch();
+    expect(await b.t.svc.skip.add(ASHA, CLI)).toEqual({ ok: true, value: {} });
+    expect(b.removedBy.sort()).toEqual([
+      ['Call back Ravi Test', 'system'],
+      ['Check the venue booking', 'system'],
+      ['Send Asha the deck', 'cli'],
+    ]);
   });
 
   it('a skip while a run is going stops it: nothing is made, and the next run reads without that chat', async () => {

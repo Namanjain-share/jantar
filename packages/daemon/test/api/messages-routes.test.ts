@@ -11,7 +11,8 @@
  * - who read: the phone, the CLI, or `jantar mcp` with its caller's pid and
  *   folder (its headers count on ctl.sock only); a Run now or dry run's
  *   chats are logged under its caller too;
- * - removing a skip: refused over TCP, done over ctl.sock;
+ * - removing a skip: refused over TCP, done over ctl.sock; a skip while
+ *   Life's todos refuse answers its note on both;
  * - media: an image as image/jpeg with meetingShot's headers, counted on the
  *   device's raw byte budget; anything else is 415 with its name and size;
  * - writes are audited with their target id only, never a name or text;
@@ -45,6 +46,7 @@ import type { LifeResult, LifeService, MessagesService, MorningApi } from '../..
 import { FakeClock } from '../../src/core/clock.js';
 import { createFakeExec, type ExecHandler } from '../../src/core/testing.js';
 import { notBuilt } from '../../src/core/not-implemented.js';
+import { openMessagesDb } from '../../src/messages/db.js';
 import { MESSAGES_BROKEN_REASON, MESSAGES_SAYS, buildMessagesService, type ImageShrinker } from '../../src/messages/index.js';
 import { READER_VERSION } from '../../src/messages/reader-protocol.js';
 import { readerError, startFakeReader, type FakeHandlers, type FakeReader } from '../messages/fake-reader.js';
@@ -201,7 +203,9 @@ interface Setup {
  * are given, and a control phone. Its morning run records what it was asked, unless `claude` is given: then it is
  * the real one, on that fake claude.
  */
-async function messagesApi(o: { handlers?: FakeHandlers; on?: boolean; dbFile?: (dir: string) => string; shrinker?: ImageShrinker; claude?: ExecHandler } = {}): Promise<Setup> {
+async function messagesApi(
+  o: { handlers?: FakeHandlers; on?: boolean; dbFile?: (dir: string) => string; shrinker?: ImageShrinker; claude?: ExecHandler; life?: LifeService } = {},
+): Promise<Setup> {
   // A short folder: the reader's socket path must stay under 104 bytes.
   base = realpathSync(mkdtempSync(join(tmpdir(), 'jr-')));
   chmodSync(base, 0o700);
@@ -219,7 +223,7 @@ async function messagesApi(o: { handlers?: FakeHandlers; on?: boolean; dbFile?: 
       ...(o.claude ? { exec: createFakeExec(o.claude), accountsMode: 'single' as const } : {}),
     },
     deps: (ctx, fakes) => {
-      const life = notBuilt<LifeService>('not used here');
+      const life = o.life ?? notBuilt<LifeService>('not used here');
       const part = buildMessagesService(ctx, { life, usage: fakes.usage, ccwLegacy: fakes.ccwLegacy }, { dbFile, shrinker });
       messages = o.claude ? part : withMorning(part, fakeMorning(seen));
       return { messages };
@@ -572,6 +576,36 @@ describe('the skip list', () => {
     // A chat the reader doesn't show can't be added.
     const unknown = await tcp(t, 'POST', '/v1/messages/skip', { chatKey: MOM1 });
     expect([unknown.statusCode, err(unknown.body)]).toEqual([404, { code: 'not_found', message: MESSAGES_SAYS.notAChat }]);
+  });
+
+  it("a skip while Life's todos refuse answers with its note: any open todos and call-backs from that chat leave Life later", async () => {
+    // Life closed (every todos call refused, as Life's closed module answers), and a todo the morning made from Asha's chat.
+    const refused = new Proxy({}, { get: (_t, prop) => (prop === 'then' || typeof prop === 'symbol' ? undefined : () => ({ ok: false, code: 'unavailable', reason: 'Life is not open right now.' })) });
+    const life = { todos: refused, onOpen: () => undefined, status: () => ({ timezone: 'UTC' }) } as unknown as LifeService;
+    const t = await messagesApi({
+      handlers: { ...READER, read: (a) => (a.chatKey === GROUP ? { chat: chat(GROUP, 'Group One', 'group'), messages: [], more: false } : READER.read!(a)) },
+      life,
+      dbFile: (dir) => {
+        const file = join(dir, 'owed-messages.db');
+        const made = openMessagesDb(file);
+        if (!made.ok) throw new Error(made.reason);
+        made.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key) VALUES (?, ?, ?, ?, ?)').run(`todo:${ASHA}.3EB0A1`, RUN_ID, 'todo', DRAFT_ID, ASHA);
+        made.db.close();
+        return file;
+      },
+    });
+    const later =
+      "Life isn't open right now (every Life module and People have been off since Jantar started, or Life needs attention), so any open todos and call-backs the morning made from this chat leave Life once it opens.";
+    expect(MESSAGES_SAYS.skipTodosLater).toBe(later);
+    const add = await tcp(t, 'POST', '/v1/messages/skip', { chatKey: ASHA });
+    expect([add.statusCode, add.json()]).toEqual([200, { ok: true, note: later }]);
+    // Skipped at once; asked again over ctl.sock (the CLI), it still says so.
+    expect((await ctl(t, 'GET', '/v1/messages/skip')).json()).toMatchObject({ skip: [{ chatKey: ASHA }] });
+    const again = await ctl(t, 'POST', '/v1/messages/skip', { chatKey: ASHA });
+    expect([again.statusCode, again.json()]).toEqual([200, { ok: true, note: later }]);
+    // A chat nothing was made from answers no note.
+    const group = await tcp(t, 'POST', '/v1/messages/skip', { chatKey: GROUP });
+    expect([group.statusCode, group.json()]).toEqual([200, { ok: true }]);
   });
 
   it('skip reset over tcp is refused; over ctl it answers only after a lost salt', async () => {

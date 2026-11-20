@@ -33,7 +33,7 @@
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
 import { ReaderFailure, type ReaderClient } from '../reader-client.js';
-import { READER_CHATS_MAX, READER_KEYS_MAX, type ReaderCursor, type ReaderError, type ReaderNewSince } from '../reader-protocol.js';
+import { READER_CHATS_MAX, READER_KEYS_MAX, READER_UNKNOWN, type ReaderCursor, type ReaderError, type ReaderNewSince } from '../reader-protocol.js';
 import { READER_MISMATCH } from '../says.js';
 
 /** Where the morning feed got to (stored after a run that went well). */
@@ -141,11 +141,11 @@ function isWaiting(chat: ChatOwner, messages: readonly Message[], wroteAt: strin
  * The missed incoming calls among `calls`, each marked returned: a later
  * line from the owner to that person (`wrote`: lastFromMe by chat key), a
  * later call the owner made to them, or a later call with them that
- * connected (either way). A person is their 1:1's key, else the name or
- * number shown. Also callsToReturn's rule (service.ts).
+ * connected (either way). A person is callerOf's. Also callsToReturn's rule
+ * (service.ts).
  */
 export function missedCalls(calls: readonly Call[], wrote: Readonly<Record<string, string | null>>): BatchCall[] {
-  const person = (c: Call) => c.chatKey ?? `who:${c.who}`;
+  const person = callerOf;
   const after = (iso: string | null | undefined, ms: number) => typeof iso === 'string' && Date.parse(iso) >= ms;
   return calls
     .filter((c) => c.incoming && c.missed)
@@ -163,18 +163,35 @@ const NUMBER = /^[+0-9 \-().]+$/;
 /** A number's last digits, which name it however it was dialled, with +91, a 0 or neither (the reader's NUMBER_SUFFIX_DIGITS). */
 const NUMBER_SUFFIX_DIGITS = 10;
 
+/** callerKey's prefix for a number, and for a name or an address. */
+export const TEL = 'tel:';
+export const NAMED = 'who:';
+
 /**
- * A caller with no 1:1 (a `who` with no chatKey), as one person, the way
- * the reader matches a number to a person: a number by its digits, its last
+ * A caller's number or name (a `who`), as one person, the way the reader
+ * matches a number to a person: a number by its digits, its last
  * NUMBER_SUFFIX_DIGITS once it has that many ("+91 99900 00009",
- * "09990000009" and "+919990000009" are one); a name or an address by its
- * letters, case and spacing aside. Never a chat key.
+ * "09990000009" and "+919990000009" are one; TEL); a name or an address by
+ * its letters, case and spacing aside (NAMED). Null for the reader's
+ * Unknown (READER_UNKNOWN: every withheld number and unnamed caller) or
+ * nothing: no one to tell apart by it. Never a chat key.
  */
-export function callerKey(who: string): string {
+export function callerKey(who: string): string | null {
   const t = who.trim();
+  if (t === '' || t === READER_UNKNOWN) return null;
   const digits = t.replace(/[^0-9]/g, '');
-  if (digits && NUMBER.test(t)) return `tel:${digits.slice(-NUMBER_SUFFIX_DIGITS)}`;
-  return `who:${t.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase()}`;
+  if (digits && NUMBER.test(t)) return `${TEL}${digits.slice(-NUMBER_SUFFIX_DIGITS)}`;
+  return `${NAMED}${t.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase()}`;
+}
+
+/**
+ * A call's person, for which calls returned which (missedCalls) and the
+ * missed calls left out per person (budget.ts): their 1:1's key; with none,
+ * callerKey of the name or number shown; a caller the reader names Unknown
+ * only that call, as nothing tells them from another.
+ */
+export function callerOf(c: Call): string {
+  return c.chatKey ?? callerKey(c.who) ?? `call:${c.callKey}`;
 }
 
 /** One calls store's calls since `since`; `read: false` when it is left out (CALLS_LEFT_OUT; never a reader of another build). */

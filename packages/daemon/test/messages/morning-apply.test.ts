@@ -9,8 +9,12 @@
  * - call-backs are todos due today (or the day the line states), at the
  *   time it states, else at the call-back time, and one whose time has
  *   passed rings at the next quarter hour; one open per person (a caller
- *   with no 1:1: by their number however it was dialled, or their name);
- * - `made` keeps the chat each item came from (a file from before gets it);
+ *   with no 1:1: by their number however it was dialled, or their name;
+ *   across a 1:1 and none, either way; a call with a number by it, not a
+ *   name someone else shares), never for each caller shown as Unknown, and
+ *   a group line's stays the group's;
+ * - `made` keeps the chat each item came from and whose call-back it is (a
+ *   file from before gets both, as far as they can be known);
  * - replies are drafts (a 1:1's number, none for a group), one per chat: a
  *   newer one replaces the open one, and one the owner answered in
  *   WhatsApp is dismissed; none is made for a line he answered in the
@@ -52,7 +56,22 @@ const CLI: Actor = { kind: 'cli' };
 const RUN_A = '01JMORNINGRUNA000000000000';
 const RUN_B = '01JMORNINGRUNB000000000000';
 const RUN_C = '01JMORNINGRUNC000000000000';
+const RUN_D = '01JMORNINGRUND000000000000';
 const EMPTY: MorningAnswer = { summary: '', todos: [], replies: [], callbacks: [] };
+
+/** A missed incoming call, not returned (an iPhone call with no 1:1 unless `o` says otherwise). */
+const missedCall = (n: number, who: string, at: string, o: Partial<BatchCall> = {}): BatchCall => ({
+  callKey: callKey(n),
+  at,
+  who,
+  via: 'phone',
+  incoming: true,
+  missed: true,
+  video: false,
+  durationS: 0,
+  returned: false,
+  ...o,
+});
 
 interface Rig {
   core: TestLifeCore;
@@ -151,7 +170,7 @@ describe('applyMorning', () => {
     expect(byTitle(open, 'Look at the invoice').notes).toBe('WhatsApp · Group One · Sat 14 Nov 01:15\n"[image: invoice]"');
     // Made once: its id in meta, each todo's source in `made`.
     expect(r.db.meta('project_id')).toBe(projectId);
-    expect(r.rows('made')).toEqual(out.todos.map((t) => ({ src_key: `todo:${t.src}`, run_id: RUN_A, kind: 'todo', target_id: t.id, chat_key: t.src.slice(0, t.src.indexOf('.')) })));
+    expect(r.rows('made')).toEqual(out.todos.map((t) => ({ src_key: `todo:${t.src}`, run_id: RUN_A, kind: 'todo', target_id: t.id, chat_key: t.src.slice(0, t.src.indexOf('.')), person: null })));
   });
 
   it('a time stated in the cited message is kept however it is written; a quote is cut at 200 characters', () => {
@@ -454,6 +473,106 @@ describe('applyMorning', () => {
     // Once it was called back (done), a new call makes a new one.
     expect(r.todos.setDone(out.callbacks[0]!.id!, true, CLI).ok).toBe(true);
     expect(applyMorning(answer, next.refs, next.kept, r.deps({ runId: RUN_C })).callbacks).toEqual([expect.objectContaining({ who: '+919990000009' })]);
+  });
+
+  it('one open call-back per person across a 1:1 and none: a caller who starts a 1:1 since, and one whose 1:1 a call no longer finds', () => {
+    const r = build();
+    const s = sample();
+    // Day 1: an iPhone number with no WhatsApp chat, and a WhatsApp caller the owner never chatted with.
+    const number = missedCall(30, '+91 99900 00009', '2026-11-13T09:00:00.000Z');
+    const neel = missedCall(31, 'Neel Test', '2026-11-13T09:30:00.000Z', { via: 'whatsapp' });
+    const day1 = prepared(batchOf([], [number, neel]));
+    const out1 = applyMorning({ ...EMPTY, callbacks: [number, neel].map((c) => ({ ref: idFor(day1.refs, c.callKey), who: 'Them', why: 'Missed call' })) }, day1.refs, day1.kept, r.deps());
+    expect(out1.callbacks.map((c) => c.who)).toEqual(['+91 99900 00009', 'Neel Test']);
+
+    // Day 2: both have a 1:1 now and call from it, their call-backs still open. The number's chat is in this batch with
+    // its number; Neel's isn't (no number known): his name.
+    const kiran = chat(9, 'Kiran Test', { phone: '919990000009' });
+    const kiranCall = missedCall(32, 'Kiran Test', '2026-11-14T01:00:00.000Z', { via: 'whatsapp', chatKey: kiran.chatKey });
+    const neelCall = missedCall(33, 'Neel Test', '2026-11-14T01:30:00.000Z', { via: 'whatsapp', chatKey: chat(10, 'Neel Test').chatKey });
+    const hi = line(kiran, '2026-11-14T01:05:00.000Z', { text: 'Hi, this is Kiran' });
+    const day2 = prepared(batchOf([bc(kiran, [hi], { waiting: true })], [kiranCall, neelCall]));
+    const refs2 = [kiranCall, neelCall].map((c) => idFor(day2.refs, c.callKey));
+    const out2 = applyMorning({ ...EMPTY, callbacks: refs2.map((ref) => ({ ref, who: 'Them', why: 'Called again' })) }, day2.refs, day2.kept, r.deps({ runId: RUN_B }));
+    expect(out2.callbacks).toEqual([]);
+    expect(out2.dropped).toEqual(refs2.map((ref) => ({ kind: 'callback', ref, why: 'duplicate' })));
+
+    // The other way. Ravi's call-back came from his 1:1's call, Asha's from a line in hers (and her draft keeps her
+    // number); then each calls with no 1:1 the call finds: Ravi by his name, Asha from her number.
+    const { kept, refs } = prepared(s.batch);
+    const day3 = applyMorning(
+      {
+        ...EMPTY,
+        replies: [{ chat: idFor(refs, s.asha.chatKey), ref: idFor(refs, s.l.deck.msgKey), they_asked: 'The deck', draft: 'On it.' }],
+        callbacks: [
+          { ref: idFor(refs, s.calls.raviWa.callKey), who: 'Ravi', why: 'Missed call' },
+          { ref: idFor(refs, s.l.callMe.msgKey), who: 'Asha', why: 'She asked for a call' },
+        ],
+      },
+      refs,
+      kept,
+      r.deps({ runId: RUN_C }),
+    );
+    expect(day3.callbacks.map((c) => c.who)).toEqual(['Ravi Test', 'Asha Test']);
+    const raviByName = missedCall(34, 'Ravi Test', '2026-11-14T02:00:00.000Z');
+    const ashaByNumber = missedCall(35, '+91 99900 00001', '2026-11-14T02:10:00.000Z');
+    const someoneElse = missedCall(36, '+91 99900 00077', '2026-11-14T02:20:00.000Z');
+    const day4 = prepared(batchOf([], [raviByName, ashaByNumber, someoneElse]));
+    const refs4 = [raviByName, ashaByNumber, someoneElse].map((c) => idFor(day4.refs, c.callKey));
+    const out4 = applyMorning({ ...EMPTY, callbacks: refs4.map((ref) => ({ ref, who: 'Them', why: 'Called' })) }, day4.refs, day4.kept, r.deps({ runId: RUN_D }));
+    expect(out4.callbacks.map((c) => c.who)).toEqual(['+91 99900 00077']);
+    expect(out4.dropped).toEqual(refs4.slice(0, 2).map((ref) => ({ kind: 'callback', ref, why: 'duplicate' })));
+    expect(r.open().filter((t) => t.title.startsWith('Call back ')).map((t) => t.title).sort()).toEqual([
+      'Call back +91 99900 00009',
+      'Call back +91 99900 00077',
+      'Call back Asha Test',
+      'Call back Neel Test',
+      'Call back Ravi Test',
+    ]);
+  });
+
+  it("a call-back from a line in a group is the group's: a missed call from that person with no 1:1 still makes one", () => {
+    const r = build();
+    const s = sample();
+    const { kept, refs } = prepared(batchOf([bc(s.group, [s.l.invoice])]));
+    const fromGroup = applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(refs, s.l.invoice.msgKey), who: 'Neel', why: 'Asked in the group' }] }, refs, kept, r.deps());
+    expect(fromGroup.callbacks.map((c) => c.who)).toEqual(['Neel Test']);
+    const neel = missedCall(40, 'Neel Test', '2026-11-14T02:00:00.000Z', { via: 'whatsapp' });
+    const next = prepared(batchOf([], [neel]));
+    const out = applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(next.refs, neel.callKey), who: 'Neel', why: 'Missed call' }] }, next.refs, next.kept, r.deps({ runId: RUN_B }));
+    expect(out.callbacks.map((c) => c.who)).toEqual(['Neel Test']);
+    expect(out.dropped).toEqual([]);
+  });
+
+  it("callers shown as Unknown are never taken for each other; a call with a number goes by it, not by a name someone else shares", () => {
+    const r = build();
+    const s = sample();
+    // Two withheld numbers (the reader names both Unknown) in one run, and a third the next morning while both are open.
+    const withheld = [missedCall(50, 'Unknown', '2026-11-13T09:00:00.000Z'), missedCall(51, 'Unknown', '2026-11-13T10:00:00.000Z')];
+    const day1 = prepared(batchOf([], withheld));
+    const out1 = applyMorning({ ...EMPTY, callbacks: withheld.map((c) => ({ ref: idFor(day1.refs, c.callKey), who: 'Unknown', why: 'Missed call' })) }, day1.refs, day1.kept, r.deps());
+    expect(out1.callbacks.map((c) => c.who)).toEqual(['Unknown', 'Unknown']);
+    expect(out1.dropped).toEqual([]);
+    const third = missedCall(52, 'Unknown', '2026-11-14T02:00:00.000Z', { via: 'whatsapp' });
+    const day2 = prepared(batchOf([], [third]));
+    const out2 = applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(day2.refs, third.callKey), who: 'Unknown', why: 'Missed call' }] }, day2.refs, day2.kept, r.deps({ runId: RUN_B }));
+    expect(out2.callbacks.map((c) => c.who)).toEqual(['Unknown']);
+    expect(r.open().filter((t) => t.title === 'Call back Unknown')).toHaveLength(3);
+    // The same call again is still the same call.
+    expect(applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(day2.refs, third.callKey), who: 'Unknown', why: 'Missed call' }] }, day2.refs, day2.kept, r.deps({ runId: RUN_C })).dropped).toEqual([
+      { kind: 'callback', ref: idFor(day2.refs, third.callKey), why: 'duplicate' },
+    ]);
+
+    // An iPhone contact named as Ravi is, with no 1:1, has a call-back open; then Ravi Test calls from his 1:1, whose
+    // number this batch has: a number, so not taken for the other one.
+    const r2 = build();
+    const other = missedCall(53, 'Ravi Test', '2026-11-13T08:00:00.000Z');
+    const p1 = prepared(batchOf([], [other]));
+    expect(applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(p1.refs, other.callKey), who: 'Ravi', why: 'Missed call' }] }, p1.refs, p1.kept, r2.deps()).callbacks).toHaveLength(1);
+    const p2 = prepared(batchOf([bc(s.ravi, [s.l.injection], { waiting: true })], [s.calls.raviWa]));
+    const out3 = applyMorning({ ...EMPTY, callbacks: [{ ref: idFor(p2.refs, s.calls.raviWa.callKey), who: 'Ravi', why: 'Missed call' }] }, p2.refs, p2.kept, r2.deps({ runId: RUN_B }));
+    expect(out3.callbacks.map((c) => c.who)).toEqual(['Ravi Test']);
+    expect(r2.open().filter((t) => t.title === 'Call back Ravi Test')).toHaveLength(2);
   });
 
   it('a reply to a line the owner answered later in the same batch is left out (answered); one to a line still unanswered is drafted', () => {
@@ -904,12 +1023,13 @@ describe('made', () => {
       kept,
       r.deps(),
     );
-    // A call's chat is its 1:1; a line's, the chat it was written in.
-    expect(r.rows('made').map((m) => [m.src_key, m.chat_key])).toEqual([
-      [`todo:${s.l.deck.msgKey}`, s.asha.chatKey],
-      [`callback:${s.calls.raviWa.callKey}`, s.ravi.chatKey],
-      [`callback:${s.l.mention.msgKey}`, s.group.chatKey],
-      [`reply:${s.l.mention.msgKey}`, s.group.chatKey],
+    // A call's chat is its 1:1; a line's, the chat it was written in. A call-back from a call is one person's, one from a
+    // line in a group the group's.
+    expect(r.rows('made').map((m) => [m.src_key, m.chat_key, m.person])).toEqual([
+      [`todo:${s.l.deck.msgKey}`, s.asha.chatKey, null],
+      [`callback:${s.calls.raviWa.callKey}`, s.ravi.chatKey, 1],
+      [`callback:${s.l.mention.msgKey}`, s.group.chatKey, 0],
+      [`reply:${s.l.mention.msgKey}`, s.group.chatKey, null],
     ]);
 
     // A file at the first schema: its rows get their chat from the line's key (a call's can't be known).
@@ -929,6 +1049,25 @@ describe('made', () => {
         { src_key: `callback:${s.calls.raviWa.callKey}`, chat_key: null },
       ]);
       now.db.close();
+
+      // A file at the second schema: a call-back from a call is one person's; one from a line can't be known (its
+      // chat's kind isn't kept), so it is its chat's alone, as a group line's.
+      const v2File = join(dir, 'v2.db');
+      const v2 = openCheckedDb(v2File, { migrations: MESSAGES_MIGRATIONS.slice(0, 2), brokenReason: 'x' });
+      if (!v2.ok) throw new Error(v2.reason);
+      const add2 = v2.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key) VALUES (?, ?, ?, ?, ?)');
+      add2.run(`callback:${s.calls.raviWa.callKey}`, RUN_A, 'callback', 'x3', s.ravi.chatKey);
+      add2.run(`callback:${s.l.callMe.msgKey}`, RUN_A, 'callback', 'x4', s.asha.chatKey);
+      add2.run(`todo:${s.l.deck.msgKey}`, RUN_A, 'todo', 'x5', s.asha.chatKey);
+      v2.db.close();
+      const at3 = openMessagesDb(v2File);
+      if (!at3.ok) throw new Error(at3.reason);
+      expect(at3.db.prepare('SELECT src_key, person FROM made ORDER BY rowid').all()).toEqual([
+        { src_key: `callback:${s.calls.raviWa.callKey}`, person: 1 },
+        { src_key: `callback:${s.l.callMe.msgKey}`, person: null },
+        { src_key: `todo:${s.l.deck.msgKey}`, person: null },
+      ]);
+      at3.db.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -47,6 +47,12 @@ export const READER_NEW_ROWS_MAX = 20_000;
 const READER_HOURS_MAX = 720;
 /** lastFromMe: the most chat keys in one request (the morning run and callsToReturn ask in chunks of it). */
 export const READER_KEYS_MAX = 500;
+/**
+ * The name the reader gives anyone nobody names (its UNKNOWN): a withheld
+ * iPhone number, a WhatsApp caller or sender with no name or number. Many
+ * people show as it, so it never tells one from another.
+ */
+export const READER_UNKNOWN = 'Unknown';
 
 const count = z.number().int().nonnegative();
 const replyId = z.number().int().nonnegative();

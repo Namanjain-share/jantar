@@ -2248,8 +2248,8 @@ export interface LifeService extends Service {
   useMeetings(source: () => readonly WorkMeetingRef[] | null): void;
   /**
    * 0.15 Messages: `fn` runs each time life.db opens (the daemon's start, the first switch turned on, a restore),
-   * with the modules built and before the scheduler's first sweep, so a skipped chat's todos owed to Life leave
-   * before they could ring late. A throw is logged, never Life's failure.
+   * with the modules built and before the scheduler's first sweep, so a skipped chat's todos (owed to Life, or
+   * brought back by the restored file) leave before they could ring late. A throw is logged, never Life's failure.
    */
   onOpen(fn: () => void): void;
   /** VACUUM INTO <backupsDir>/life-YYYY-MM-DD.db (0600). Refused while broken or closed: there is nothing open to copy. */
@@ -2602,8 +2602,9 @@ export interface MessagesService extends Service {
   readonly skip: {
     list(): SkipEntry[];
     /**
-     * Name and kind from the reader; already skipped is ok; a chat the reader doesn't show is not_found. `note`
-     * (MESSAGES_SAYS.skipTodosLater): Life's todos refused, so the chat's open morning todos and call-backs leave
+     * Name and kind from the reader; already skipped is ok; a chat the reader doesn't show is not_found. Its open
+     * morning todos and call-backs leave Life as `actor`; another chat still owed as the system. `note`
+     * (MESSAGES_SAYS.skipTodosLater): Life's todos refused (life.db closed), so any of the chat's still open leave
      * Life once they answer (messages.db keeps them owed till then).
      */
     add(chatKey: string, actor: Actor): Promise<LifeResult<{ note?: string }>>;

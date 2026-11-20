@@ -11,18 +11,26 @@
  *   is made as the model wrote it, marked as WhatsApp's words, and Chat
  *   frames it as data.
  * - `made` (messages.db) holds kind + ':' + the line's or call's key for
- *   each item made, and the chat it came from (a call's: its 1:1), so no run
+ *   each item made, the chat it came from (a call's: its 1:1) and whether a
+ *   call-back is one person's (`person`), so no run
  *   (after a re-link, a retry, an undo) makes the same one twice
  *   (`duplicate`), and a skip finds what came from that chat. A 1:1 still
  *   waiting with nothing new gets no second draft: any line it waits on
  *   drafted before is a duplicate, even one budget() left out this time
  *   (its `waitsOn`).
  * - One of each per person: a call-back for someone who has one open in
- *   Life, made by this run or an earlier one, is a `duplicate` (a person:
- *   their 1:1; a caller with no 1:1, their number or name as callerKey
- *   reads it, against the open call-backs made from such calls, by their
- *   titles); so is a second draft for a chat in one answer. A new draft for
- *   a chat dismisses its older open ones (it replaces them).
+ *   Life, made by this run or an earlier one, is a `duplicate`; so is a
+ *   second draft for a chat in one answer. A new draft for a chat dismisses
+ *   its older open ones (it replaces them). A person (Caller) is their 1:1,
+ *   their number (shown, or their 1:1's as the batch or a draft has it) and
+ *   the name shown, as callerKey reads them (an earlier call-back's from its
+ *   title): two with a 1:1 are one by it alone; otherwise the new one's
+ *   number decides when it has one (two people can share a name), else its
+ *   name. So a caller with no 1:1 who starts one since, or a person whose
+ *   call no longer finds their 1:1, gets one call-back. A caller the reader
+ *   names Unknown has neither (only that call is theirs), and a call-back
+ *   from a line in a group is the group's (`made.person` 0): neither is
+ *   ever taken for anyone's.
  * - Todos go to the "WhatsApp" project (made once as the system, its id in
  *   meta `project_id`, made again when deleted), `from: 'messages'`, with
  *   the chat, the line's time and a quote in their notes. A time stays only
@@ -66,7 +74,7 @@ import { newId } from '../../core/ids.js';
 import { CONTROL, LINE_END } from '../../rewrite/guards.js';
 import type { MessagesDb } from '../db.js';
 import { MESSAGES_SAYS } from '../says.js';
-import { callerKey, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { NAMED, TEL, callerKey, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 import { lineBody, type RefMap } from './input.js';
 
 /** The Life project the morning's todos go to. */
@@ -180,6 +188,37 @@ function whoOf(call: BatchCall | undefined, hit: Line | null, said: string): str
   return oneLine(said, WHO_MAX) || oneLine(hit.chat.name, WHO_MAX);
 }
 
+/** Who a call-back is for, to tell one person's from another's: their 1:1, their number and the name shown (callerKey's). */
+interface Caller {
+  chat?: string;
+  tel?: string;
+  name?: string;
+}
+
+/** A person by their 1:1 (if any), the name or number shown (`who`) and their 1:1's number when known; the reader's Unknown names no one. */
+function callerOf(chat: string | undefined, who: string, phone: string | undefined): Caller {
+  const k = callerKey(who);
+  const fromPhone = phone ? callerKey(phone) : null;
+  const tel = k?.startsWith(TEL) ? k : fromPhone?.startsWith(TEL) ? fromPhone : undefined;
+  return { ...(chat ? { chat } : {}), ...(tel ? { tel } : {}), ...(k?.startsWith(NAMED) ? { name: k } : {}) };
+}
+
+/** Anything to tell them by (a caller the reader names Unknown, with no 1:1, has nothing: only that call is theirs). */
+function knowsSomeone(p: Caller): boolean {
+  return p.chat !== undefined || p.tel !== undefined || p.name !== undefined;
+}
+
+/**
+ * `a` (a new call-back) is for the person `b` is: the same 1:1 when both have
+ * one; else `a`'s number when it has one (a shared name never decides
+ * then), else its name.
+ */
+function samePerson(a: Caller, b: Caller): boolean {
+  if (a.chat !== undefined && b.chat !== undefined) return a.chat === b.chat;
+  if (a.tel !== undefined) return a.tel === b.tel;
+  return a.name !== undefined && a.name === b.name;
+}
+
 /** The WhatsApp project's id: the one in meta while Life still has it, else a new one; undefined when Life refuses. */
 function ensureProject(d: ApplyDeps): string | undefined {
   const todos = d.life.todos;
@@ -224,14 +263,25 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
   const taken = new Set<string>();
   const madeQ = d.db.prepare('SELECT 1 FROM made WHERE src_key = ?');
   const isMade = (src: string) => taken.has(src) || madeQ.get(src) !== undefined;
-  const record = (src: string, kind: MadeKind, target: string, chatKey: string | undefined) =>
-    d.db.prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key) VALUES (?, ?, ?, ?, ?)').run(src, d.runId, kind, target, chatKey ?? null);
+  const record = (src: string, kind: MadeKind, target: string, chatKey: string | undefined, person?: boolean) =>
+    d.db
+      .prepare('INSERT INTO made (src_key, run_id, kind, target_id, chat_key, person) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(src, d.runId, kind, target, chatKey ?? null, person === undefined ? null : person ? 1 : 0);
 
   /** Why Life stopped taking todos (its first refusal, or Todos off), or null while it takes them. */
   let refused: 'limit' | 'life_refused' | null = d.todosOn ? null : 'life_refused';
   let project: string | undefined | null = null;
-  /** A Life todo for `src` (from `chatKey`'s chat): its id (none in a dry run), or null once Life refused (`refused` says why). */
-  const todo = (src: string, kind: MadeKind, chatKey: string | undefined, body: { title: string; notes?: string; due?: Due; priority: TodoPriority }): { id?: string } | null => {
+  /**
+   * A Life todo for `src` (from `chatKey`'s chat; a call-back's `person`: one person's): its id (none in a dry run),
+   * or null once Life refused (`refused` says why).
+   */
+  const todo = (
+    src: string,
+    kind: MadeKind,
+    chatKey: string | undefined,
+    body: { title: string; notes?: string; due?: Due; priority: TodoPriority },
+    person?: boolean,
+  ): { id?: string } | null => {
     if (refused) return null;
     if (d.dryRun) {
       taken.add(src);
@@ -244,7 +294,7 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
       refused = r.code === 'conflict' ? 'limit' : 'life_refused';
       return null;
     }
-    record(src, kind, r.value.id, chatKey);
+    record(src, kind, r.value.id, chatKey, person);
     taken.add(src);
     return { id: r.value.id };
   };
@@ -283,29 +333,40 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     if (late) drop('todo', t.ref, 'time_passed');
   }
 
-  // A person's call-back still open in Life: this run's, or one an earlier run made. A person with a 1:1 by its key
-  // (`made`'s chat), a caller with no 1:1 by callerKey of the title's who, among the call-backs made with no chat.
-  const calledBack = new Set<string>();
-  let openTitles: Map<string, string> | null = null;
-  const callbackOpen = (person: string, byChat: boolean): boolean => {
-    if (calledBack.has(person)) return true;
-    const ids = (
-      (byChat
-        ? d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key = ? AND target_id IS NOT NULL").all(person)
-        : d.db.prepare("SELECT target_id FROM made WHERE kind = 'callback' AND chat_key IS NULL AND target_id IS NOT NULL").all()) as { target_id: string }[]
-    ).map((r) => r.target_id);
-    if (ids.length === 0) return false;
-    if (openTitles === null) {
-      const open = d.life.todos.listTodos({ done: false });
-      openTitles = new Map(open.ok ? open.value.todos.map((t) => [t.id, t.title]) : []);
+  // A 1:1's number: the batch's chat, else the newest draft for it (an earlier call-back's chat may not be in this batch).
+  const phones = new Map<string, string | undefined>();
+  const phoneOf = (chatKey: string): string | undefined => {
+    if (!phones.has(chatKey)) {
+      const row = d.db.prepare('SELECT phone FROM drafts WHERE chat_key = ? AND phone IS NOT NULL ORDER BY at DESC LIMIT 1').get(chatKey) as { phone: string } | undefined;
+      phones.set(chatKey, chatOf.get(chatKey)?.chat.phone ?? row?.phone);
     }
-    const titles = openTitles;
-    return ids.some((id) => {
-      const title = titles.get(id);
-      if (title === undefined) return false;
-      return byChat || (title.startsWith(CALLBACK_TITLE) && callerKey(title.slice(CALLBACK_TITLE.length)) === person);
-    });
+    return phones.get(chatKey);
   };
+  // The call-backs still open in Life, each as its person: this run's, and (read once) those earlier runs made. One
+  // from a group's line (or from before `made.person`, a line's) is its chat alone.
+  const calledBack: Caller[] = [];
+  let earlier: Caller[] | null = null;
+  const openCallbacks = (): Caller[] => {
+    if (earlier !== null) return earlier;
+    const rows = d.db.prepare("SELECT target_id, chat_key, person FROM made WHERE kind = 'callback' AND target_id IS NOT NULL").all() as {
+      target_id: string;
+      chat_key: string | null;
+      person: number | null;
+    }[];
+    earlier = [];
+    if (rows.length === 0) return earlier;
+    const open = d.life.todos.listTodos({ done: false });
+    const titles = new Map(open.ok ? open.value.todos.map((t) => [t.id, t.title]) : []);
+    for (const r of rows) {
+      const title = titles.get(r.target_id);
+      if (title === undefined) continue;
+      const chat = r.chat_key ?? undefined;
+      const theirs = chat === undefined || r.person === 1;
+      earlier.push(theirs && title.startsWith(CALLBACK_TITLE) ? callerOf(chat, title.slice(CALLBACK_TITLE.length), chat === undefined ? undefined : phoneOf(chat)) : chat ? { chat } : {});
+    }
+    return earlier;
+  };
+  const callbackOpen = (p: Caller): boolean => calledBack.some((o) => samePerson(p, o)) || openCallbacks().some((o) => samePerson(p, o));
 
   for (const c of answer.callbacks) {
     const callKey = c.ref.startsWith('k') ? refs.k.get(c.ref) : undefined;
@@ -318,10 +379,11 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const src = `callback:${call ? call.callKey : hit!.m.msgKey}`;
     const chatKey = call ? call.chatKey : hit!.chat.chatKey;
     const who = whoOf(call, hit, c.who);
-    // A person is their 1:1 (a group's chat is many people); a caller with no 1:1, their number or name.
-    const byChat = !call || call.chatKey !== undefined;
-    const person = call ? (call.chatKey ?? callerKey(who)) : hit!.chat.kind === 'dm' ? chatKey : undefined;
-    if (isMade(src) || (!refused && person !== undefined && callbackOpen(person, byChat))) {
+    // One person's (a call; a line in a 1:1), or a group line's: a group's chat is many people.
+    const one = call !== undefined || hit!.chat.kind === 'dm';
+    const phone = chatKey === undefined ? undefined : call ? phoneOf(chatKey) : (hit!.chat.phone ?? phoneOf(chatKey));
+    const person = one ? callerOf(chatKey, who, phone) : undefined;
+    if (isMade(src) || (!refused && person !== undefined && knowsSomeone(person) && callbackOpen(person))) {
       drop('callback', c.ref, 'duplicate');
       continue;
     }
@@ -337,12 +399,13 @@ export function applyMorning(answer: MorningAnswer, refs: RefMap, batch: Batch, 
     const late = time !== undefined && passed(day, time);
     if (late) ({ day, time } = nextQuarter(d.applyAt, d.tz));
     const why = multiLine(c.why, NOTES_MAX);
-    const made = todo(src, 'callback', chatKey, { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' });
+    const made = todo(src, 'callback', chatKey, { title: oneLine(`${CALLBACK_TITLE}${who}`, TITLE_MAX), ...(why ? { notes: why } : {}), due: time ? { day, time } : { day }, priority: 'normal' }, one);
     if (!made) {
       drop('callback', c.ref, refused ?? 'limit');
       continue;
     }
-    if (person !== undefined) calledBack.add(person);
+    // A group line's is its chat's alone, as an earlier run's is.
+    calledBack.push(person ?? { chat: chatKey! });
     out.callbacks.push({ ...made, who, ...(time ? { at: instantAt(day, time, d.tz).toISOString() } : {}) });
     if (lostTime) drop('callback', c.ref, 'time_not_stated');
     if (late) drop('callback', c.ref, 'time_passed');
@@ -450,6 +513,19 @@ export function undoMorning(d: Pick<ApplyDeps, 'life' | 'db'>, runId: string, ac
  */
 export function removeChatTodos(d: Pick<ApplyDeps, 'life' | 'db'>, chatKey: string, actor: Actor): LifeResult<number> {
   const targets = (d.db.prepare("SELECT target_id FROM made WHERE chat_key = ? AND kind IN ('todo', 'callback') AND target_id IS NOT NULL").all(chatKey) as { target_id: string }[]).map((r) => r.target_id);
+  return removeOpen(d.life, targets, actor);
+}
+
+/**
+ * Every chat on the skip list: each todo and call-back the morning made from
+ * it that is open in Life goes, as removeChatTodos takes them (a restored
+ * Life backup made before a skip brings them back). Asks Life only when such
+ * a chat has any made. How many went.
+ */
+export function removeSkippedTodos(d: Pick<ApplyDeps, 'life' | 'db'>, actor: Actor): LifeResult<number> {
+  const targets = (
+    d.db.prepare("SELECT target_id FROM made WHERE kind IN ('todo', 'callback') AND target_id IS NOT NULL AND chat_key IN (SELECT chat_key FROM skip)").all() as { target_id: string }[]
+  ).map((r) => r.target_id);
   return removeOpen(d.life, targets, actor);
 }
 

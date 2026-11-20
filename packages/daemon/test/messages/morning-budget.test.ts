@@ -6,7 +6,8 @@
  *   or can no longer read is left out quietly) and when the owner last
  *   wrote (wroteAt), and marks the 1:1s waiting on him (those with
  *   nothing new too, from the reader's waiting list), each chat's tier and
- *   the calls he returned;
+ *   the calls he returned (a caller with no 1:1 by their number however it
+ *   is written, or their name; each caller shown as Unknown on their own);
  * - budget() keeps what fits the token estimate (UTF-8 bytes / 3, of the
  *   lines as input.ts escapes them), filled in tier order: waiting 1:1s
  *   (each one's unanswered lines before any one's context) and the windows
@@ -15,8 +16,9 @@
  *   lines of a 1:1 still waiting with nothing new; system,
  *   reaction, deleted and skipped lines go; each line is cut at
  *   perMessageChars, never inside a surrogate pair; everything left out is
- *   listed (missed calls per person, a person still waiting dropped
- *   whole), and a report holds 50 with how many more.
+ *   listed (missed calls per person, as returned calls are told; a person
+ *   still waiting dropped whole), and a report holds 50 with how many
+ *   more.
  * The fixture's 5,000-line group runs on the real reader (skipped where
  * Swift can't build it); the rest on synthetic batches and the fake reader.
  */
@@ -28,7 +30,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { Call, ChatOwner, Message } from '@jantar/protocol/messages';
 import { HEADER_TOKENS, REPORT_DROPPED_MAX, budget, droppedReport, estimateTokens } from '../../src/messages/morning/budget.js';
-import { collect, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
+import { collect, missedCalls, tierOf, type Batch, type BatchCall, type BatchChat } from '../../src/messages/morning/collect.js';
 import { lineBody, morningInput } from '../../src/messages/morning/input.js';
 import { createReaderClient, type ReaderClient } from '../../src/messages/reader-client.js';
 import { READER_KEYS_MAX } from '../../src/messages/reader-protocol.js';
@@ -378,6 +380,36 @@ describe('budget', () => {
     const back: BatchCall = { ...missed, callKey: callKey(2), via: 'phone', returned: true };
     const { kept } = budget(batchOf([batchChat(dm, lines(dm, 5))], [missed, back]), 300);
     expect(kept.calls).toEqual([missed]);
+  });
+
+  it('a caller with no 1:1 is one person by their number however it is written, or their name; every Unknown caller is their own', () => {
+    const call = (n: number, who: string, at: number, o: Partial<Call> = {}): Call => ({ callKey: callKey(n), at: ago(at), who, via: 'phone', incoming: true, missed: true, video: false, durationS: 0, ...o });
+    const calls: Call[] = [
+      // A number with no 1:1 missed, then the owner rang it back dialled with a 0.
+      call(1, '+91 99900 00009', 5),
+      call(2, '09990000009', 4, { incoming: false, missed: false, durationS: 30 }),
+      // Two withheld numbers (the reader names both Unknown): one missed, the other connected later.
+      call(3, 'Unknown', 5),
+      call(4, 'Unknown', 4, { missed: false, durationS: 60 }),
+      // A name with no 1:1 missed twice, its case and spacing aside.
+      call(5, 'Neel Test', 3),
+      call(6, 'neel  test', 2),
+    ];
+    const marked = missedCalls(calls, {});
+    expect(marked.map((c) => [c.who, c.returned])).toEqual([
+      ['+91 99900 00009', true],
+      ['Unknown', false],
+      ['Neel Test', false],
+      ['neel  test', false],
+    ]);
+    // None fits: each person's left out once, an Unknown caller each on their own line.
+    const more = [...marked, { ...call(7, 'Unknown', 1), returned: false }, { ...call(8, '+919990000008', 1), returned: false }, { ...call(9, '09990000008', 1), returned: false }];
+    expect(budget(batchOf([], more), HEADER_TOKENS).dropped).toEqual([
+      { chatName: 'Unknown', kept: 0, left: 1, call: true },
+      { chatName: 'Neel Test', kept: 0, left: 2, call: true },
+      { chatName: 'Unknown', kept: 0, left: 1, call: true },
+      { chatName: '+919990000008', kept: 0, left: 2, call: true },
+    ]);
   });
 
   it('a reply to the owner is about him wherever his line is', () => {

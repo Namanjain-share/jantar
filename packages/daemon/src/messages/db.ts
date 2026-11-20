@@ -14,7 +14,8 @@
  *
  * It holds the skip list (mirrored to the reader's skip.json), reply drafts,
  * morning run reports, what each run made and from which chat (so a re-run
- * makes nothing twice, and a skip takes it from view), the chats each run
+ * makes nothing twice, and a skip takes it from view) and whose call-back
+ * each is (one person's, or a group line's), the chats each run
  * sent to Claude, the read log (ids and counts only) and Messages' own
  * settings (the morning and call-back times, the "ran this morning" mark,
  * the skipped chats whose todos are still to leave Life). No
@@ -138,6 +139,16 @@ export const MESSAGES_MIGRATIONS: readonly LifeMigration[] = [
         PRIMARY KEY (run_id, chat_key)
       );
       CREATE INDEX run_chats_chat ON run_chats (chat_key);
+    `,
+  },
+  {
+    // Whose a call-back is (apply.ts): one person's, so its title's name or number counts for them across a 1:1 and
+    // none; or a group's line's, which stays the group's. A call-back from a call before this was one person's.
+    version: 3,
+    name: 'callback person',
+    sql: `
+      ALTER TABLE made ADD COLUMN person INTEGER;     -- a call-back's: 1 one person's (a call, a 1:1's line), 0 a group's line
+      UPDATE made SET person = 1 WHERE kind = 'callback' AND src_key LIKE 'callback:k%';
     `,
   },
 ];

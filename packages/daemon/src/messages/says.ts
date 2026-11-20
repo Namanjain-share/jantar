@@ -69,9 +69,11 @@ export const MESSAGES_SAYS = {
   imageJob: cantRead("the image couldn't be made ready to show on this Mac"),
   notInSpool: cantRead('the reader handed over a file from outside its spool, so it was left alone'),
   notAChat: 'No chat with that id (it may be skipped already, or gone).',
-  // A skip done while life.db was closed (the skip's own answer, MessagesSkipAddReply `note`).
+  // A skip done while life.db was closed (the skip's own answer, MessagesSkipAddReply `note`). life.db stays open once it
+  // opened (every Life module turned off since included), so closed is: never opened since the daemon started, or
+  // broken. "Any": while Life is closed nobody can tell whether one is still open, or all are done.
   skipTodosLater:
-    "Life isn't open right now (Todos off, or Life needs attention), so the open todos and call-backs the morning made from this chat leave Life as soon as it opens again.",
+    "Life isn't open right now (every Life module and People have been off since Jantar started, or Life needs attention), so any open todos and call-backs the morning made from this chat leave Life once it opens.",
   notSkipped: "That chat isn't on the skip list.",
   // Calls to return: a call list left out (as the morning run's report says).
   waCallsUnread: "WhatsApp's calls weren't read, so missed WhatsApp calls aren't listed.",

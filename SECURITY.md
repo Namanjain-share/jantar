@@ -2499,18 +2499,28 @@ WhatsApp. Off by default (`messages.enabled`, set at the Mac only).
   and the chat is marked owed to Life (messages.db meta `skip.owed`);
   then the open todos and call-backs made from it leave Life, as Undo
   removes them (a done one stays the owner's), and the mark goes. If
-  Life's todos refuse then (life.db closed: every Life module off, or
-  Life broken), the skip still holds at once and its answer says the
-  todos leave later; the mark keeps them owed, and the removal is tried
-  again until it goes through: when life.db opens while messages.db is
-  open (before the scheduler's first sweep, so none rings late), when
-  messages.db opens, and at every skip, status, Today and morning run.
-  Today leaves out a skipped chat's drafts and call-backs whatever
+  Life's todos refuse then (life.db closed: once open in a daemon run it
+  stays open, even with every Life module turned off again, so it is
+  closed only while every Life module and People have been off since the
+  daemon started, or while Life is broken), the skip still holds at once
+  and its answer says any open todos leave later; the mark keeps them
+  owed, and the removal is tried again until it goes through: when
+  life.db opens while messages.db is open (before the scheduler's first
+  sweep, so none rings late), when messages.db opens, and at every skip,
+  status, Today and morning run (not a dry run). A skip removes its own
+  chat's todos as whoever skipped it, and another chat's still owed as
+  the system. Each time life.db opens while messages.db is open, and each
+  time messages.db opens, every chat on the skip list loses its open
+  todos and call-backs again (only a chat the morning made something
+  from costs a look at Life), so a restored Life backup made before a
+  skip can't bring them back. Taking a chat off the list brings back
+  nothing its skip removed, and a removal still owed goes through all the
+  same. Today leaves out a skipped chat's drafts and call-backs whatever
   happened before. A skip while a morning run is going stops that run
   when it read that chat (or a call with that person): it is stored
-  failed and makes nothing. A run that read only a skipped person's
-  lines in a group goes on, and items made from such lines came from the
-  group, so they stay until removed in Life.
+  failed and makes nothing. A run that read only a skipped person's lines
+  in a group goes on, and items made from such lines came from the group,
+  so they stay until removed in Life.
 - **It fails closed.** Reads are refused until `skip.json` has been
   written since messages.db opened; a `skip.json` that won't parse makes
   the reader refuse reads. One that won't open or breaks the reader's
@@ -2630,13 +2640,18 @@ such a line and anything that happens:
 - People without a name show by their number in Claude sessions.
 - An item citing a real line is made as the model wrote it; the morning
   run's answer is never more than drafts, reminders and todos he acts on.
-- A skip's todos owed to Life wait for messages.db too. When life.db next
-  opens while messages.db is closed (at a daemon start, which opens Life
-  first, or with Messages turned off since the skip), Life's catch-up
-  sweep runs first: a timed todo from that chat due in the 6 hours before
-  can ring once, late, and the todos stay in Life until messages.db opens
-  (at once at a start; with Messages off, once it is on again). Its push
-  says only "WhatsApp" and the time unless lock-screen names are on.
+- A skip's todos owed to Life wait for messages.db too, and can ring
+  meanwhile. At a daemon start with Life on and a chat owed, life.db opens
+  before messages.db, so Life's start sweep runs first: a timed todo or
+  call-back from that chat due in the 6 hours before can ring once, late,
+  before Messages opens and removes it. With Messages turned off since
+  the skip, its owed todos are ordinary Life todos: they ring at their
+  normal times for as long as Messages stays off, and leave when it is on
+  again. One settings change that turns Messages and a Life module on
+  together can still ring one once, late, the same way, since Life opens
+  first. A skipped chat's todos that a Life backup restored while
+  Messages is off are the same. Each such push says only "WhatsApp" and
+  the time unless lock-screen names are on.
 
 Pinned by `packages/daemon/test/messages/reader.test.ts` and
 `reader-more.test.ts` (the real reader on a synthetic WhatsApp: the skip
@@ -2649,14 +2664,17 @@ holds ids and counts only; the skip list's mirror fails closed, survives
 a reset and is never emptied over a file the reader would refuse; the
 reset after a lost salt), `test/api/messages-routes.test.ts` (the switch,
 the 503 sentences, no `phone` over `ctl.sock`, the phone's refused skip
-removal and reset, audit rows by target id, the People isolation),
+removal and reset, a skip's note while Life is closed, audit rows by
+target id, the People isolation),
 `morning-run.test.ts` (no tools, made-up refs dropped, an injected line
 stays inside its `<m>`), `morning-apply.test.ts` (the mark, and Chat's
 framing and taint), `morning-timer.test.ts` (a skip takes the morning's
 drafts, todos, call-backs and summary from view, and stops a run going;
 one while Life is closed says so, and its todos leave once Life answers,
-across a restart too), `packages/daemon/test/life/service.test.ts` (a
-hook given to life.db's open runs before its first sweep),
+across a restart too, as the system but for the chat skipped; a restored
+Life backup doesn't bring them back),
+`packages/daemon/test/life/service.test.ts` (a hook given to life.db's
+open runs before its first sweep),
 `packages/cli/test/mcp-messages.test.ts` (data frames, the caller
 headers), `mcp.test.ts` (`todos_here` frames a WhatsApp todo) and
 `mcp-install.test.ts` with

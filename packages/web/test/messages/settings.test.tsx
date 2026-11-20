@@ -71,7 +71,8 @@ describe('Messages: Settings', () => {
   });
 
   it("a skip while Life isn't open says, as the Mac says it, that the chat's todos leave Life later", async () => {
-    const note = "Life isn't open right now (Todos off, or Life needs attention), so the open todos and call-backs the morning made from this chat leave Life as soon as it opens again.";
+    const note =
+      "Life isn't open right now (every Life module and People have been off since Jantar started, or Life needs attention), so any open todos and call-backs the morning made from this chat leave Life once it opens.";
     const api = messagesApi({
       'GET /v1/messages/chats': () => ({ chats: [{ chatKey: IDS.asha, name: 'Asha Test', kind: 'dm', lastAt: '2026-01-15T07:00:00.000Z', unread: 0, lastFromMe: false, archived: false }], total: 1 }),
       'POST /v1/messages/skip': () => ({ ok: true, note }),

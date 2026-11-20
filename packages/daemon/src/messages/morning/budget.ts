@@ -41,7 +41,7 @@
 import { MESSAGES_LIMITS } from '@jantar/protocol';
 import type { ChatOwner, Message } from '@jantar/protocol/messages';
 import { cut } from '../../chat/text.js';
-import { aboutMe, isContent, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
+import { aboutMe, callerOf, isContent, openFrom, stillWaiting, type Batch, type BatchCall, type BatchChat } from './collect.js';
 import { dataName, dataText, fromOf, lineBody } from './input.js';
 
 /** The estimate's rate: a token per this many UTF-8 bytes. */
@@ -154,11 +154,11 @@ export function budget(batch: Batch, maxTokens: number = MESSAGES_LIMITS.morning
   };
 
   const calls: BatchCall[] = [];
-  // Each person's missed calls, kept and left out (a person: their 1:1, else the name shown).
+  // Each person's missed calls, kept and left out (a person: callerOf's, so an Unknown caller is each call alone).
   const callers = new Map<string, Dropped>();
   for (const c of batch.calls) {
     if (c.returned) continue;
-    const who = c.chatKey ?? `who:${c.who}`;
+    const who = callerOf(c);
     const d = callers.get(who) ?? { ...(c.chatKey ? { chatKey: c.chatKey } : {}), chatName: c.who, kept: 0, left: 0, call: true as const };
     callers.set(who, d);
     // Once one doesn't fit, none after it does.
