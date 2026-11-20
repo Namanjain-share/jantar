@@ -68,6 +68,9 @@ import {
   DIALOG_TEXT_MIN,
   EVENTS_WS_PROTOCOL,
   FILES_CHANGES_LIMIT,
+  FILES_FIND_LIMIT,
+  FILES_FIND_QUERY_MAX,
+  FILES_FIND_QUERY_MIN,
   FILES_LIST_LIMIT,
   FILES_TEXT_WINDOW,
   INTEL_READ_LIMITS,
@@ -707,6 +710,33 @@ export const FilesListQuerySchema = z.object({
 export type FilesListQuery = z.infer<typeof FilesListQuerySchema>;
 export const FilesPathQuerySchema = z.object({ root: RootParamSchema, path: RelPathSchema });
 export type FilesPathQuery = z.infer<typeof FilesPathQuerySchema>;
+/**
+ * 0.14.1: names under a folder (`path`, '' = the root) that contain `q`,
+ * by the same rules as a listing: protected entries never, dot entries only
+ * for a `q` that starts with '.', and no symlink followed.
+ */
+export const FilesFindQuerySchema = z.object({
+  root: RootParamSchema,
+  path: RelPathSchema.default(''),
+  q: z.string().min(FILES_FIND_QUERY_MIN).max(FILES_FIND_QUERY_MAX),
+  limit: limit(FILES_FIND_LIMIT, FILES_FIND_LIMIT),
+});
+export type FilesFindQuery = z.infer<typeof FilesFindQuerySchema>;
+/** One name that matched: `path` is relative to the root (what the viewer and the listing take). */
+export const FileFindEntrySchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  kind: z.enum(['dir', 'file']),
+  size: z.number().int().optional(),
+  mtime: IsoDateSchema,
+});
+export type FileFindEntry = z.infer<typeof FileFindEntrySchema>;
+/** Best matches first: names that start with `q`, then the shallower, then by name. */
+export const FilesFindResponseSchema = z.object({
+  entries: z.array(FileFindEntrySchema),
+  /** A cap was reached (results, depth, entries looked at, or time): there may be more. */
+  truncated: z.boolean(),
+});
 export const FilesTextQuerySchema = z.object({
   root: RootParamSchema,
   path: RelPathSchema,
@@ -1273,6 +1303,12 @@ export const ROUTES = {
   filesList: route({
     method: 'GET', path: '/v1/files/list', scope: 'control', phase: 'v0.3', ctl: false, feature: 'files',
     query: FilesListQuerySchema, response: FileListingSchema, summary: 'One page of a directory (protected entries hidden and counted).',
+  }),
+  // 0.14.1: a name search in Browse (names only, never file content).
+  filesFind: route({
+    method: 'GET', path: '/v1/files/find', scope: 'control', phase: 'v0.14', ctl: false, feature: 'files',
+    query: FilesFindQuerySchema, response: FilesFindResponseSchema,
+    summary: 'File and folder names under a folder that contain a text (best first, capped; names only).',
   }),
   filesStat: route({
     method: 'GET', path: '/v1/files/stat', scope: 'control', phase: 'v0.3', ctl: false, feature: 'files',
@@ -2001,6 +2037,7 @@ export type WsHello = z.infer<typeof WsHelloSchema>;
 export type RewriteStartResponse = z.infer<typeof RewriteStartResponseSchema>;
 export type RewriteJobResponse = z.infer<typeof RewriteJobResponseSchema>;
 export type FilesRootsResponse = z.infer<typeof FilesRootsResponseSchema>;
+export type FilesFindResponse = z.infer<typeof FilesFindResponseSchema>;
 export type FilesChangesResponse = z.infer<typeof FilesChangesResponseSchema>;
 export type SessionChangesResponse = z.infer<typeof SessionChangesResponseSchema>;
 export type SessionChangeResponse = z.infer<typeof SessionChangeResponseSchema>;

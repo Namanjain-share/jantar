@@ -131,6 +131,18 @@ export const FILES_CHANGES_LIMIT = 200;
 /** `GET /v1/files/raw` caps: raster images and PDF. */
 export const FILES_RAW_IMAGE_MAX = 20 * 1024 * 1024;
 export const FILES_RAW_PDF_MAX = 50 * 1024 * 1024;
+/**
+ * `GET /v1/files/find` (a name search under the folder being browsed): at
+ * most this many results, names of 2 characters or more, walking at most
+ * 12 folders deep, 20,000 entries and 1.5 s. Any of them reached: the reply
+ * says `truncated`.
+ */
+export const FILES_FIND_LIMIT = 100;
+export const FILES_FIND_QUERY_MIN = 2;
+export const FILES_FIND_QUERY_MAX = 255;
+export const FILES_FIND_MAX_DEPTH = 12;
+export const FILES_FIND_MAX_VISITED = 20_000;
+export const FILES_FIND_BUDGET_MS = 1_500;
 
 /** Slash command arguments (`/plan <description>`, `/compact <instructions>`). */
 export const SLASH_ARGS_MAX = 200;
